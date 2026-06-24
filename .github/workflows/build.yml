@@ -1,0 +1,194 @@
+name: build
+on: [pull_request, push]
+
+jobs:
+  # ── Non-master: simple Linux build (no Windows/macOS native) ──
+  build:
+    if: github.ref_name != 'master' && github.ref_type != 'tag'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: Run C unit tests
+        run: |
+          cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-test --target xsmtest
+          ./build-test/xsmtest
+      - name: Build JAR
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build -x compileNativeWindows
+      - uses: actions/upload-artifact@v7
+        with:
+          name: seed-map-for-xaero
+          path: build/libs/
+
+  # ── Master / Tag: native compilation matrix ──
+  compile-native-linux:
+    if: github.ref_name == 'master' || github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/main/c
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: Build native library
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target xsmcore
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-linux
+          path: src/main/c/build/libxsmcore.so
+
+  compile-native-windows:
+    if: github.ref_name == 'master' || github.ref_type == 'tag'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >
+            base-devel
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+      - name: Build native library
+        shell: msys2 {0}
+        working-directory: src/main/c
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target xsmcore --config Release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-windows
+          path: src/main/c/build/xsmcore.dll
+
+  compile-native-macos:
+    if: github.ref_name == 'master' || github.ref_type == 'tag'
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: src/main/c
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Install cmake
+        run: brew install cmake
+      - name: Build native library
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target xsmcore
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-macos
+          path: src/main/c/build/libxsmcore.dylib
+
+  # ── Master / Tag: package all platforms into JAR ──
+  package:
+    if: github.ref_name == 'master' || github.ref_type == 'tag'
+    needs:
+      - compile-native-linux
+      - compile-native-windows
+      - compile-native-macos
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: Download native libs
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+          path: prebuilt/
+      - name: Place native libs
+        run: |
+          mkdir -p src/main/c/build src/main/c/build-mingw
+          [ -f prebuilt/libxsmcore.so ]   && cp prebuilt/libxsmcore.so   src/main/c/build/
+          [ -f prebuilt/libxsmcore.dylib ] && cp prebuilt/libxsmcore.dylib src/main/c/build/
+          [ -f prebuilt/xsmcore.dll ]      && cp prebuilt/xsmcore.dll      src/main/c/build-mingw/
+          ls -la src/main/c/build/ src/main/c/build-mingw/ || true
+      - name: Run C unit tests
+        run: |
+          cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-test --target xsmtest
+          ./build-test/xsmtest
+      - name: Build JAR (skip native, use prebuilt libs)
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build -PskipNativeBuild -x compileNative -x compileNativeWindows
+      - uses: actions/upload-artifact@v7
+        with:
+          name: seed-map-for-xaero
+          path: build/libs/
+
+  # ── Tag validation ──
+  validate-tag:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.check_tag.outputs.valid }}
+    steps:
+      - name: Check tag format
+        id: check_tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Release (tag only) ──
+  release:
+    needs:
+      - validate-tag
+      - package
+    if: needs.validate-tag.outputs.valid == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: seed-map-for-xaero
+          path: build/libs/
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+      - name: Ensure tag is on master
+        run: |
+          git fetch origin master
+          if ! git merge-base --is-ancestor HEAD origin/master; then
+            echo "❌ Tag is not on master — refusing to release."
+            exit 1
+          fi
+      - name: Publish to GitHub Releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew publishMods --stacktrace

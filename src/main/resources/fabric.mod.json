@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "seed-map-for-xaero",
+  "version": "${version}",
+  "name": "Seed Map For Xaero",
+  "description": "Shows seed-based biome preview and structures on Xaero's World Map",
+  "authors": ["yuanlu"],
+  "contact": {
+    "homepage": "https://github.com/MineYuanlu/SeedMapForXaero",
+    "sources": "https://github.com/MineYuanlu/SeedMapForXaero"
+  },
+  "license": "MIT",
+  "icon": "assets/seed-map-for-xaero/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["bid.yuanlu.seedmap4xaero.XaeroSeedMap"],
+    "client": ["bid.yuanlu.seedmap4xaero.client.XaeroSeedMapClient"]
+  },
+  "mixins": [
+    "seed-map-for-xaero.mixins.json",
+    {
+      "config": "seed-map-for-xaero.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "xaeroworldmap": "*"
+  }
+}

@@ -1,0 +1,3 @@
+[submodule "src/main/c/cubiomes"]
+	path = src/main/c/cubiomes
+	url = https://github.com/xpple/cubiomes

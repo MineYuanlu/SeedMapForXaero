@@ -1,0 +1,25 @@
+package bid.yuanlu.seedmap4xaero.client;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
+import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
+import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+
+/** 种子地图客户端入口。 */
+public class XaeroSeedMapClient implements ClientModInitializer {
+    private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/XaeroSeedMapClient");
+
+    @Override
+    public void onInitializeClient() {
+        Xsm.setGameVersion();
+        Xsm.setBiomeColorTable(BiomeColorTable.getProvider());
+
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            CellCache.clear();
+        });
+    }
+}

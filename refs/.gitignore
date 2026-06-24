@@ -1,0 +1,3 @@
+# Library source code for reference only - do not commit
+lib_src/
+tools/*.jar

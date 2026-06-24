@@ -1,0 +1,8 @@
+--include-function setBiomeColorTable
+--include-function setBiomeColorTableNative
+--include-function setGameVersion
+--include-function setWorld
+--include-function genCellImg
+--include-function queryPoint
+--include-function queryExactChunkHeight
+--include-function hello
