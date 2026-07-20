@@ -51,5 +51,5 @@ target_link_libraries(xsmsandbox PRIVATE xsmcore cubiomes_static)
 
 if (WIN32)
     set_target_properties(xsmcore PROPERTIES PREFIX "")
-    target_link_options(xsmcore PRIVATE -static-libgcc -static-libstdc++)
+    target_link_options(xsmcore PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
