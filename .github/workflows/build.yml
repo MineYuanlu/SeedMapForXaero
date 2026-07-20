@@ -171,14 +171,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v8
         with:
-          name: seed-map-for-xaero
-          path: build/libs/
+          submodules: recursive
       - uses: actions/setup-java@v5
         with:
           java-version: '25'
           distribution: 'microsoft'
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: Download native libs
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+          path: prebuilt/
+      - name: Place native libs
+        run: |
+          mkdir -p src/main/c/build src/main/c/build-mingw
+          [ -f prebuilt/libxsmcore.so ]   && cp prebuilt/libxsmcore.so   src/main/c/build/
+          [ -f prebuilt/libxsmcore.dylib ] && cp prebuilt/libxsmcore.dylib src/main/c/build/
+          [ -f prebuilt/xsmcore.dll ]      && cp prebuilt/xsmcore.dll      src/main/c/build-mingw/
+          ls -la src/main/c/build/ src/main/c/build-mingw/ || true
       - name: Make gradlew executable
         run: chmod +x ./gradlew
       - name: Ensure tag is on master
@@ -191,4 +203,4 @@ jobs:
       - name: Publish to GitHub Releases
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew publishMods --stacktrace
+        run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows --stacktrace
