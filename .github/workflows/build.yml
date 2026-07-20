@@ -1,5 +1,7 @@
 name: build
 on: [pull_request, push]
+permissions:
+  contents: write
 
 jobs:
   # ── Non-master: simple Linux build (no Windows/macOS native) ──
