@@ -254,8 +254,10 @@ publishing {
 
 publishMods {
 	displayName = "Release ${project.mod_version}"
+	file = jar.archiveFile
 	type = STABLE
 	modLoaders.add('fabric')
+	changelog = "See the [commit history](https://github.com/MineYuanlu/SeedMapForXaero/commits/v${project.mod_version}) for details."
 
 	github {
 		repository = 'MineYuanlu/SeedMapForXaero'
