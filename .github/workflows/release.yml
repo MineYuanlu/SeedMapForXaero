@@ -1,52 +1,68 @@
-name: build
-on: [pull_request, push]
+name: 🚀 Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
 permissions:
   contents: write
 
 jobs:
-  # ── Non-master: simple Linux build (no Windows/macOS native) ──
-  build:
-    if: github.ref_name != 'master' && github.ref_type != 'tag'
-    runs-on: ubuntu-24.04
+  bump:
+    name: Bump version & tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
     steps:
       - uses: actions/checkout@v6
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           submodules: recursive
-      - uses: gradle/actions/wrapper-validation@v6
-      - uses: actions/setup-java@v5
-        with:
-          java-version: '25'
-          distribution: 'microsoft'
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake gcc
-      - name: Run C unit tests
+      - name: Configure Git
         run: |
-          cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-test --target xsmtest
-          ./build-test/xsmtest
-      - name: Build JAR
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Bump version in gradle.properties
+        id: bump
         run: |
-          chmod +x ./gradlew
-          ./gradlew build -x compileNativeWindows
-      - uses: actions/upload-artifact@v7
-        with:
-          name: seed-map-for-xaero
-          path: build/libs/
+          CURRENT=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "${{ github.event.inputs.version }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          sed -i "s/^mod_version=.*/mod_version=${NEW_VERSION}/" gradle.properties
+          git add gradle.properties
+          git commit -m "chore(release): v${NEW_VERSION}"
+          git tag "v${NEW_VERSION}"
+          git push origin master
+          git push origin "v${NEW_VERSION}"
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
 
-  # ── Master / Tag: native compilation matrix ──
   compile-native-linux:
-    if: github.ref_name == 'master' || github.ref_type == 'tag'
+    name: Compile native .so
+    needs: bump
     runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: src/main/c
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: v${{ needs.bump.outputs.version }}
           submodules: recursive
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
       - name: Build native library
+        working-directory: src/main/c
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --target xsmcore
@@ -56,11 +72,13 @@ jobs:
           path: src/main/c/build/libxsmcore.so
 
   compile-native-windows:
-    if: github.ref_name == 'master' || github.ref_type == 'tag'
+    name: Compile native .dll
+    needs: bump
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: v${{ needs.bump.outputs.version }}
           submodules: recursive
       - uses: msys2/setup-msys2@v2
         with:
@@ -82,18 +100,18 @@ jobs:
           path: src/main/c/build/xsmcore.dll
 
   compile-native-macos:
-    if: github.ref_name == 'master' || github.ref_type == 'tag'
+    name: Compile native .dylib
+    needs: bump
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: src/main/c
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: v${{ needs.bump.outputs.version }}
           submodules: recursive
       - name: Install cmake
         run: brew install cmake
       - name: Build native library
+        working-directory: src/main/c
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --target xsmcore
@@ -102,10 +120,10 @@ jobs:
           name: native-macos
           path: src/main/c/build/libxsmcore.dylib
 
-  # ── Master / Tag: package all platforms into JAR ──
-  package:
-    if: github.ref_name == 'master' || github.ref_type == 'tag'
+  release:
+    name: Build, Release & Publish
     needs:
+      - bump
       - compile-native-linux
       - compile-native-windows
       - compile-native-macos
@@ -113,6 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: v${{ needs.bump.outputs.version }}
           submodules: recursive
       - uses: gradle/actions/wrapper-validation@v6
       - uses: actions/setup-java@v5
@@ -132,19 +151,38 @@ jobs:
           [ -f prebuilt/libxsmcore.so ]   && cp prebuilt/libxsmcore.so   src/main/c/build/
           [ -f prebuilt/libxsmcore.dylib ] && cp prebuilt/libxsmcore.dylib src/main/c/build/
           [ -f prebuilt/xsmcore.dll ]      && cp prebuilt/xsmcore.dll      src/main/c/build-mingw/
-          ls -la src/main/c/build/ src/main/c/build-mingw/ || true
       - name: Run C unit tests
         run: |
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
           cmake --build build-test --target xsmtest
           ./build-test/xsmtest
-      - name: Build JAR (skip native, use prebuilt libs)
+      - name: Generate changelog
         run: |
-          chmod +x ./gradlew
-          ./gradlew build -PskipNativeBuild -x compileNative -x compileNativeWindows
-      - uses: actions/upload-artifact@v7
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log --oneline --no-decorate "${PREV_TAG}..HEAD")
+          else
+            LOG=$(git log --oneline --no-decorate -10)
+          fi
+          {
+            echo 'CHANGELOG<<EOF_M'
+            echo "## What's Changed"
+            echo "$LOG"
+            echo ""
+            echo "**Full Changelog**: https://github.com/MineYuanlu/SeedMapForXaero/commits/v${{ needs.bump.outputs.version }}"
+            echo 'EOF_M'
+          } >> "$GITHUB_ENV"
+      - name: Publish to Modrinth
+        run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CHANGELOG: ${{ env.CHANGELOG }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: seed-map-for-xaero
-          path: build/libs/
-
-
+          tag_name: v${{ needs.bump.outputs.version }}
+          name: v${{ needs.bump.outputs.version }}
+          generate_release_notes: true
+          files: build/libs/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

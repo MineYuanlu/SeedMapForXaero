@@ -257,21 +257,12 @@ publishMods {
 	file = jar.archiveFile
 	type = STABLE
 	modLoaders.add('fabric')
-	changelog = "See the [commit history](https://github.com/MineYuanlu/SeedMapForXaero/commits/v${project.mod_version}) for details."
+	changelog = providers.environmentVariable("CHANGELOG")
+		.orElse("See the [commit history](https://github.com/MineYuanlu/SeedMapForXaero/commits/v${project.mod_version}) for details.")
 
-	github {
-		repository = 'MineYuanlu/SeedMapForXaero'
-		accessToken = providers.environmentVariable("GITHUB_TOKEN")
-		commitish = 'master'
-		tagName = "v${project.mod_version}"
-		allowEmptyFiles = true
+	modrinth {
+		projectId = "UoJSF4vW"
+		accessToken = providers.environmentVariable("MODRINTH_TOKEN")
+		minecraftVersions.add("${project.minecraft_version}")
 	}
-
-	// Modrinth — 取消注释并填入 projectId 即可启用
-	// modrinth {
-	//     file = base.getLibsDirectory().file(jar.archiveFileName)
-	//     projectId = "YOUR_PROJECT_ID"
-	//     accessToken = providers.environmentVariable("MODRINTH_TOKEN")
-	//     minecraftVersions.add("${project.minecraft_version}")
-	// }
 }
