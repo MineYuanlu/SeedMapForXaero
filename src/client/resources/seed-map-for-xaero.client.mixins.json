@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "bid.yuanlu.seedmap4xaero.client.mixin",
   "compatibilityLevel": "JAVA_25",
-  "client": ["SeedMapMixin", "SeedMapToggleMixin", "BiomeColorSchemeMixin", "SeedMapCursorMixin"],
+  "client": ["SeedMapMixin", "SeedMapToggleMixin", "BiomeColorSchemeMixin", "SeedMapCursorMixin", "WorldSwitchMixin", "GuiMapSwitchingMixin"],
   "injectors": {
     "defaultRequire": 1
   },

@@ -12,6 +12,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
+
+import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.render.BiomeColorProvider;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
 import xaero.lib.client.gui.widget.Tooltip;
@@ -31,30 +34,48 @@ public abstract class BiomeColorSchemeMixin {
                 window.getGuiScaledWidth() - 20,
                 window.getGuiScaledHeight() - 200,
                 20, 20,
-                Component.literal(schemeLabel()),
+                Component.literal(xsm$schemeLabel(xsm$getProvider())),
                 this::xsm$onCycleScheme,
                 this::xsm$createSchemeTooltip);
         this.addButton(this.xsm$schemeButton);
 
-        Xsm.setBiomeColorTable(BiomeColorTable.getProvider());
+        Xsm.setBiomeColorTable(xsm$getProvider());
     }
 
     @Unique
-    private static String schemeLabel() {
-        String name = BiomeColorTable.getProvider().name();
+    private BiomeColorProvider xsm$getProvider() {
+        var cfg = ServerConfig.getActiveConfig();
+        if (cfg == null)
+            return BiomeColorTable.providers().get(0);
+        var name = cfg.getTheme();
+        if (name != null) {
+            var p = BiomeColorTable.byName(name);
+            if (p != null)
+                return p;
+        }
+        return BiomeColorTable.providers().get(0);
+    }
+
+    @Unique
+    private static String xsm$schemeLabel(BiomeColorProvider p) {
+        String name = p.name();
         return name.length() <= 2 ? name : name.substring(0, 2);
     }
 
     @Unique
     private Tooltip xsm$createSchemeTooltip() {
-        return new Tooltip(Component.literal("Color: " + BiomeColorTable.getProvider().name()), false);
+        return new Tooltip(Component.literal("Color: " + xsm$getProvider().name()), false);
     }
 
     @Unique
     private void xsm$onCycleScheme(Button b) {
-        BiomeColorTable.cycleProvider();
-        b.setMessage(Component.literal(schemeLabel()));
-        Xsm.setBiomeColorTable(BiomeColorTable.getProvider());
+        var cfg = ServerConfig.getActiveConfig();
+        if (cfg == null)
+            return;
+        var next = BiomeColorTable.nextProvider(cfg.getTheme());
+        cfg.setTheme(next.name());
+        b.setMessage(Component.literal(xsm$schemeLabel(next)));
+        Xsm.setBiomeColorTable(next);
         CellCache.clear();
     }
 
