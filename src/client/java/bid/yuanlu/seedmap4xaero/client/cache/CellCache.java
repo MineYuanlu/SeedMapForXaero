@@ -102,7 +102,7 @@ public class CellCache {
             cache.clear();
     }
 
-    private static @Nullable GpuTextureAndView placeholderTexture;
+    private static volatile @Nullable GpuTextureAndView placeholderTexture;
 
     public static @NotNull GpuTextureAndView getPlaceholderTexture() {
         GpuTextureAndView p = placeholderTexture;

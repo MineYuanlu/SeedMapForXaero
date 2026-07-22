@@ -7,11 +7,12 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
+import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
@@ -126,6 +127,13 @@ public class SeedMapMixin {
         return Math.min((int) Math.floor(log2), 3);
     }
 
+    @Inject(method = "init", at = @At("RETURN"))
+    private void xsm$onGuiMapInit(CallbackInfo ci) {
+        if (this.mapProcessor != null) {
+            ServerConfig.activate(this.mapProcessor);
+        }
+    }
+
     @Inject(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;draw(Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer;)V", ordinal = 1, shift = At.Shift.AFTER))
     private void renderSeedMapTiles(GuiGraphicsExtractor guiGraphics, int scaledMouseX, int scaledMouseY,
             float partialTicks, CallbackInfo ci) {
@@ -138,8 +146,8 @@ public class SeedMapMixin {
             LOGGER.info("SeedMapMixin injected");
         }
 
-        final long seed = getWorldSeed();
-        if (seed == Long.MIN_VALUE)
+        final Long seed = ServerConfig.resolveSeed();
+        if (seed == null)
             return;
         final int dim = getCurrentDimensionId();
         if (dim == Integer.MIN_VALUE)
@@ -499,20 +507,6 @@ public class SeedMapMixin {
         bb.addVertex(matrix, x + w, y + h, 0.0F).setColor(-1).setUv(u1, v1);
         bb.addVertex(matrix, x + w, y, 0.0F).setColor(-1).setUv(u1, v0);
         bb.addVertex(matrix, x, y, 0.0F).setColor(-1).setUv(u0, v0);
-    }
-
-    @Unique
-    private static long getWorldSeed() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.getSingleplayerServer() != null) {
-            MinecraftServer server = mc.getSingleplayerServer();
-            try {
-                return server.getWorldGenSettings().options().seed();
-            } catch (Exception e) {
-                return Long.MIN_VALUE;
-            }
-        }
-        return Long.MIN_VALUE;
     }
 
     @Unique

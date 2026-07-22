@@ -5,6 +5,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.level.Level;
+
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -15,6 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.QueryPointCache;
+import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import xaero.lib.client.config.ClientConfigManager;
 import xaero.map.MapProcessor;
@@ -63,8 +66,7 @@ public class SeedMapCursorMixin {
             return;
         }
 
-        long seed = xsm$getWorldSeed();
-        if (seed == Long.MIN_VALUE) {
+        if (xsm$getWorldSeed() == null) {
             MapRenderHelper.drawCenteredStringWithBackground(gui, font, str, x, y, color, r, g, b, a);
             return;
         }
@@ -117,8 +119,7 @@ public class SeedMapCursorMixin {
         if (this.mouseBlockPosY != 32767)
             return;
 
-        long seed = xsm$getWorldSeed();
-        if (seed == Long.MIN_VALUE)
+        if (xsm$getWorldSeed() == null)
             return;
 
         int dim = xsm$getDimensionId();
@@ -148,16 +149,8 @@ public class SeedMapCursorMixin {
     }
 
     @Unique
-    private static long xsm$getWorldSeed() {
-        final var server = Minecraft.getInstance().getSingleplayerServer();
-        if (server != null) {
-            try {
-                return server.getWorldGenSettings().options().seed();
-            } catch (Exception e) {
-                return Long.MIN_VALUE;
-            }
-        }
-        return Long.MIN_VALUE;
+    private @Nullable Long xsm$getWorldSeed() {
+        return ServerConfig.resolveSeed();
     }
 
     @Unique

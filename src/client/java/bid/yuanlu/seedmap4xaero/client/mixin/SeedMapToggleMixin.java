@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
+import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import xaero.lib.client.gui.widget.Tooltip;
 import xaero.map.gui.GuiMap;
 import xaero.map.gui.TooltipButton;
@@ -20,19 +21,21 @@ import xaero.map.gui.TooltipButton;
 public abstract class SeedMapToggleMixin implements SeedMapToggleAccessor {
 
     @Unique
-    private boolean xsm$seedMapEnabled = true;
-
-    @Unique
     private Button xsm$toggleButton;
 
     @Override
     public boolean xsm$isSeedMapEnabled() {
-        return xsm$seedMapEnabled;
+        var cfg = ServerConfig.getActiveConfig();
+        if (cfg != null)
+            return !cfg.isInvisible();
+        return true;
     }
 
     @Override
     public void xsm$setSeedMapEnabled(boolean enabled) {
-        this.xsm$seedMapEnabled = enabled;
+        var cfg = ServerConfig.getActiveConfig();
+        if (cfg != null)
+            cfg.setInvisible(!enabled);
     }
 
     @Inject(method = "init", at = @At("TAIL"))
@@ -51,12 +54,12 @@ public abstract class SeedMapToggleMixin implements SeedMapToggleAccessor {
     @Unique
     private Tooltip xsm$createTooltip() {
         return new Tooltip(Component.literal(
-                xsm$seedMapEnabled ? "Seed Map: ON" : "Seed Map: OFF"), false);
+                xsm$isSeedMapEnabled() ? "Seed Map: ON" : "Seed Map: OFF"), false);
     }
 
     @Unique
     private void xsm$onToggleSeedMap(Button b) {
-        xsm$seedMapEnabled = !xsm$seedMapEnabled;
+        xsm$setSeedMapEnabled(!xsm$isSeedMapEnabled());
     }
 
     @Shadow
