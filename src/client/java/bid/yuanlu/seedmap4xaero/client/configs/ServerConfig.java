@@ -37,9 +37,9 @@ public final class ServerConfig {
     private static final String TMP_SUFFIX = ".tmp";
     private static final String OLD_SUFFIX = ".old";
 
-    private static @Nullable String activeMainId;
-    private static @Nullable MapProcessor activeMapProcessor;
-    private static @Nullable ConfigData activeConfig;
+    private static volatile @Nullable String activeMainId;
+    private static volatile @Nullable MapProcessor activeMapProcessor;
+    private static volatile @Nullable ConfigData activeConfig;
 
     private ServerConfig() {
     }
