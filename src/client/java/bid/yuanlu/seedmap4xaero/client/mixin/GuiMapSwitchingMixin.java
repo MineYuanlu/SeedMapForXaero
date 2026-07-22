@@ -42,10 +42,8 @@ public class GuiMapSwitchingMixin {
             xsm$LOGGER.info("useSeed: skip in singleplayer");
             return;
         }
-        var dim = this.mapProcessor.getCurrentDimId();
         var mw = this.mapProcessor.getCurrentMWId();
-        var wc = cfg.getOrCreateWorld(dim, mw);
-        wc.seed(seed);
+        cfg.getOrCreateWorld(mw).seed(seed);
         ServerConfig.save();
     }
 
@@ -83,19 +81,20 @@ public class GuiMapSwitchingMixin {
                             xsm$LOGGER.warn("confirm: invalid seed format", e);
                         }
                     }
-                }
-        ).bounds(width / 2 + 50, 148, 50, 20).build();
+                }).bounds(width / 2 + 50, 148, 50, 20).build();
 
         mapScreen.addButton(xsm$seedInput);
         mapScreen.addButton(xsm$seedConfirmBtn);
     }
 
     @Inject(method = "renderText", at = @At("TAIL"), remap = false)
-    private void xsm$onRenderTextTail(GuiGraphicsExtractor guiGraphics, Minecraft minecraft, int mouseX, int mouseY, int width, int height, CallbackInfo ci) {
+    private void xsm$onRenderTextTail(GuiGraphicsExtractor guiGraphics, Minecraft minecraft, int mouseX, int mouseY,
+            int width, int height, CallbackInfo ci) {
         if (!this.active)
             return;
         String label = "当前世界种子:";
-        MapRenderHelper.drawStringWithBackground(guiGraphics, minecraft.font, label, width / 2 - 100, 132, -1, 0.0F, 0.0F, 0.0F, 0.4F);
+        MapRenderHelper.drawStringWithBackground(guiGraphics, minecraft.font, label, width / 2 - 100, 132, -1, 0.0F,
+                0.0F, 0.0F, 0.4F);
     }
 
     @Shadow

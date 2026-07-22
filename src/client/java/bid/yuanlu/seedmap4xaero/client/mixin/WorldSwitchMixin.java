@@ -13,7 +13,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
-import bid.yuanlu.seedmap4xaero.client.render.BiomeColorProvider;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
 import xaero.map.MapProcessor;
 
@@ -26,19 +25,6 @@ public class WorldSwitchMixin {
     @Unique
     private String xsm$lastWorldId;
 
-    @Unique
-    private static BiomeColorProvider xsm$resolveProvider() {
-        var cfg = ServerConfig.getActiveConfig();
-        if (cfg == null)
-            return BiomeColorTable.providers().get(0);
-        var name = cfg.getTheme();
-        if (name != null) {
-            var p = BiomeColorTable.byName(name);
-            if (p != null)
-                return p;
-        }
-        return BiomeColorTable.providers().get(0);
-    }
 
     @Shadow
     public String getCurrentWorldId() {
@@ -54,7 +40,7 @@ public class WorldSwitchMixin {
         xsm$lastWorldId = currentId;
         if (currentId != null) {
             ServerConfig.activate((MapProcessor) (Object) this);
-            Xsm.setBiomeColorTable(xsm$resolveProvider());
+            Xsm.setBiomeColorTable(BiomeColorTable.resolveProvider());
         } else {
             ServerConfig.deactivate();
         }

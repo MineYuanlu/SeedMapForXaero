@@ -6,6 +6,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import bid.yuanlu.seedmap4xaero.client.mixin.WorldSwitchMixin;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -133,7 +135,7 @@ public final class ServerConfig {
         var mp = activeMapProcessor;
         if (cfg == null || mp == null)
             return null;
-        var wc = cfg.getWorld(mp.getCurrentDimId(), mp.getCurrentMWId());
+        var wc = cfg.getWorld(mp.getCurrentMWId());
         if (wc == null)
             return null;
         return wc.seed();
@@ -150,17 +152,20 @@ public final class ServerConfig {
      * </ol>
      */
     public synchronized static void save() {
+        final var mainId = activeMainId;
         final var cfg = activeConfig;
+        if (mainId == null)
+            return;
         if (cfg == null || !cfg.dirty.compareAndSet(true, false)) {
             return;
         }
         try {
-            var dir = worldDir(activeMainId);
+            var dir = worldDir(mainId);
             Files.createDirectories(dir);
 
-            var target = targetFile(activeMainId);
-            var tmp = tmpFile(activeMainId);
-            var old = oldFile(activeMainId);
+            var target = targetFile(mainId);
+            var tmp = tmpFile(mainId);
+            var old = oldFile(mainId);
 
             // 1. 写入临时文件
             cfg.write(tmp);
@@ -174,7 +179,7 @@ public final class ServerConfig {
             Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
 
         } catch (IOException e) {
-            LOGGER.error("Failed to save config for {}", activeMainId, e);
+            LOGGER.error("Failed to save config for {}", mainId, e);
         }
     }
 

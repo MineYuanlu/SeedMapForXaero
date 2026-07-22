@@ -34,27 +34,14 @@ public abstract class BiomeColorSchemeMixin {
                 window.getGuiScaledWidth() - 20,
                 window.getGuiScaledHeight() - 200,
                 20, 20,
-                Component.literal(xsm$schemeLabel(xsm$getProvider())),
+                Component.literal(xsm$schemeLabel(BiomeColorTable.resolveProvider())),
                 this::xsm$onCycleScheme,
                 this::xsm$createSchemeTooltip);
         this.addButton(this.xsm$schemeButton);
 
-        Xsm.setBiomeColorTable(xsm$getProvider());
+        Xsm.setBiomeColorTable(BiomeColorTable.resolveProvider());
     }
 
-    @Unique
-    private BiomeColorProvider xsm$getProvider() {
-        var cfg = ServerConfig.getActiveConfig();
-        if (cfg == null)
-            return BiomeColorTable.providers().get(0);
-        var name = cfg.getTheme();
-        if (name != null) {
-            var p = BiomeColorTable.byName(name);
-            if (p != null)
-                return p;
-        }
-        return BiomeColorTable.providers().get(0);
-    }
 
     @Unique
     private static String xsm$schemeLabel(BiomeColorProvider p) {
@@ -64,7 +51,7 @@ public abstract class BiomeColorSchemeMixin {
 
     @Unique
     private Tooltip xsm$createSchemeTooltip() {
-        return new Tooltip(Component.literal("Color: " + xsm$getProvider().name()), false);
+        return new Tooltip(Component.literal("Color: " + BiomeColorTable.resolveProvider().name()), false);
     }
 
     @Unique

@@ -34,8 +34,8 @@ import org.jetbrains.annotations.Nullable;
 public class ConfigData {
     private static final byte[] MAGIC_WORD = "SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8);
     private static final int MAX_SEEDS = 1000;
-    // dimKey → mwId → 世界配置
-    private final ConcurrentHashMap<String, ConcurrentHashMap<String, WorldConfig>> worlds = new ConcurrentHashMap<>();
+    // mwId → 世界配置
+    private final ConcurrentHashMap<String, WorldConfig> worlds = new ConcurrentHashMap<>();
     private final ArrayList<SeedEntry> allSeeds = new ArrayList<>();
 
     @Nullable
@@ -52,15 +52,13 @@ public class ConfigData {
     }
 
     @Nullable
-    public WorldConfig getWorld(String dimKey, String mwId) {
-        var dimMap = worlds.get(dimKey);
-        return dimMap != null ? dimMap.get(mwId) : null;
+    public WorldConfig getWorld(String mwId) {
+        return worlds.get(mwId);
     }
 
     @NotNull
-    public WorldConfig getOrCreateWorld(String dimKey, String mwId) {
-        return worlds.computeIfAbsent(dimKey, k -> new ConcurrentHashMap<>())
-                .computeIfAbsent(mwId, k -> new WorldConfig(this));
+    public WorldConfig getOrCreateWorld(String mwId) {
+        return worlds.computeIfAbsent(mwId, k -> new WorldConfig(this));
     }
 
     public @Nullable String getTheme() {
@@ -91,7 +89,7 @@ public class ConfigData {
             synchronized (allSeeds) {
                 for (int i = 0; i < allSeeds.size(); i++) {
                     SeedEntry e = allSeeds.get(i);
-                    if (seed==e.seed) {
+                    if (seed == e.seed) {
                         e.update();
                         allSeeds.remove(i);
                         allSeeds.addFirst(e);
@@ -114,13 +112,9 @@ public class ConfigData {
         out.write(MAGIC_WORD);
         out.writeInt(0); // version
         out.writeInt(worlds.size());
-        for (final var dimEntry : worlds.entrySet()) {
-            out.writeUTF(dimEntry.getKey());
-            out.writeInt(dimEntry.getValue().size());
-            for (final var worldEntry : dimEntry.getValue().entrySet()) {
-                out.writeUTF(worldEntry.getKey());
-                worldEntry.getValue().write(out);
-            }
+        for (final var worldEntry : worlds.entrySet()) {
+            out.writeUTF(worldEntry.getKey());
+            worldEntry.getValue().write(out);
         }
 
         out.writeBoolean(theme != null);
@@ -149,13 +143,8 @@ public class ConfigData {
         if (version == 0) {
             final var dimSize = in.readInt();
             for (int i = 0; i < dimSize; i++) {
-                final var dimKey = in.readUTF();
-                final var dims = config.worlds.computeIfAbsent(dimKey, k -> new ConcurrentHashMap<>());
-                final var worldSize = in.readInt();
-                for (int j = 0; j < worldSize; j++) {
-                    final var mwId = in.readUTF();
-                    dims.put(mwId, WorldConfig.read(config, in));
-                }
+                final var mwId = in.readUTF();
+                config.worlds.put(mwId, WorldConfig.read(config, in));
             }
 
             config.theme = in.readBoolean() ? in.readUTF() : null;
@@ -204,7 +193,7 @@ public class ConfigData {
         private String lastUsed;
 
         SeedEntry(long seed, @NotNull String lastUsed) {
-            this.seed =seed;
+            this.seed = seed;
             this.lastUsed = Objects.requireNonNull(lastUsed, "lastUsed");
         }
 

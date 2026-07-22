@@ -3,6 +3,8 @@ package bid.yuanlu.seedmap4xaero.client.render;
 import java.util.ArrayList;
 import java.util.List;
 
+import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public final class BiomeColorTable {
@@ -32,6 +34,19 @@ public final class BiomeColorTable {
 				return p;
 		}
 		return null;
+	}
+
+	public static @NotNull BiomeColorProvider resolveProvider() {
+		var cfg = ServerConfig.getActiveConfig();
+		if (cfg == null)
+			return PROVIDERS.get(0);
+		var name = cfg.getTheme();
+		if (name != null) {
+			var p = byName(name);
+			if (p != null)
+				return p;
+		}
+		return PROVIDERS.get(0);
 	}
 
 	public static BiomeColorProvider nextProvider(@Nullable String name) {
