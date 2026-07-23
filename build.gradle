@@ -50,6 +50,14 @@ dependencies {
 
 def skipNative = project.findProperty('skipNativeBuild') ?: 'false'
 
+def localPropsFile = file('gradle.local.properties')
+if (localPropsFile.exists()) {
+    def props = new Properties()
+    localPropsFile.withInputStream { props.load(it) }
+    props.each { k, v -> project.ext[k] = v }
+}
+def skipNativeWindows = project.findProperty('skipNativeWindows') ?: 'false'
+
 ext.JEXTRACT_VERSION = '25'
 ext.JEXTRACT_BUILD = '2'
 ext.JEXTRACT_REV = '4'
@@ -161,7 +169,7 @@ tasks.named('compileClientJava') {
 
 task compileNativeWindows {
     description 'Cross-compile xsmcore.dll for Windows via MinGW.'
-    onlyIf { skipNative != 'true' }
+    onlyIf { skipNative != 'true' && skipNativeWindows != 'true' }
     doLast {
         def cdir = file('src/main/c')
         def cfg = new ProcessBuilder(
@@ -185,14 +193,18 @@ task compileNativeWindows {
 processClientResources {
     if (skipNative != 'true') {
         dependsOn compileNative
-        dependsOn compileNativeWindows
+        if (skipNativeWindows != 'true') {
+            dependsOn compileNativeWindows
+        }
     }
     from('src/main/c/build') {
         include 'libxsmcore.so'
         include 'libxsmcore.dylib'
     }
-    from('src/main/c/build-mingw') {
-        include 'xsmcore.dll'
+    if (skipNativeWindows != 'true') {
+        from('src/main/c/build-mingw') {
+            include 'xsmcore.dll'
+        }
     }
 }
 
