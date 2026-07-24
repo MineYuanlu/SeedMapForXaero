@@ -135,6 +135,8 @@ public class StructureCache {
                             return;
                         long key = ((long) rx << 32) | (rz & 0xFFFFFFFFL);
                         final var rp = tiles.get(key);
+                        if (rp == null)
+                            return;
                         rp.loaded = true;
                         rp.blockX = bx;
                         rp.blockZ = bz;

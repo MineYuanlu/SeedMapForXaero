@@ -123,7 +123,7 @@ public final class ServerConfig {
         var mp = activeMapProcessor;
         if (cfg == null || mp == null)
             return null;
-        var wc = cfg.getWorld(mp.getCurrentMWId());
+        var wc = cfg.getOrCreateWorld(mp.getCurrentMWId());
         return wc;
     }
 
