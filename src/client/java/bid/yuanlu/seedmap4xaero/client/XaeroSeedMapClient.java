@@ -7,6 +7,7 @@ import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 
@@ -18,6 +19,7 @@ public class XaeroSeedMapClient implements ClientModInitializer {
     public void onInitializeClient() {
         Xsm.setGameVersion();
         Xsm.setBiomeColorTable(BiomeColorTable.providers().get(0));
+        StructureType.init();
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             CellCache.clear();

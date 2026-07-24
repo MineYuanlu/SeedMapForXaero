@@ -17,6 +17,7 @@
 #include "../../cubiomes/generator.h"
 #include "../../cubiomes/terrainnoise.h"
 #include "../../cubiomes/util.h"
+#include "../../cubiomes/finders.h"
 
 namespace {
 static const std::unordered_map<std::string, MCVersion> mcVersionMap = {
@@ -389,4 +390,60 @@ uint32_t queryExactChunkHeight(int32_t chunkX, int32_t chunkZ,
     heightsOut[i] += bottom - 1;
   }
   return 0;
+}
+
+int32_t xsmGetStructureConfig(
+    int32_t structureType,
+    int32_t* outSalt, int32_t* outRegionSize,
+    int32_t* outChunkRange, int32_t* outDim, float* outRarity)
+{
+    StructureConfig sconf;
+    if (!getStructureConfig(structureType, tn.g.mc, &sconf))
+        return 0;
+    *outSalt       = sconf.salt;
+    *outRegionSize = sconf.regionSize;
+    *outChunkRange = sconf.chunkRange;
+    *outDim        = sconf.dim;
+    *outRarity     = sconf.rarity;
+    return 1;
+}
+
+int32_t xsmGetStructFEATURE_NUM(void){
+  return FEATURE_NUM;
+}
+
+uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
+                                   int32_t rz0, int32_t rx1, int32_t rz1,
+                                   int32_t rx2, int32_t rz2, int32_t rx3,
+                                   int32_t rz3, int8_t* outFound,
+                                   int32_t* outBlockX, int32_t* outBlockZ) {
+  if (!gen_setWorld) return 0;
+
+
+  uint32_t index = 0;
+  uint32_t cnt = 0;
+  for (int32_t x = rx0; x < rx1; x++) {
+    const bool inX = rx2 <= x && x < rx3;
+    for (int32_t z = rz0; z < rz1; z++) {
+      const bool inZ = rz2 <= z && z < rz3;
+      if (inX && inZ) continue;
+
+      const auto idx = index++;
+
+      Pos pos;
+      if (!getStructurePos(structureType, tn.g.mc, tn.g.seed, x, z, &pos)) {
+        outFound[idx] = 0;
+        continue;
+      }
+      if (!isViableStructurePos(structureType, &tn.g, pos.x, pos.z, 0)) {
+        outFound[idx] = 0;
+        continue;
+      }
+      outFound[idx] = 1;
+      outBlockX[idx] = pos.x;
+      outBlockZ[idx] = pos.z;
+      ++cnt;
+    }
+  }
+  return cnt;
 }

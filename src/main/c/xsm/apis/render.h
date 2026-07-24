@@ -76,7 +76,48 @@ XSM_API uint32_t queryPoint(int32_t worldX, int32_t worldZ,
 /// @param heightsOut 输出 256 个方块高度的数组 (16x16)
 /// @return 错误码; 0=成功, -1=世界未设置, -2=不支持的维度/版本
 XSM_API uint32_t queryExactChunkHeight(int32_t chunkX, int32_t chunkZ,
-                                int32_t* heightsOut);
+                                 int32_t* heightsOut);
+
+/// @brief 获取结构配置
+/// @param structureType 结构类型 ID
+/// @param outSalt 输出 salt
+/// @param outRegionSize 输出 regionSize
+/// @param outChunkRange 输出 chunkRange
+/// @param outDim 输出维度
+/// @param outRarity 输出稀有度
+/// @return 0=失败, 1=成功
+XSM_API int32_t xsmGetStructureConfig(
+    int32_t structureType,
+    int32_t* outSalt,
+    int32_t* outRegionSize,
+    int32_t* outChunkRange,
+    int32_t* outDim,
+    float*   outRarity
+);
+
+/// @brief 获取结构类型数量(枚举最大值)
+XSM_API int32_t xsmGetStructFEATURE_NUM(void);
+
+/// @brief 批量查询某个结构类型在矩形 (rx0, rz0) ~ (rx1, rz1) 但不在矩形 (rx2, rz2) ~ (rx3, rz3) 区域内的结构位置。
+/// @details 对每个 region (rx, rz) ∈ [rx0, rx1) × [rz0, rz1) 且 (rx, rz) ∉ [rx2, rx3) × [rz2, rz3)：
+///   index 为x优先的遍历，抛除不在区域内的 region
+///   如果该 region 有有效的结构生成点：
+///     outFound[index] = 1
+///     outBlockX[index] = pos.x
+///     outBlockZ[index] = pos.z
+///   否则：
+///     outFound[index] = 0
+/// 输出数组由调用方预分配，大小 = (rx1 - rx0) * (rz1 - rz0) - (rx3 - rx2) * (rz3 - rz2)。
+XSM_API uint32_t queryRegionStructuresGrid(
+    int32_t  structureType,
+    int32_t  rx0, int32_t rz0,
+    int32_t rx1, int32_t rz1,
+    int32_t  rx2, int32_t rz2,
+    int32_t rx3, int32_t rz3,
+    int8_t*  outFound,
+    int32_t* outBlockX,
+    int32_t* outBlockZ
+);
 
 #if DEBUG_TIMINGS
 /// @brief 获取 gen 内部 4 段时间的累计纳秒数 (0=校验, 1=缓存分配,

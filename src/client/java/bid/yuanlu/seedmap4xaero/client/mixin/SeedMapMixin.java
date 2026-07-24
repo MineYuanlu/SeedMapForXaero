@@ -134,6 +134,34 @@ public class SeedMapMixin {
         }
     }
 
+    /**
+     * 在所有渲染工作之前, 处理缓存、C侧切换
+     */
+    @Inject(method = "extractRenderState", at = @At("HEAD"))
+    private void tickWorldInfo(GuiGraphicsExtractor guiGraphics, int scaledMouseX, int scaledMouseY,
+            float partialTicks, CallbackInfo ci) {
+        final var toggle = ((SeedMapToggleAccessor) this);
+
+        final Long seed = ServerConfig.resolveSeed();
+        if (seed == null) {
+            toggle.xsm$setSeedMapLoadedWorldInfo(false);
+            return;
+        }
+        final int dim = ServerConfig.resolveDimId();
+        if (dim == Integer.MIN_VALUE) {
+            toggle.xsm$setSeedMapLoadedWorldInfo(false);
+            return;
+        }
+
+        Xsm.setWorld(seed, dim);
+        CacheHelper.setWorld(seed, dim);
+        CacheHelper.tick();
+        toggle.xsm$setSeedMapLoadedWorldInfo(true);
+    }
+
+    /**
+     * 生物群系渲染
+     */
     @Inject(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;draw(Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer;)V", ordinal = 1, shift = At.Shift.AFTER))
     private void renderSeedMapTiles(GuiGraphicsExtractor guiGraphics, int scaledMouseX, int scaledMouseY,
             float partialTicks, CallbackInfo ci) {
@@ -146,17 +174,7 @@ public class SeedMapMixin {
             LOGGER.info("SeedMapMixin injected");
         }
 
-        final Long seed = ServerConfig.resolveSeed();
-        if (seed == null)
-            return;
-        final int dim = getCurrentDimensionId();
-        if (dim == Integer.MIN_VALUE)
-            return;
-
-        Xsm.setWorld(seed, dim);
-        CacheHelper.setWorld(seed, dim);
-        CacheHelper.tick();
-
+        final int dim = ServerConfig.resolveDimId();
         final int curScale = xsm$scaleForUserScale(this.userScale, dim);
         final int blockSize = 64 * curScale;
         this.xsm$debugScale = curScale;
@@ -509,20 +527,4 @@ public class SeedMapMixin {
         bb.addVertex(matrix, x, y, 0.0F).setColor(-1).setUv(u0, v0);
     }
 
-    @Unique
-    private int getCurrentDimensionId() {
-        try {
-            ResourceKey<Level> dimKey = this.mapProcessor.getMapWorld().getCurrentDimension().getDimId();
-            if (dimKey == Level.OVERWORLD) {
-                return 0;
-            } else if (dimKey == Level.NETHER) {
-                return -1;
-            } else if (dimKey == Level.END) {
-                return 1;
-            }
-            return 0;
-        } catch (Exception e) {
-            return Integer.MIN_VALUE;
-        }
-    }
 }

@@ -23,8 +23,13 @@ public abstract class SeedMapToggleMixin implements SeedMapToggleAccessor {
     @Unique
     private Button xsm$toggleButton;
 
+    @Unique
+    private boolean xsm$isLoadedWorldInfo;
+
     @Override
     public boolean xsm$isSeedMapEnabled() {
+        if (!this.xsm$isLoadedWorldInfo)
+            return false;
         var cfg = ServerConfig.getActiveConfig();
         if (cfg != null)
             return !cfg.isInvisible();
@@ -36,6 +41,11 @@ public abstract class SeedMapToggleMixin implements SeedMapToggleAccessor {
         var cfg = ServerConfig.getActiveConfig();
         if (cfg != null)
             cfg.setInvisible(!enabled);
+    }
+
+    @Override
+    public void xsm$setSeedMapLoadedWorldInfo(boolean loaded) {
+        this.xsm$isLoadedWorldInfo = loaded;
     }
 
     @Inject(method = "init", at = @At("TAIL"))

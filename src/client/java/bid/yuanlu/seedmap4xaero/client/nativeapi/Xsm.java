@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import bid.yuanlu.seedmap4xaero.client.cache.QueryPointCache;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorProvider;
 import bid.yuanlu.seedmap4xaero.client.render.NativeBiomeColor;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 
 public final class Xsm {
 
@@ -133,7 +134,10 @@ public final class Xsm {
             MemorySegment height = arena.allocate(ValueLayout.JAVA_INT);
             int ret = XsmNative.queryPoint(worldX, worldZ, biomeName, 32, height);
             if (ret == 0) {
-                return new QueryPointCache(biomeName.getString(0),
+                final var name = biomeName.getString(0);
+                if (name == null)
+                    return null;
+                return new QueryPointCache(name,
                         height.get(ValueLayout.JAVA_INT, 0));
             } else {
                 return null;
@@ -143,8 +147,7 @@ public final class Xsm {
         }
     }
 
-    @Nullable
-    public static int[] queryExactChunkHeight(int chunkX, int chunkZ, int @NotNull [] heights) {
+    public static int @Nullable [] queryExactChunkHeight(int chunkX, int chunkZ, int @NotNull [] heights) {
         if (heights == null || heights.length != 256)
             throw new IllegalArgumentException("heights must be an array of length 256");
         try (Arena arena = Arena.ofConfined()) {
@@ -160,5 +163,83 @@ public final class Xsm {
             Xsm.LOGGER.warn("queryExactChunkHeight failed", e);
         }
         return null;
+    }
+
+    public interface RegionStructureSetter {
+        void set(int rx, int rz, boolean found, int bx, int bz);
+    }
+
+    public static void queryRegionStructuresGrid(
+            int structureType,
+            int rx0, int rz0, int rx1, int rz1,
+            int rx2, int rz2, int rx3, int rz3,
+            RegionStructureSetter setter) {
+        int ex0 = Math.max(rx0, Math.min(rx2, rx3));
+        int ex1 = Math.min(rx1, Math.max(rx2, rx3));
+        int ez0 = Math.max(rz0, Math.min(rz2, rz3));
+        int ez1 = Math.min(rz1, Math.max(rz2, rz3));
+        if (ex0 >= ex1) {
+            ex0 = 0;
+            ex1 = 0;
+        }
+        if (ez0 >= ez1) {
+            ez0 = 0;
+            ez1 = 0;
+        }
+        long total = (long) (rx1 - rx0) * (rz1 - rz0);
+        long excl = (long) (ex1 - ex0) * (ez1 - ez0);
+        int n = (int) (total - excl);
+        if (n <= 0)
+            return;
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment found = arena.allocate(n);
+            MemorySegment bx = arena.allocate(4L * n);
+            MemorySegment bz = arena.allocate(4L * n);
+
+            XsmNative.queryRegionStructuresGrid(
+                    structureType,
+                    rx0, rz0, rx1, rz1,
+                    ex0, ez0, ex1, ez1,
+                    found, bx, bz);
+
+            int index = 0;
+            for (int x = rx0; x < rx1; x++) {
+                boolean inX = ex0 <= x && x < ex1;
+                for (int z = rz0; z < rz1; z++) {
+                    if (inX && ez0 <= z && z < ez1)
+                        continue;
+                    int idx = index++;
+                    setter.set(x, z,
+                            found.get(ValueLayout.JAVA_BYTE, idx) != 0,
+                            bx.getAtIndex(ValueLayout.JAVA_INT, idx),
+                            bz.getAtIndex(ValueLayout.JAVA_INT, idx));
+                }
+            }
+        }
+    }
+
+    public static @Nullable StructureType.Config getStructureConfig(int type) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment salt = arena.allocate(4);
+            MemorySegment regionSize = arena.allocate(4);
+            MemorySegment chunkRange = arena.allocate(4);
+            MemorySegment dim = arena.allocate(4);
+            MemorySegment rarity = arena.allocate(4);
+            int ok = XsmNative.xsmGetStructureConfig(
+                    type, salt, regionSize, chunkRange, dim, rarity);
+            if (ok == 0)
+                return null;
+            return new StructureType.Config(
+                    salt.get(ValueLayout.JAVA_INT, 0),
+                    regionSize.get(ValueLayout.JAVA_INT, 0),
+                    chunkRange.get(ValueLayout.JAVA_INT, 0),
+                    dim.get(ValueLayout.JAVA_INT, 0),
+                    rarity.get(ValueLayout.JAVA_FLOAT, 0));
+        }
+    }
+
+    public static int getStructFEATURE_NUM() {
+        return XsmNative.xsmGetStructFEATURE_NUM();
     }
 }
