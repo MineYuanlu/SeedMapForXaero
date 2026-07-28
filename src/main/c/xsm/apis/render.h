@@ -44,6 +44,13 @@ XSM_API bool setGameVersion(const char* version);
 /// @note 必须先执行`setGameVersion`
 XSM_API bool setWorld(uint64_t seed, int dim);
 
+/// @brief 设置生物群系禁用
+/// @details 设置一个bitset，代表对应BiomeID的禁用状态;
+/// 默认为全启用
+/// @param bitset 位集数组, 每个位对应一个BiomeID, 1=禁用, 0=启用
+/// @param size 位集数组大小
+XSM_API bool setBiomeDisabled(const uint8_t* const bitset, uint32_t size);
+
 
 /// @brief 生成指定位置的图像
 /// @details 以生物群系为底，混合地形光照渲染; 
@@ -118,6 +125,9 @@ XSM_API uint32_t queryRegionStructuresGrid(
     int32_t* outBlockX,
     int32_t* outBlockZ
 );
+
+/// @brief 查询当前版本下, biomeId 对应的生物群系名称(key)
+XSM_API bool xsmBiome2str(int32_t biomeId, char* out, uint32_t outLen);
 
 #if DEBUG_TIMINGS
 /// @brief 获取 gen 内部 4 段时间的累计纳秒数 (0=校验, 1=缓存分配,

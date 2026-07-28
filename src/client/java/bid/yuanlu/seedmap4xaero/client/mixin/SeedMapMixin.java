@@ -154,6 +154,10 @@ public class SeedMapMixin {
         }
 
         Xsm.setWorld(seed, dim);
+        var wc = ServerConfig.getActiveWorldConfig();
+        if (wc != null) {
+            Xsm.setBiomeDisabled(wc.getDisabledBiomes());
+        }
         CacheHelper.setWorld(seed, dim);
         CacheHelper.tick();
         toggle.xsm$setSeedMapLoadedWorldInfo(true);

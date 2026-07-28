@@ -117,6 +117,28 @@ public final class ServerConfig {
         return activeConfig;
     }
 
+    public static boolean isStructureEnabled() {
+        var cfg = activeConfig;
+        return cfg == null || !cfg.isInvisibleStructures();
+    }
+
+    public static void setStructureEnabled(boolean enabled) {
+        var cfg = activeConfig;
+        if (cfg != null)
+            cfg.setInvisibleStructures(!enabled);
+    }
+
+    public static float getStructureIconSize() {
+        var cfg = activeConfig;
+        return cfg != null ? cfg.getStructureIconSize() : 1.0f;
+    }
+
+    public static void setStructureIconSize(float size) {
+        var cfg = activeConfig;
+        if (cfg != null)
+            cfg.setStructureIconSize(size);
+    }
+
     /** 获取当前世界配置。 */
     public static @Nullable WorldConfig getActiveWorldConfig() {
         var cfg = activeConfig;

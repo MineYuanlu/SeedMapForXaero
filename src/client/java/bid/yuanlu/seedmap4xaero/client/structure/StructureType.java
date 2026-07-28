@@ -52,6 +52,8 @@ public enum StructureType {
     public static final int SHEET_SIZE = 25; // 精灵图横向图标数量
     public static final Identifier STRUCTURES_TEXTURE = Identifier.fromNamespaceAndPath(
             "seed-map-for-xaero", "textures/icons/structures.png");
+    public static final Identifier STRUCTURES_PLAIN_TEXTURE = Identifier.fromNamespaceAndPath(
+            "seed-map-for-xaero", "textures/icons/structures_plain.png");
     public static final int SPRITESHEET_WIDTH = SHEET_SIZE * 20;
 
     private static final StructureType[] BY_ID = new StructureType[FEATURE_NUM];

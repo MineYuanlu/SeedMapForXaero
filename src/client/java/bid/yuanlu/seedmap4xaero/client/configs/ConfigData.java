@@ -28,7 +28,9 @@ import org.jetbrains.annotations.Nullable;
  * worlds : { dimKey → { mwId → WorldConfig } }
  * all_seeds : [ SeedEntry … ]
  * theme : String|null
- * invisible : Boolean|null
+ * invisibleBiomesBiomes : Boolean|null
+ * invisibleBiomesStructures : Boolean|null
+ * structureIconSize : float|null
  * </pre>
  */
 public class ConfigData {
@@ -40,7 +42,9 @@ public class ConfigData {
 
     @Nullable
     String theme;
-    boolean invisible = false;
+    boolean invisibleBiomes = false;
+    boolean invisibleStructures = false;
+    float structureIconSize = 1.0f;
 
     AtomicBoolean dirty = new AtomicBoolean(false);
 
@@ -65,8 +69,16 @@ public class ConfigData {
         return theme;
     }
 
-    public boolean isInvisible() {
-        return invisible;
+    public boolean isInvisibleBiomes() {
+        return invisibleBiomes;
+    }
+
+    public boolean isInvisibleStructures() {
+        return invisibleStructures;
+    }
+
+    public float getStructureIconSize() {
+        return structureIconSize;
     }
 
     public synchronized void setTheme(@Nullable String theme) {
@@ -76,10 +88,25 @@ public class ConfigData {
         makeDirty();
     }
 
-    public synchronized void setInvisible(boolean invisible) {
-        if (this.invisible == invisible)
+    public synchronized void setInvisibleBiomes(boolean invisibleBiomes) {
+        if (this.invisibleBiomes == invisibleBiomes)
             return;
-        this.invisible = invisible;
+        this.invisibleBiomes = invisibleBiomes;
+        makeDirty();
+    }
+
+    public synchronized void setInvisibleStructures(boolean invisibleStructures) {
+        if (this.invisibleStructures == invisibleStructures)
+            return;
+        this.invisibleStructures = invisibleStructures;
+        makeDirty();
+    }
+
+    public synchronized void setStructureIconSize(float size) {
+        size = Math.max(0.5f, Math.min(2.0f, size));
+        if (this.structureIconSize == size)
+            return;
+        this.structureIconSize = size;
         makeDirty();
     }
 
@@ -121,7 +148,9 @@ public class ConfigData {
         if (theme != null)
             out.writeUTF(theme);
 
-        out.writeBoolean(invisible);
+        out.writeBoolean(invisibleBiomes);
+        out.writeBoolean(invisibleStructures);
+        out.writeFloat(structureIconSize);
 
         synchronized (allSeeds) {
             out.writeInt(allSeeds.size());
@@ -148,7 +177,9 @@ public class ConfigData {
             }
 
             config.theme = in.readBoolean() ? in.readUTF() : null;
-            config.invisible = in.readBoolean();
+            config.invisibleBiomes = in.readBoolean();
+            config.invisibleStructures = in.readBoolean();
+            config.structureIconSize = in.readFloat();
 
             final var seedSize = in.readInt();
             for (int i = 0; i < seedSize; i++) {

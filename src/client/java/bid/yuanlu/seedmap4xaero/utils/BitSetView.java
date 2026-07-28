@@ -6,6 +6,7 @@ import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 
 public final class BitSetView {
+    public static final BitSetView EMPTY = new BitSetView(new BitSet());
     private final @NotNull BitSet bitSet;
 
     public BitSetView(@NotNull BitSet bitSet) {
@@ -29,6 +30,16 @@ public final class BitSetView {
     /** @see BitSet#nextSetBit(int) */
     public int nextSetBit(int fromIndex) {
         return this.bitSet.nextSetBit(fromIndex);
+    }
+
+    /** @see BitSet#get(int) */
+    public boolean get(int bitIndex) {
+        return this.bitSet.get(bitIndex);
+    }
+
+    /** @see BitSet#toByteArray() */
+    public byte[] toByteArray() {
+        return this.bitSet.toByteArray();
     }
 
     @Override

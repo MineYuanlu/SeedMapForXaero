@@ -1,0 +1,5 @@
+- `./apis/` 面向Java FFM 的 API 接口
+- `./pretools` 开发时期的工具包
+- `./sandbox` 开发测试用的沙箱
+- `./test` 单元测试代码
+- `./utils` 通用工具

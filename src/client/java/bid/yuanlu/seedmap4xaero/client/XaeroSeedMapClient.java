@@ -3,6 +3,7 @@ package bid.yuanlu.seedmap4xaero.client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
@@ -20,6 +21,7 @@ public class XaeroSeedMapClient implements ClientModInitializer {
         Xsm.setGameVersion();
         Xsm.setBiomeColorTable(BiomeColorTable.providers().get(0));
         StructureType.init();
+        BiomeType.init();
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             CellCache.clear();

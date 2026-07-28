@@ -8,6 +8,7 @@ import java.util.Objects;
 
 import org.jetbrains.annotations.Nullable;
 
+import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 
@@ -19,6 +20,8 @@ public class WorldConfig {
     private Long seed; // null ↔ 未设置
     private @Nullable BitSet enabledStructures; // null ↔ 使用默认
     private @Nullable BitSetView enabledStructuresView;
+    private @Nullable BitSet disabledBiomes; // null ↔ 全部启用
+    private @Nullable BitSetView disabledBiomesView;
 
     WorldConfig(ConfigData main) {
         this.main = Objects.requireNonNull(main, "main");
@@ -52,6 +55,21 @@ public class WorldConfig {
         return StructureType.defaultEnabled();
     }
 
+    public void setBiomeDisabled(int id, boolean enabled) {
+        if (disabledBiomes == null) {
+            disabledBiomes = new BitSet();
+            disabledBiomesView = new BitSetView(disabledBiomes);
+        }
+        disabledBiomes.set(id, enabled);
+        main.makeDirty();
+    }
+
+    public BitSetView getDisabledBiomes() {
+        if (disabledBiomesView != null)
+            return disabledBiomesView;
+        return BitSetView.EMPTY;
+    }
+
     /** 写入到 DataOutput（由调用者实现）。 */
     void write(DataOutput out) throws IOException {
         out.writeInt(0);
@@ -61,6 +79,12 @@ public class WorldConfig {
         out.writeBoolean(enabledStructures != null);
         if (enabledStructures != null) {
             byte[] bits = enabledStructures.toByteArray();
+            out.writeInt(bits.length);
+            out.write(bits);
+        }
+        out.writeBoolean(disabledBiomes != null);
+        if (disabledBiomes != null) {
+            byte[] bits = disabledBiomes.toByteArray();
             out.writeInt(bits.length);
             out.write(bits);
         }
@@ -81,6 +105,13 @@ public class WorldConfig {
                 wc.enabledStructures = BitSet.valueOf(bits);
                 wc.enabledStructuresView = new BitSetView(wc.enabledStructures);
             }
+            if (in.readBoolean()) {
+                int len = in.readInt();
+                byte[] bits = new byte[len];
+                in.readFully(bits);
+                wc.disabledBiomes = BitSet.valueOf(bits);
+                wc.disabledBiomesView = new BitSetView(wc.disabledBiomes);
+            }
         } else {
             throw new IOException("Unsupported WorldConfig version: " + version);
         }
@@ -95,11 +126,12 @@ public class WorldConfig {
             return false;
         return Objects.equals(main, that.main)
                 && Objects.equals(seed, that.seed)
-                && Objects.equals(enabledStructures, that.enabledStructures);
+                && Objects.equals(enabledStructures, that.enabledStructures)
+                && Objects.equals(disabledBiomes, that.disabledBiomes);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(main, seed, enabledStructures);
+        return Objects.hash(main, seed, enabledStructures, disabledBiomes);
     }
 }

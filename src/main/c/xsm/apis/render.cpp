@@ -60,13 +60,17 @@ static const std::unordered_map<std::string, MCVersion> mcVersionMap = {
     {"1.21.11", MC_1_21_11}, {"26.1", MC_26_1},     {"26.1.1", MC_26_1},
     {"26.1.2", MC_26_1},     {"26.2", MC_26_2}};
 
+    static constexpr const size_t MAX_BIOMES = 256;
 
 xsm::mutex setting_mtx;
 
 /// 生物群系颜色表
 /// key为BiomeID，value为颜色值(RGB)
-unsigned char biomeColorTable[256][3];
+unsigned char biomeColorTable[MAX_BIOMES][3];
 bool bct_set = false;  ///< 是否已经设置生物群系颜色表
+
+bool biomeColorDisabled[MAX_BIOMES]={};
+unsigned char biomeColorTableMask[MAX_BIOMES][3];
 
 /// 生成器实例（TerrainNoise 内嵌 Generator g 作为第一成员，&tn.g 即为 Generator*）
 TerrainNoise tn{};
@@ -91,11 +95,26 @@ static const float XSM_AQUA_BLUE        = 0.90f;   // 水下蓝衰减
 }  // namespace
 
 
+/// @brief 从 biomeColorTable 根据 biomeColorDisabled 掩码写入
+/// biomeColorTableMask
+void updateMaskedBiomeColorTable(void) {
+  for (int i = 0; i < MAX_BIOMES; i++) {
+    for (int j = 0; j < 3; j++) {
+      if (biomeColorDisabled[i]) {
+        biomeColorTableMask[i][j] = 0;  // 0x000000
+      } else {
+        biomeColorTableMask[i][j] = biomeColorTable[i][j];
+      }
+    }
+  }
+}
+
 bool setBiomeColorTable(uint32_t* colors, uint32_t size) {
   std::lock_guard<xsm::mutex> lock(setting_mtx);
   if (colors == NULL && size != 0) return false;
+  if (size > MAX_BIOMES) return false;
 
-  memset(biomeColorTable, 0, 256 * 3);
+  memset(biomeColorTable, 0, MAX_BIOMES * 3);
 
   for (uint32_t i = 0; i < size; i++) {
     auto id = colors[i * 2];
@@ -104,6 +123,7 @@ bool setBiomeColorTable(uint32_t* colors, uint32_t size) {
     biomeColorTable[id][1] = (hex >> 8) & 0xff;
     biomeColorTable[id][2] = (hex >> 0) & 0xff;
   }
+  updateMaskedBiomeColorTable();
   bct_set = true;
   return true;
 }
@@ -112,6 +132,7 @@ bool setBiomeColorTable(uint32_t* colors, uint32_t size) {
 bool setBiomeColorTableNative(void) {
   std::lock_guard<xsm::mutex> lock(setting_mtx);
   initBiomeColors(biomeColorTable);
+  updateMaskedBiomeColorTable();
   bct_set = true;
   return true;
 }
@@ -134,6 +155,17 @@ bool setWorld(uint64_t seed, int dim) {
   if (!gen_setGameVersion) return false;
   initTerrainNoise(&tn, seed, dim);
   gen_setWorld = true;
+  return true;
+}
+
+XSM_API bool setBiomeDisabled(const uint8_t* const bitset, uint32_t size) {
+  std::lock_guard<xsm::mutex> lock(setting_mtx);
+  for (uint32_t i = 0; i <MAX_BIOMES; i++) {
+    const uint32_t idx = i / 8;
+    const bool bit = idx < size ? bitset[idx] & (1 << (i % 8)) : 0;
+    biomeColorDisabled[i] = bit;
+  }
+  if (bct_set) updateMaskedBiomeColorTable();
   return true;
 }
 
@@ -286,7 +318,7 @@ uint32_t genCellImg(uint32_t scale, int32_t worldX, int32_t worldZ, uint32_t abs
              PIXEL_PER_TILE, PIXEL_PER_TILE, (int)absY, 1});
 
   XSM_TIME_POINT(t4);
-  biomesToImage(data, biomeColorTable, cache.get(), PIXEL_PER_TILE,
+  biomesToImage(data, biomeColorTableMask, cache.get(), PIXEL_PER_TILE,
                 PIXEL_PER_TILE, 1, 1);
 
   XSM_TIME_POINT(t5);
@@ -446,4 +478,13 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
     }
   }
   return cnt;
+}
+
+
+bool xsmBiome2str(int32_t biomeId, char* out, uint32_t outLen) {
+  if (!gen_setGameVersion) return false;
+  const char* const name = biome2str(tn.g.mc, biomeId);
+  if (!name) return false;
+  strncpy(out, name, outLen - 1);
+  return true;
 }

@@ -155,6 +155,12 @@ For each 16×16 sub-tile:
 | cubiomes        | `src/main/c/cubiomes/` git submodule → `libxsmcore.so` |
 | jextract        | Pre-built from jdk.java.net, auto-downloaded           |
 
+### Dependencies src
+
+- `refs/lib_src/xaeroworldmap` Xaero World Map source code (decompiled)
+- `refs/lib_src/xaerolib` XaeroLib source code (decompiled)
+
+
 ## LSP tip
 
 LSP may show false errors for mixin targets and generated `XsmNative.java`. Ignore them — only `./gradlew build` output is authoritative.

@@ -6,11 +6,11 @@
   "client": [
     "SeedMapMixin",
     "SeedMapToggleMixin",
-    "BiomeColorSchemeMixin",
     "SeedMapCursorMixin",
     "WorldSwitchMixin",
     "GuiMapSwitchingMixin",
-    "StructureOverlayMixin"
+    "StructureOverlayMixin",
+    "XsmMainPanelMixin"
   ],
   "injectors": {
     "defaultRequire": 1

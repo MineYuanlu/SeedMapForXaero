@@ -6,6 +6,8 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
+
 import net.minecraft.SharedConstants;
 
 import org.jetbrains.annotations.NotNull;
@@ -17,6 +19,7 @@ import bid.yuanlu.seedmap4xaero.client.cache.QueryPointCache;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorProvider;
 import bid.yuanlu.seedmap4xaero.client.render.NativeBiomeColor;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
+import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 
 public final class Xsm {
 
@@ -87,6 +90,23 @@ public final class Xsm {
             boolean success = XsmNative.setBiomeColorTable(seg, 256);
             if (!success) {
                 LOGGER.error("Failed to set biome color table: {}", provider.name());
+            }
+        }
+    }
+
+    private static byte @Nullable [] lastBiomeDisabled = null;
+
+    public static void setBiomeDisabled(BitSetView disabled) {
+        byte[] bits = disabled.toByteArray();
+        if (Arrays.equals(lastBiomeDisabled, bits))
+            return;
+        lastBiomeDisabled = bits;
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment seg = arena.allocate(bits.length);
+            seg.copyFrom(MemorySegment.ofArray(bits));
+            boolean success = XsmNative.setBiomeDisabled(seg, bits.length);
+            if (!success) {
+                LOGGER.error("Failed to set biome disabled: {}", disabled);
             }
         }
     }
@@ -241,5 +261,14 @@ public final class Xsm {
 
     public static int getStructFEATURE_NUM() {
         return XsmNative.xsmGetStructFEATURE_NUM();
+    }
+
+    public static @Nullable String biome2str(int biomeId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(64);
+            if (XsmNative.xsmBiome2str(biomeId, out, 64))
+                return out.getString(0);
+            return null;
+        }
     }
 }

@@ -1,6 +1,5 @@
 package bid.yuanlu.seedmap4xaero.client.mixin;
 
-import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.RegionPos;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
@@ -35,20 +34,14 @@ public class StructureOverlayMixin {
     private static final int ICON_SIZE = 20;
 
     @Unique
-    private static final int ICON_HALF = ICON_SIZE / 2;
-
-    @Unique
     private String xsm$hoverText;
 
-    /**
-     * 更新结构缓存（在每帧最末尾执行，避免阻塞渲染）
-     */
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void updateStructures(GuiGraphicsExtractor guiGraphics,
             int scaledMouseX, int scaledMouseY, float partialTicks, CallbackInfo ci) {
         if (mapProcessor == null)
             return;
-        if (!((SeedMapToggleAccessor) this).xsm$isSeedMapEnabled())
+        if (!ServerConfig.isStructureEnabled())
             return;
 
         final var wc = ServerConfig.getActiveWorldConfig();
@@ -71,15 +64,12 @@ public class StructureOverlayMixin {
                 (int) Math.ceil(right), (int) Math.ceil(bottom));
     }
 
-    /**
-     * 在 Xaero 的 HUD 文字之前，主帧缓冲绑回后渲染结构图标
-     */
     @Inject(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/ImprovedFramebuffer;bindDefaultFramebuffer(Lnet/minecraft/client/Minecraft;)V", shift = At.Shift.AFTER))
     private void renderStructures(GuiGraphicsExtractor guiGraphics,
             int scaledMouseX, int scaledMouseY, float partialTicks, CallbackInfo ci) {
         if (mapProcessor == null)
             return;
-        if (!((SeedMapToggleAccessor) this).xsm$isSeedMapEnabled())
+        if (!ServerConfig.isStructureEnabled())
             return;
 
         final var wc = ServerConfig.getActiveWorldConfig();
@@ -89,13 +79,17 @@ public class StructureOverlayMixin {
         if (enabled.isEmpty())
             return;
 
+        final float iconScale = ServerConfig.getStructureIconSize();
+        final int iconSize = (int) (ICON_SIZE * iconScale);
+        final int iconHalf = iconSize / 2;
+
         final Minecraft mc = Minecraft.getInstance();
         final int windowW = mc.getWindow().getWidth();
         final int windowH = mc.getWindow().getHeight();
         final double invScale = 1.0 / screenScale;
 
         xsm$hoverText = null;
-        int bestDist = ICON_HALF;
+        int bestDist = iconHalf;
 
         for (var entry : StructureCache.REGIONS.entrySet()) {
             StructureType type = entry.getKey();
@@ -118,8 +112,8 @@ public class StructureOverlayMixin {
                 guiGraphics.pose().pushMatrix();
                 guiGraphics.pose().translate(fracX, fracY);
                 guiGraphics.blit(StructureType.STRUCTURES_TEXTURE,
-                        baseX - ICON_HALF, baseY - ICON_HALF,
-                        baseX + ICON_HALF, baseY + ICON_HALF,
+                        baseX - iconHalf, baseY - iconHalf,
+                        baseX + iconHalf, baseY + iconHalf,
                         u0, u1, 0.0F, 1.0F);
                 guiGraphics.pose().popMatrix();
 
@@ -138,5 +132,4 @@ public class StructureOverlayMixin {
                     -1, 0.0F, 0.0F, 0.0F, 0.6F);
         }
     }
-
 }
