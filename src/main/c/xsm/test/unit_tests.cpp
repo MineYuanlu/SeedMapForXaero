@@ -78,6 +78,28 @@ TEST_CASE("genCellImg scale=4 (per-pixel height)") {
   }
 }
 
+TEST_CASE("queryRegionStructuresGrid") {
+  setupOrFail();
+  setWorld(0, 0);
+
+  // 无排除, 不崩溃即可
+  int8_t found[16];
+  int32_t bx[16], bz[16];
+  queryRegionStructuresGrid(25, 0, 0, 4, 4, 0, 0, 0, 0, found, bx, bz);
+
+  // 超出边界的 region 应返回 0; type=1, rect [999999,1000000), 无排除
+  int8_t found2[1];
+  int32_t bx2[1], bz2[1];
+  uint32_t n = queryRegionStructuresGrid(1, 999999, 999999, 1000000, 1000000, 0, 0, 0, 0, found2, bx2, bz2);
+  CHECK(n == 0);
+
+  // 完全被排除: include=[0,5)×[0,5), exclude=[0,5)×[0,5) → n=0
+  int8_t found3[1];
+  int32_t bx3[1], bz3[1];
+  n = queryRegionStructuresGrid(25, 0, 0, 5, 5, 0, 0, 5, 5, found3, bx3, bz3);
+  CHECK(n == 0);
+}
+
 TEST_CASE("genCellImg scale=1 (generateRegion)") {
   setupOrFail();
   Img img;

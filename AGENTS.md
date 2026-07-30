@@ -60,6 +60,7 @@ Format: custom binary (`ConfigData.write`/`read`, magic word + version 0). Not J
 - Color theme name — `ConfigData.theme` (restored via `BiomeColorTable.resolveProvider()`)
 - Toggle invisible — `ConfigData.invisible` (`SeedMapToggleMixin` reads/writes config)
 - Seed history — `ConfigData.allSeeds` (capped 1000, MRU-ordered)
+- Enabled structure types — `WorldConfig.enabledStructures` (`BitSet`, persisted per mwId)
 
 ### Atomic save
 
@@ -76,10 +77,12 @@ Format: custom binary (`ConfigData.write`/`read`, magic word + version 0). Not J
 ```
 src/client/java/bid/yuanlu/seedmap4xaero/client/
 ├── configs/          # ServerConfig, ConfigData, WorldConfig
-├── nativeapi/        # Xsm.java (System.load + FFM wrappers)
-├── cache/            # CellCache (per-scale GPU texture, TTL 100 ticks), QueryPointCache (LRU)
-├── mixin/            # 6 client mixins (config in client .mixins.json)
+├── nativeapi/        # Xsm.java (System.load + FFM wrappers), XsmNative.java (generated)
+├── cache/            # CellCache, StructureCache, QueryPointCache, CacheHelper
+├── mixin/            # 7 client mixins (config in client .mixins.json)
 ├── render/           # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
+├── structure/        # StructureType enum (26 types, config from C)
+├── utils/            # BitSetView (immutable BitSet wrapper)
 └── accessor/         # SeedMapToggleAccessor interface
 src/main/
 ├── java/…/XaeroSeedMap.java   # ModInitializer (empty)
@@ -87,7 +90,7 @@ src/main/
 └── c/                # cubiomes submodule + xsm/apis/render.cpp + unit_tests.cpp
 ```
 
-### 6 client mixins
+### 7 client mixins
 
 | Mixin                   | Targets                              | Role                                            |
 | ----------------------- | ------------------------------------ | ----------------------------------------------- |
@@ -97,14 +100,19 @@ src/main/
 | `BiomeColorSchemeMixin` | `GuiMap.init`                        | Color scheme cycle button, persists to config   |
 | `WorldSwitchMixin`      | `MapProcessor.checkForWorldUpdate`   | Detect world change → reload config             |
 | `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          |
+| `StructureOverlayMixin` | `GuiMap.extractRenderState`          | Structure icon overlay + hover tooltip          |
 
 ### Rendering flow
 
-1. `GuiMap.extractRenderState` → `SeedMapMixin.renderSeedMapTiles` (after Xaero's 2nd draw)
-2. `curScale` from `userScale`: ≥0.5→1, ≥0.125→4, ≥0.03125→16, ≥0.0078125→64, else 256 (overworld) / 64
-3. Iterate visible `LeveledRegion`s; each cell: `CellCache.getOrRequest` → GPU texture or async gen
-4. For regions with Xaero textures: 3-tier exploration detection + scanline merge
-5. SuperScale (×4) fallback + SubScale (÷4) overlay when cur-scale not ready
+1. `GuiMap.extractRenderState` HEAD → `tickWorldInfo`: resolve seed/dim, call `Xsm.setWorld(seed, dim)` + `CacheHelper.setWorld` (clears all caches on change), `CacheHelper.tick()`
+2. Seed map tiles rendered after Xaero's 2nd draw via `renderSeedMapTiles` (injected at `INVOKE ordinal=1`)
+3. `curScale` from `userScale`: ≥0.5→1, ≥0.125→4, ≥0.03125→16, ≥0.0078125→64, else 256 (overworld) / 64
+4. Iterate visible `LeveledRegion`s; each cell: `CellCache.getOrRequest` → GPU texture or async gen on `CacheHelper.CACHE_WORKER` thread pool
+5. For regions with Xaero textures: 3-tier exploration detection + scanline merge
+6. SuperScale (×4) fallback + SubScale (÷4) overlay when cur-scale not ready
+7. `CellCache.cancelStalePending` + `CellCache.cleanByTTL` called each frame
+8. Structure overlay icons rendered after default framebuffer bind (from `StructureCache.REGIONS`, async via `CacheHelper.CACHE_WORKER`)
+9. Debug HUD always drawn at screen top center
 
 ### Tile coordinates
 
@@ -132,10 +140,11 @@ For each 16×16 sub-tile:
 - Terrain lighting: Overworld only (C-side hardcoded)
 - MC version string map in `render.cpp` lines 22–60 must be updated for new MC releases
 - Empty regions (no Xaero textures) filled without sub-tile exploration check
-- Debug HUD always drawn at screen top center
 - `Xsm.setBiomeColorTable` must be called before any gen — C-side defaults to black image
-- `Xsm.setWorld(seed, dim)` is dedup-cached; world change calls `CellCache.clear()` + `QueryPointCache.clear()`
+- `Xsm.setWorld(seed, dim)` is dedup-cached; world change calls `CellCache.clear()` + `QueryPointCache.clear()` + `StructureCache.clear()`
 - Config file is **not JSON** — binary format with magic word. Corrupt file silently falls back to `.old` then fresh config
+- Structure queries are async via `CacheHelper.CACHE_WORKER`; results read from `StructureCache.REGIONS` each frame
+- `StructureCache.updateStructuresInArea` uses diff-based logic — only queries newly visible regions
 - LSP shows false errors for mixin targets and generated `XsmNative.java` — only `./gradlew build` is authoritative
 
 ## Dependencies
@@ -145,6 +154,12 @@ For each 16×16 sub-tile:
 | Xaero World Map | `xaero.map:xaeroworldmap-fabric-26.1.2:1.41.0`         |
 | cubiomes        | `src/main/c/cubiomes/` git submodule → `libxsmcore.so` |
 | jextract        | Pre-built from jdk.java.net, auto-downloaded           |
+
+### Dependencies src
+
+- `refs/lib_src/xaeroworldmap` Xaero World Map source code (decompiled)
+- `refs/lib_src/xaerolib` XaeroLib source code (decompiled)
+
 
 ## LSP tip
 

@@ -1,6 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.configs;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.level.Level;
 
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -111,8 +112,41 @@ public final class ServerConfig {
         activeConfig = null;
     }
 
+    /** 获取当前游玩的服务器配置。 */
     public static @Nullable ConfigData getActiveConfig() {
         return activeConfig;
+    }
+
+    public static boolean isStructureEnabled() {
+        var cfg = activeConfig;
+        return cfg == null || !cfg.isInvisibleStructures();
+    }
+
+    public static void setStructureEnabled(boolean enabled) {
+        var cfg = activeConfig;
+        if (cfg != null)
+            cfg.setInvisibleStructures(!enabled);
+    }
+
+    public static float getStructureIconSize() {
+        var cfg = activeConfig;
+        return cfg != null ? cfg.getStructureIconSize() : 1.0f;
+    }
+
+    public static void setStructureIconSize(float size) {
+        var cfg = activeConfig;
+        if (cfg != null)
+            cfg.setStructureIconSize(size);
+    }
+
+    /** 获取当前世界配置。 */
+    public static @Nullable WorldConfig getActiveWorldConfig() {
+        var cfg = activeConfig;
+        var mp = activeMapProcessor;
+        if (cfg == null || mp == null)
+            return null;
+        var wc = cfg.getOrCreateWorld(mp.getCurrentMWId());
+        return wc;
     }
 
     /**
@@ -131,14 +165,33 @@ public final class ServerConfig {
                 return null;
             }
         }
-        var cfg = activeConfig;
+        var wc = getActiveWorldConfig();
+        return wc != null ? wc.seed() : null;
+    }
+
+    /**
+     * 解析当前玩家所在的世界的维度ID。
+     * 
+     * @return {@link Integer#MIN_VALUE} 代表未知, {@code 0}代表主世界, {@code -1}代表下界,
+     *         {@code 1}代表末地
+     */
+    public static int resolveDimId() {
         var mp = activeMapProcessor;
-        if (cfg == null || mp == null)
-            return null;
-        var wc = cfg.getWorld(mp.getCurrentMWId());
-        if (wc == null)
-            return null;
-        return wc.seed();
+        if (mp == null)
+            return Integer.MIN_VALUE;
+        try {
+            final var dimKey = mp.getMapWorld().getCurrentDimension().getDimId();
+            if (dimKey == Level.OVERWORLD) {
+                return 0;
+            } else if (dimKey == Level.NETHER) {
+                return -1;
+            } else if (dimKey == Level.END) {
+                return 1;
+            }
+            return 0;
+        } catch (Exception e) {
+            return Integer.MIN_VALUE;
+        }
     }
 
     /**
