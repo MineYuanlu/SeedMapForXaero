@@ -65,9 +65,6 @@ public class SeedMapPanel {
     // screen dimensions
     private int scrW, scrH;
 
-    // last frame mouse for hover rendering
-    private int lastMx, lastMy;
-
     public SeedMapPanel(GuiMap screen) {
         this.screen = screen;
         this.mc = Minecraft.getInstance();
@@ -77,6 +74,7 @@ public class SeedMapPanel {
     public void toggleOpen() {
         panelOpen = !panelOpen;
         if (panelOpen) {
+            sliderDragging = false;
             biomeScrollOff = 0;
             structScrollOff = 0;
             biomeExpanded = false;
@@ -136,16 +134,9 @@ public class SeedMapPanel {
         if (!panelOpen)
             return;
 
-        lastMx = mouseX;
-        lastMy = mouseY;
-
         // slider drag update
         if (sliderDragging) {
-            if (mc.mouseHandler.isLeftPressed()) {
-                updateSlider(lastMx);
-            } else {
-                sliderDragging = false;
-            }
+            updateSlider(mouseX);
         }
 
         // refresh slider value from config
@@ -333,23 +324,29 @@ public class SeedMapPanel {
 
         // slider
         y += 5;
-        int sliderX = PADDING;
-        int sliderW = PANEL_WIDTH - 2 * PADDING;
         int thumbW = 8;
         int thumbH = 12;
+
+        String sizeTxt = String.format("%.1f", sliderValue);
+        String sliderLabel = "图标大小";
+        int labelW = font.width(sliderLabel);
+        int valW = font.width(sizeTxt);
+        int sliderStart = PADDING + labelW + 5;
+        int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
+        int trackLen = sliderEnd - sliderStart - thumbW;
         int trackY = y + (thumbH - 4) / 2;
 
-        g.fill(sliderX, trackY, sliderX + sliderW, trackY + 4, 0xFF444444);
+        g.text(font, sliderLabel, PADDING, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
+        g.fill(sliderStart, trackY, sliderEnd, trackY + 4, 0xFF444444);
 
         float t = (sliderValue - 0.5f) / 1.5f;
-        int thumbX = sliderX + (int) (t * (sliderW - thumbW));
+        int thumbX = sliderStart + (int) (t * trackLen);
         boolean hoverThumb = mx >= thumbX && mx <= thumbX + thumbW
                 && my >= y && my <= y + thumbH;
         g.fill(thumbX, y, thumbX + thumbW, y + thumbH,
                 hoverThumb || sliderDragging ? 0xFFAAAAAA : 0xFF888888);
 
-        String sizeTxt = String.format("%.1f", sliderValue);
-        g.text(font, sizeTxt, sliderX + sliderW + 3, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
+        g.text(font, sizeTxt, sliderEnd + 5, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
 
         return y + thumbH;
     }
@@ -383,6 +380,9 @@ public class SeedMapPanel {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!panelOpen)
             return false;
+        // any click on the panel ends a slider drag
+        sliderDragging = false;
+
         int mx = (int) mouseX;
         int my = (int) mouseY;
         if (mx > PANEL_WIDTH)
@@ -483,12 +483,15 @@ public class SeedMapPanel {
             y += visible * ITEM_H + 5;
 
             // slider
-            int sliderX = PADDING;
-            int sliderW = PANEL_WIDTH - 2 * PADDING;
             int thumbW = 8;
             int thumbH = 12;
+            int labelW = font.width("图标大小");
+            int valW = font.width(String.format("%.1f", sliderValue));
+            int sliderStart = PADDING + labelW + 5;
+            int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
+            int trackLen = sliderEnd - sliderStart - thumbW;
             float t = (sliderValue - 0.5f) / 1.5f;
-            int thumbX = sliderX + (int) (t * (sliderW - thumbW));
+            int thumbX = sliderStart + (int) (t * trackLen);
 
             if (mx >= thumbX && mx <= thumbX + thumbW && my >= y && my <= y + thumbH) {
                 sliderDragging = true;
@@ -496,7 +499,7 @@ public class SeedMapPanel {
                 return true;
             }
             // also allow click on track
-            if (mx >= sliderX && mx <= sliderX + sliderW && my >= y && my <= y + thumbH) {
+            if (mx >= sliderStart && mx <= sliderEnd && my >= y && my <= y + thumbH) {
                 sliderDragging = true;
                 updateSlider(mx);
                 return true;
@@ -527,39 +530,58 @@ public class SeedMapPanel {
             return false;
 
         int dir = (int) -scrollY;
+        int my = (int) mouseY;
+        int y = PADDING; // 5
 
-        // determine which section to scroll based on mouse position
-        int y = PADDING + HEADER_H; // bottom of biome header
+        // ── Biome section ──
+        y += HEADER_H; // past header
 
         if (biomeExpanded) {
-            y += PADDING + 20 + PADDING; // scheme button + padding
-            if (mouseY < y) {
-                return true; // above list, consume but no scroll
+            y += PADDING + 20 + PADDING; // past scheme button
+            if (filteredBiomes == null)
+                updateBiomeFilter();
+            int biomeVisible = Math.min(MAX_VISIBLE_ITEMS,
+                    Math.max(MIN_VISIBLE_ITEMS, (scrH - y - 10) / ITEM_H));
+            int biomeListBottom = y + biomeVisible * ITEM_H;
+            if (my >= y && my < biomeListBottom) {
+                int size = filteredBiomes.size();
+                int maxOff = Math.max(0, size - biomeVisible);
+                biomeScrollOff = Math.max(0, Math.min(maxOff, biomeScrollOff + dir));
+                return true;
             }
-            // biome list area
-            biomeScrollOff = Math.max(0,
-                    Math.min(filteredBiomes.size() - MIN_VISIBLE_ITEMS, biomeScrollOff + dir));
-            return true;
+            y = biomeListBottom;
         }
 
-        y += 5 + HEADER_H; // gap + structure header
+        y += 5; // gap
+
+        // ── Structure section ──
+        y += HEADER_H; // past structure header
 
         if (structureExpanded) {
-            if (mouseY < y + PADDING) {
-                return true; // above list
+            y += PADDING + 16; // past search field
+            if (filteredStructures == null)
+                updateStructFilter();
+            int structVisible = Math.min(MAX_VISIBLE_ITEMS,
+                    Math.max(MIN_VISIBLE_ITEMS, (scrH - y - 30) / ITEM_H));
+            int structListBottom = y + structVisible * ITEM_H;
+            if (my >= y && my < structListBottom) {
+                int size = filteredStructures.size();
+                int maxOff = Math.max(0, size - structVisible);
+                structScrollOff = Math.max(0, Math.min(maxOff, structScrollOff + dir));
+                return true;
             }
-            structScrollOff = Math.max(0,
-                    Math.min(filteredStructures.size() - MIN_VISIBLE_ITEMS, structScrollOff + dir));
-            return true;
         }
 
         return true;
     }
 
     private void updateSlider(int mx) {
-        int sliderX = PADDING;
-        int sliderW = PANEL_WIDTH - 2 * PADDING - 8;
-        float t = (float) (mx - sliderX) / sliderW;
+        int labelW = font.width("图标大小");
+        int valW = font.width(String.format("%.1f", sliderValue));
+        int sliderStart = PADDING + labelW + 5;
+        int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
+        int trackLen = sliderEnd - sliderStart - 8; // minus thumbW
+        float t = (float) (mx - sliderStart) / trackLen;
         t = Math.max(0, Math.min(1, t));
         sliderValue = 0.5f + t * 1.5f;
         ServerConfig.setStructureIconSize(sliderValue);
