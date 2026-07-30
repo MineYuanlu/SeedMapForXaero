@@ -13,6 +13,11 @@ public final class NativeBiomeColor implements BiomeColorProvider {
     }
 
     @Override
+    public String translationKey() {
+        return "xsm.color_provider.native";
+    }
+
+    @Override
     public int getColor(int biomeId, int blockX, int blockZ) {
         return 0;
     }

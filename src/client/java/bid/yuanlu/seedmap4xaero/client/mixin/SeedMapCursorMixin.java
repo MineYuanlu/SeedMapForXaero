@@ -79,11 +79,12 @@ public class SeedMapCursorMixin {
 
         int seedY = QueryPointCache.queryHeight(this.mouseBlockPosX, this.mouseBlockPosZ);
 
-        String newStr = "X: " + this.mouseBlockPosX;
+        String newStr;
         if (seedY != QueryPointCache.UNKNOWN_HEIGHT) {
-            newStr += " Y: " + seedY;
+            newStr = I18n.get("xsm.cursor.coords", this.mouseBlockPosX, seedY, this.mouseBlockPosZ);
+        } else {
+            newStr = I18n.get("xsm.cursor.coords_no_y", this.mouseBlockPosX, this.mouseBlockPosZ);
         }
-        newStr += " Z: " + this.mouseBlockPosZ;
         MapRenderHelper.drawCenteredStringWithBackground(gui, font, newStr, x, y, color, r, g, b, a);
 
         if (xsm$isDisplayBiomeEnabled()) {

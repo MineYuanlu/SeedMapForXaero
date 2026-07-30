@@ -13,6 +13,6 @@ import xaero.map.gui.TooltipButton;
 public class XsmIconButton extends TooltipButton {
 
     public XsmIconButton(int x, int y, Runnable onPress, Supplier<Tooltip> tooltip) {
-        super(x, y, 20, 20, Component.literal("SM"), b -> onPress.run(), tooltip);
+        super(x, y, 20, 20, Component.translatable("xsm.button.sm"), b -> onPress.run(), tooltip);
     }
 }

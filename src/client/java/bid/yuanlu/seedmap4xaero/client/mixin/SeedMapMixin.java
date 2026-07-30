@@ -12,6 +12,7 @@ import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import org.joml.Matrix4f;
@@ -217,13 +218,13 @@ public class SeedMapMixin {
 
         // debug HUD
         int guiWidth = mc.getWindow().getGuiScaledWidth();
-        String line1 = "SeedMap scale=" + curScale + " | 鼠标方块: " + mouseBlockPosX + " " + mouseBlockPosY + " "
-                + mouseBlockPosZ;
+        String line1 = I18n.get("xsm.debug.scale", curScale, mouseBlockPosX, mouseBlockPosY, mouseBlockPosZ);
         MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font, line1, guiWidth / 2, 40, -1, 0.0F, 0.0F,
                 0.0F, 0.4F);
         String decision = this.xsm$debugDecision;
         if (decision != null) {
-            MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font, "fillGaps: " + decision,
+            MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font,
+                    I18n.get("xsm.debug.fill_gap", decision),
                     guiWidth / 2, 56, -1, 0.0F, 0.0F, 0.0F, 0.4F);
         }
     }
@@ -510,11 +511,9 @@ public class SeedMapMixin {
 
         if (isMouse) {
             if (drew == 0) {
-                xsm$debugDecision = "(" + cellX + "," + cellZ + ") S" + cellScale
-                        + " 全部" + total + "个tile均已探索，跳过补绘";
+                xsm$debugDecision = I18n.get("xsm.debug.all_explored", cellX, cellZ, cellScale, total);
             } else {
-                xsm$debugDecision = "(" + cellX + "," + cellZ + ") S" + cellScale
-                        + " 补绘" + drew + "/" + total + "个未探索tile";
+                xsm$debugDecision = I18n.get("xsm.debug.filled_tiles", cellX, cellZ, cellScale, drew, total);
             }
         }
     }

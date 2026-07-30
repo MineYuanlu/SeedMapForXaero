@@ -219,6 +219,11 @@ public final class VanillaBiomeColor implements BiomeColorProvider {
 	}
 
 	@Override
+	public String translationKey() {
+		return "xsm.color_provider.minecraft_native";
+	}
+
+	@Override
 	public int getColor(int biomeId) {
 		return getColor(biomeId, 0, 0);
 	}

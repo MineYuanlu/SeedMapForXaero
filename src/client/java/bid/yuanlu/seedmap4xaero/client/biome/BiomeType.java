@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.Identifier;
 
 public final class BiomeType {
@@ -57,7 +58,7 @@ public final class BiomeType {
                     int spriteIdx = Integer.parseInt(parts[1].trim());
                     String name = Xsm.biome2str(biomeId);
                     if (name == null || name.isEmpty())
-                        name = "unknown_" + biomeId;
+                        name = I18n.get("xsm.biome.unknown", biomeId);
                     var bt = new BiomeType(biomeId, name, spriteIdx);
                     if (biomeId >= 0 && biomeId < MAX_ID)
                         BY_ID[biomeId] = bt;

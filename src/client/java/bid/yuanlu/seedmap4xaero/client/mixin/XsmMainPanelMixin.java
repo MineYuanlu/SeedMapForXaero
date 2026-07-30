@@ -14,6 +14,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
 import xaero.lib.client.gui.widget.Tooltip;
 import xaero.map.gui.GuiMap;
 import xaero.map.misc.Misc;
@@ -52,7 +53,7 @@ public abstract class XsmMainPanelMixin {
                     xsm$panel.toggleOpen();
                     self.init(xsm$prevW, xsm$prevH);
                 },
-                () -> new Tooltip(net.minecraft.network.chat.Component.literal("种子地图设置"), false));
+                () -> new Tooltip(Component.translatable("xsm.button.settings"), false));
         this.addButton(xsm$panelBtn);
     }
 

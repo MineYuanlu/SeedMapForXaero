@@ -6,6 +6,7 @@ import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.resources.language.I18n;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -120,7 +121,7 @@ public class StructureOverlayMixin {
                 int dist = Math.max(Math.abs(scaledMouseX - baseX), Math.abs(scaledMouseY - baseY));
                 if (dist < bestDist) {
                     bestDist = dist;
-                    xsm$hoverText = type.key;
+                    xsm$hoverText = I18n.get(type.translationKey());
                 }
             }
         }

@@ -107,6 +107,10 @@ public enum StructureType {
         return defaultEnabled = new BitSetView(set);
     }
 
+    public String translationKey() {
+        return "xsm.structure." + key;
+    }
+
     public static void init() {
     }
 }

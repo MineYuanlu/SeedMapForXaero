@@ -19,6 +19,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.WidgetSprites;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import xaero.map.gui.GuiMap;
@@ -103,7 +104,7 @@ public class SeedMapPanel {
 
             int searchY = PADDING + HEADER_H + PADDING + 20 + PADDING;
             biomeSearchField = new EditBox(font, PADDING + 24, searchY, PANEL_WIDTH - PADDING - 28, 14,
-                    Component.literal("过滤生物群系"));
+                    Component.translatable("xsm.gui.panel.search_biomes"));
             biomeSearchField.setValue(prevBiome);
             biomeSearchField.setResponder(s -> {
                 biomeSearchText = s;
@@ -115,7 +116,7 @@ public class SeedMapPanel {
             screen.addButton(biomeSearchField);
 
             structSearchField = new EditBox(font, PADDING + 12, searchY, PANEL_WIDTH - PADDING - 14, 14,
-                    Component.literal("过滤结构"));
+                    Component.translatable("xsm.gui.panel.search_structures"));
             structSearchField.setValue(prevStruct);
             structSearchField.setResponder(s -> {
                 structSearchText = s;
@@ -163,7 +164,7 @@ public class SeedMapPanel {
         boolean hoverCb = hitCheckbox(mx, my, y);
         renderCheckbox(g, PADDING, y + (HEADER_H - 9) / 2, enabled, hoverCb);
 
-        String label = "生物群系: " + (enabled ? "ON" : "OFF");
+        String label = I18n.get("xsm.gui.panel.biomes_header", I18n.get(enabled ? "xsm.value.on" : "xsm.value.off"));
         g.text(font, label, PADDING + 12, y + (HEADER_H - font.lineHeight) / 2,
                 enabled ? 0xFFFFFFFF : 0xFF888888);
 
@@ -210,7 +211,8 @@ public class SeedMapPanel {
 
         if (hoverSc) {
             var provider = BiomeColorTable.resolveProvider();
-            String tip = "颜色表: " + (provider != null ? provider.name() : "?");
+            String tip = I18n.get("xsm.gui.panel.color_table",
+                    provider != null ? I18n.get(provider.translationKey()) : "?");
             int tw = font.width(tip);
             int tipX = schemeX;
             int tipY = schemeY - font.lineHeight - 4;
@@ -247,7 +249,10 @@ public class SeedMapPanel {
                     PADDING + 12, itemY + 1,
                     PADDING + 22, itemY + 11,
                     u0, u1, 0.0F, 1.0F);
-            g.text(font, b.name, PADDING + 24, itemY + (ITEM_H - font.lineHeight) / 2,
+            String bioKey = "biome.minecraft." + b.name;
+            String bioName = b.name.indexOf(' ') < 0 && b.name.indexOf('(') < 0
+                    && !I18n.get(bioKey).equals(bioKey) ? I18n.get(bioKey) : b.name;
+            g.text(font, bioName, PADDING + 24, itemY + (ITEM_H - font.lineHeight) / 2,
                     bi ? 0xFFFFFFFF : 0xFF888888);
         }
 
@@ -263,7 +268,7 @@ public class SeedMapPanel {
         boolean hoverCb = hitCheckbox(mx, my, y);
         renderCheckbox(g, PADDING, y + (HEADER_H - 9) / 2, enabled, hoverCb);
 
-        String label = "结构: " + (enabled ? "ON" : "OFF");
+        String label = I18n.get("xsm.gui.panel.structures_header", I18n.get(enabled ? "xsm.value.on" : "xsm.value.off"));
         g.text(font, label, PADDING + 12, y + (HEADER_H - font.lineHeight) / 2,
                 enabled ? 0xFFFFFFFF : 0xFF888888);
 
@@ -316,7 +321,7 @@ public class SeedMapPanel {
                     PADDING + 22, itemY + 11,
                     u0, u1, 0.0F, 1.0F);
 
-            g.text(font, s.key, PADDING + 24, itemY + (ITEM_H - font.lineHeight) / 2,
+            g.text(font, I18n.get(s.translationKey()), PADDING + 24, itemY + (ITEM_H - font.lineHeight) / 2,
                     si ? 0xFFFFFFFF : 0xFF888888);
         }
 
@@ -328,7 +333,7 @@ public class SeedMapPanel {
         int thumbH = 12;
 
         String sizeTxt = String.format("%.1f", sliderValue);
-        String sliderLabel = "图标大小";
+        String sliderLabel = I18n.get("xsm.gui.panel.icon_size");
         int labelW = font.width(sliderLabel);
         int valW = font.width(sizeTxt);
         int sliderStart = PADDING + labelW + 5;
@@ -485,7 +490,7 @@ public class SeedMapPanel {
             // slider
             int thumbW = 8;
             int thumbH = 12;
-            int labelW = font.width("图标大小");
+            int labelW = font.width(I18n.get("xsm.gui.panel.icon_size"));
             int valW = font.width(String.format("%.1f", sliderValue));
             int sliderStart = PADDING + labelW + 5;
             int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
@@ -576,7 +581,7 @@ public class SeedMapPanel {
     }
 
     private void updateSlider(int mx) {
-        int labelW = font.width("图标大小");
+        int labelW = font.width(I18n.get("xsm.gui.panel.icon_size"));
         int valW = font.width(String.format("%.1f", sliderValue));
         int sliderStart = PADDING + labelW + 5;
         int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
@@ -614,7 +619,22 @@ public class SeedMapPanel {
         filteredBiomes = new ArrayList<>();
         String search = biomeSearchText.toLowerCase();
         for (BiomeType b : BiomeType.values()) {
-            if (search.isEmpty() || b.name.contains(search)) {
+            if (search.isEmpty()) {
+                filteredBiomes.add(b);
+                continue;
+            }
+            
+            if (Integer.toString(b.id).contains(search)) {
+                filteredBiomes.add(b);
+                continue;
+            }
+            if (b.name.toLowerCase().contains(search)) {
+                filteredBiomes.add(b);
+                continue;
+            }
+            String bioKey = "biome.minecraft." + b.name;
+            if (!b.name.contains(" ") && !b.name.contains("(") && !I18n.get(bioKey).equals(bioKey)
+                    && I18n.get(bioKey).toLowerCase().contains(search)) {
                 filteredBiomes.add(b);
             }
         }
@@ -624,7 +644,19 @@ public class SeedMapPanel {
         filteredStructures = new ArrayList<>();
         String search = structSearchText.toLowerCase();
         for (StructureType s : StructureType.values()) {
-            if (search.isEmpty() || s.key.contains(search)) {
+            if (search.isEmpty()) {
+                filteredStructures.add(s);
+                continue;
+            }
+            if (Integer.toString(s.id).contains(search)) {
+                filteredStructures.add(s);
+                continue;
+            }
+            if (s.key.contains(search)) {
+                filteredStructures.add(s);
+                continue;
+            }
+            if (I18n.get(s.translationKey()).toLowerCase().contains(search)) {
                 filteredStructures.add(s);
             }
         }

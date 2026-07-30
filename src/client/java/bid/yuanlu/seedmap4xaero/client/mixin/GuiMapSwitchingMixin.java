@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,13 +61,13 @@ public class GuiMapSwitchingMixin {
 
         Long currentSeed = ServerConfig.resolveSeed();
         xsm$LOGGER.info("init: resolveSeed={}", currentSeed);
-        xsm$seedInput = new EditBox(minecraft.font, width / 2 - 100, 148, 145, 20, Component.literal("Seed"));
+        xsm$seedInput = new EditBox(minecraft.font, width / 2 - 100, 148, 145, 20, Component.translatable("xsm.gui.switching.seed"));
         if (currentSeed != null) {
             xsm$seedInput.setSuggestion(String.valueOf(currentSeed));
         }
 
         xsm$seedConfirmBtn = Button.builder(
-                Component.literal("确定"),
+                Component.translatable("xsm.gui.switching.confirm"),
                 b -> {
                     String text = xsm$seedInput.getValue();
                     if (!text.isEmpty()) {
@@ -92,7 +93,7 @@ public class GuiMapSwitchingMixin {
             int width, int height, CallbackInfo ci) {
         if (!this.active)
             return;
-        String label = "当前世界种子:";
+        String label = I18n.get("xsm.gui.switching.current_seed");
         MapRenderHelper.drawStringWithBackground(guiGraphics, minecraft.font, label, width / 2 - 100, 132, -1, 0.0F,
                 0.0F, 0.0F, 0.4F);
     }
