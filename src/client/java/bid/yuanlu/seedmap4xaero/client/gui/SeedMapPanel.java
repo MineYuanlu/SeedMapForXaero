@@ -332,7 +332,7 @@ public class SeedMapPanel {
         int thumbW = 8;
         int thumbH = 12;
 
-        String sizeTxt = String.format("%.1f", sliderValue);
+        String sizeTxt = String.format("%.2f", sliderValue);
         String sliderLabel = I18n.get("xsm.gui.panel.icon_size");
         int labelW = font.width(sliderLabel);
         int valW = font.width(sizeTxt);
@@ -344,7 +344,7 @@ public class SeedMapPanel {
         g.text(font, sliderLabel, PADDING, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
         g.fill(sliderStart, trackY, sliderEnd, trackY + 4, 0xFF444444);
 
-        float t = (sliderValue - 0.5f) / 1.5f;
+        float t = (float) ((-1.75f + Math.sqrt(3.0225f + 0.8f * sliderValue)) / 0.4f);
         int thumbX = sliderStart + (int) (t * trackLen);
         boolean hoverThumb = mx >= thumbX && mx <= thumbX + thumbW
                 && my >= y && my <= y + thumbH;
@@ -491,11 +491,11 @@ public class SeedMapPanel {
             int thumbW = 8;
             int thumbH = 12;
             int labelW = font.width(I18n.get("xsm.gui.panel.icon_size"));
-            int valW = font.width(String.format("%.1f", sliderValue));
+            int valW = font.width(String.format("%.2f", sliderValue));
             int sliderStart = PADDING + labelW + 5;
             int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
             int trackLen = sliderEnd - sliderStart - thumbW;
-            float t = (sliderValue - 0.5f) / 1.5f;
+            float t = (float) ((-1.75f + Math.sqrt(3.0225f + 0.8f * sliderValue)) / 0.4f);
             int thumbX = sliderStart + (int) (t * trackLen);
 
             if (mx >= thumbX && mx <= thumbX + thumbW && my >= y && my <= y + thumbH) {
@@ -582,13 +582,13 @@ public class SeedMapPanel {
 
     private void updateSlider(int mx) {
         int labelW = font.width(I18n.get("xsm.gui.panel.icon_size"));
-        int valW = font.width(String.format("%.1f", sliderValue));
+        int valW = font.width(String.format("%.2f", sliderValue));
         int sliderStart = PADDING + labelW + 5;
         int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
         int trackLen = sliderEnd - sliderStart - 8; // minus thumbW
         float t = (float) (mx - sliderStart) / trackLen;
         t = Math.max(0, Math.min(1, t));
-        sliderValue = 0.5f + t * 1.5f;
+        sliderValue = 0.05f + (1.75f + 0.2f * t) * t;
         ServerConfig.setStructureIconSize(sliderValue);
     }
 

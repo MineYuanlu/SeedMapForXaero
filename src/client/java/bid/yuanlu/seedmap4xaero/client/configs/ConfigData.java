@@ -103,7 +103,7 @@ public class ConfigData {
     }
 
     public synchronized void setStructureIconSize(float size) {
-        size = Math.max(0.5f, Math.min(2.0f, size));
+        size = Math.max(0.05f, Math.min(2.0f, size));
         if (this.structureIconSize == size)
             return;
         this.structureIconSize = size;

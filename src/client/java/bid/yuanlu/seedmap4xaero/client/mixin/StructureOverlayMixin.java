@@ -81,8 +81,7 @@ public class StructureOverlayMixin {
             return;
 
         final float iconScale = ServerConfig.getStructureIconSize();
-        final int iconSize = (int) (ICON_SIZE * iconScale);
-        final int iconHalf = iconSize / 2;
+        final float iconHalf = ICON_SIZE * iconScale * 0.5f;
 
         final Minecraft mc = Minecraft.getInstance();
         final int windowW = mc.getWindow().getWidth();
@@ -90,7 +89,7 @@ public class StructureOverlayMixin {
         final double invScale = 1.0 / screenScale;
 
         xsm$hoverText = null;
-        int bestDist = iconHalf;
+        float bestDist = iconHalf;
 
         for (var entry : StructureCache.REGIONS.entrySet()) {
             StructureType type = entry.getKey();
@@ -105,20 +104,18 @@ public class StructureOverlayMixin {
                 double guiX = pixelOffX * invScale;
                 double guiZ = pixelOffZ * invScale;
 
-                int baseX = (int) Math.floor(guiX);
-                int baseY = (int) Math.floor(guiZ);
-                float fracX = (float) (guiX - baseX);
-                float fracY = (float) (guiZ - baseY);
-
                 guiGraphics.pose().pushMatrix();
-                guiGraphics.pose().translate(fracX, fracY);
+                guiGraphics.pose().translate((float) guiX, (float) guiZ);
+                guiGraphics.pose().scale(iconScale, iconScale);
                 guiGraphics.blit(StructureType.STRUCTURES_TEXTURE,
-                        baseX - iconHalf, baseY - iconHalf,
-                        baseX + iconHalf, baseY + iconHalf,
+                        -ICON_SIZE / 2, -ICON_SIZE / 2,
+                        ICON_SIZE / 2, ICON_SIZE / 2,
                         u0, u1, 0.0F, 1.0F);
                 guiGraphics.pose().popMatrix();
 
-                int dist = Math.max(Math.abs(scaledMouseX - baseX), Math.abs(scaledMouseY - baseY));
+                double dx = scaledMouseX - guiX;
+                double dy = scaledMouseY - guiZ;
+                float dist = (float) Math.max(Math.abs(dx), Math.abs(dy));
                 if (dist < bestDist) {
                     bestDist = dist;
                     xsm$hoverText = I18n.get(type.translationKey());
