@@ -48,7 +48,7 @@ public enum StructureType {
     }
 
     public static final int FEATURE_NUM = Xsm.getStructFEATURE_NUM();
-    public static final int MAX_REGION_HIDE = 2048;// 全局最大上限
+    public static final int MAX_REGION_HIDE = 16384;// 全局最大上限
     public static final int SHEET_SIZE = 25; // 精灵图横向图标数量
     public static final Identifier STRUCTURES_TEXTURE = Identifier.fromNamespaceAndPath(
             "seed-map-for-xaero", "textures/icons/structures.png");
