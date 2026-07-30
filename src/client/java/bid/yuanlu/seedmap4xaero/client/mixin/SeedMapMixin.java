@@ -50,6 +50,7 @@ import xaero.map.region.texture.RegionTexture;
 public class SeedMapMixin {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/SeedMapMixin");
+    private static final boolean DEBUG = false;
     private static final AtomicBoolean loggedInjection = new AtomicBoolean(false);
 
     @Shadow
@@ -182,8 +183,10 @@ public class SeedMapMixin {
         final int dim = ServerConfig.resolveDimId();
         final int curScale = xsm$scaleForUserScale(this.userScale, dim);
         final int blockSize = 64 * curScale;
-        this.xsm$debugScale = curScale;
-        this.xsm$debugDecision = null;
+        if (DEBUG) {
+            this.xsm$debugScale = curScale;
+            this.xsm$debugDecision = null;
+        }
 
         final Minecraft mc = Minecraft.getInstance();
         final int windowW = mc.getWindow().getWidth();
@@ -193,8 +196,10 @@ public class SeedMapMixin {
         final double topBorder = this.cameraZ - (double) (windowH / 2) / this.scale;
         final double bottomBorder = topBorder + (double) windowH / this.scale;
 
-        this.xsm$debugTileX = Math.floorDiv(this.mouseBlockPosX, blockSize);
-        this.xsm$debugTileZ = Math.floorDiv(this.mouseBlockPosZ, blockSize);
+        if (DEBUG) {
+            this.xsm$debugTileX = Math.floorDiv(this.mouseBlockPosX, blockSize);
+            this.xsm$debugTileZ = Math.floorDiv(this.mouseBlockPosZ, blockSize);
+        }
 
         final int caveLayer = this.mapProcessor.getCurrentCaveLayer();
         final double flooredCameraX = Math.floor(this.cameraX);
@@ -216,16 +221,17 @@ public class SeedMapMixin {
 
         rendererProvider.draw(renderer);
 
-        // debug HUD
-        int guiWidth = mc.getWindow().getGuiScaledWidth();
-        String line1 = I18n.get("xsm.debug.scale", curScale, mouseBlockPosX, mouseBlockPosY, mouseBlockPosZ);
-        MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font, line1, guiWidth / 2, 40, -1, 0.0F, 0.0F,
-                0.0F, 0.4F);
-        String decision = this.xsm$debugDecision;
-        if (decision != null) {
-            MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font,
-                    I18n.get("xsm.debug.fill_gap", decision),
-                    guiWidth / 2, 56, -1, 0.0F, 0.0F, 0.0F, 0.4F);
+        if (DEBUG) {
+            int guiWidth = mc.getWindow().getGuiScaledWidth();
+            String line1 = I18n.get("xsm.debug.scale", curScale, mouseBlockPosX, mouseBlockPosY, mouseBlockPosZ);
+            MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font, line1, guiWidth / 2, 40, -1, 0.0F, 0.0F,
+                    0.0F, 0.4F);
+            String decision = this.xsm$debugDecision;
+            if (decision != null) {
+                MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font,
+                        I18n.get("xsm.debug.fill_gap", decision),
+                        guiWidth / 2, 56, -1, 0.0F, 0.0F, 0.0F, 0.4F);
+            }
         }
     }
 
@@ -428,7 +434,7 @@ public class SeedMapMixin {
         int lastLtZ = -1;
         RegionTexture<?> lastRtex = null;
 
-        boolean isMouse = cellX == xsm$debugTileX && cellZ == xsm$debugTileZ
+        boolean isMouse = DEBUG && cellX == xsm$debugTileX && cellZ == xsm$debugTileZ
                 && cellScale == xsm$debugScale;
 
         int drew = 0;
@@ -509,7 +515,7 @@ public class SeedMapMixin {
             }
         }
 
-        if (isMouse) {
+        if (isMouse && DEBUG) {
             if (drew == 0) {
                 xsm$debugDecision = I18n.get("xsm.debug.all_explored", cellX, cellZ, cellScale, total);
             } else {
