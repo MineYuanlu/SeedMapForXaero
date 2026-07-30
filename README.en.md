@@ -8,6 +8,11 @@ Seed-based biome and structure preview on Xaero's World Map, powered by cubiomes
 
 ---
 
+
+<div align="center">
+   <img src="doc/hero.png" width="800" alt="Showcase">
+</div>
+
 ## Usage
 
 ### What is this?
