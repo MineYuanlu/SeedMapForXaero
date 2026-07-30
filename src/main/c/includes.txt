@@ -2,7 +2,12 @@
 --include-function setBiomeColorTableNative
 --include-function setGameVersion
 --include-function setWorld
+--include-function setBiomeDisabled
 --include-function genCellImg
 --include-function queryPoint
 --include-function queryExactChunkHeight
 --include-function hello
+--include-function xsmGetStructureConfig
+--include-function xsmGetStructFEATURE_NUM
+--include-function queryRegionStructuresGrid
+--include-function xsmBiome2str

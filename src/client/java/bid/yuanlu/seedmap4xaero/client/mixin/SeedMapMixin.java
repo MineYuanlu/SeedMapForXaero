@@ -7,11 +7,13 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
+import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
@@ -126,6 +128,45 @@ public class SeedMapMixin {
         return Math.min((int) Math.floor(log2), 3);
     }
 
+    @Inject(method = "init", at = @At("RETURN"))
+    private void xsm$onGuiMapInit(CallbackInfo ci) {
+        if (this.mapProcessor != null) {
+            ServerConfig.activate(this.mapProcessor);
+        }
+    }
+
+    /**
+     * 在所有渲染工作之前, 处理缓存、C侧切换
+     */
+    @Inject(method = "extractRenderState", at = @At("HEAD"))
+    private void tickWorldInfo(GuiGraphicsExtractor guiGraphics, int scaledMouseX, int scaledMouseY,
+            float partialTicks, CallbackInfo ci) {
+        final var toggle = ((SeedMapToggleAccessor) this);
+
+        final Long seed = ServerConfig.resolveSeed();
+        if (seed == null) {
+            toggle.xsm$setSeedMapLoadedWorldInfo(false);
+            return;
+        }
+        final int dim = ServerConfig.resolveDimId();
+        if (dim == Integer.MIN_VALUE) {
+            toggle.xsm$setSeedMapLoadedWorldInfo(false);
+            return;
+        }
+
+        Xsm.setWorld(seed, dim);
+        var wc = ServerConfig.getActiveWorldConfig();
+        if (wc != null) {
+            Xsm.setBiomeDisabled(wc.getDisabledBiomes());
+        }
+        CacheHelper.setWorld(seed, dim);
+        CacheHelper.tick();
+        toggle.xsm$setSeedMapLoadedWorldInfo(true);
+    }
+
+    /**
+     * 生物群系渲染
+     */
     @Inject(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;draw(Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer;)V", ordinal = 1, shift = At.Shift.AFTER))
     private void renderSeedMapTiles(GuiGraphicsExtractor guiGraphics, int scaledMouseX, int scaledMouseY,
             float partialTicks, CallbackInfo ci) {
@@ -138,17 +179,7 @@ public class SeedMapMixin {
             LOGGER.info("SeedMapMixin injected");
         }
 
-        final long seed = getWorldSeed();
-        if (seed == Long.MIN_VALUE)
-            return;
-        final int dim = getCurrentDimensionId();
-        if (dim == Integer.MIN_VALUE)
-            return;
-
-        Xsm.setWorld(seed, dim);
-        CacheHelper.setWorld(seed, dim);
-        CacheHelper.tick();
-
+        final int dim = ServerConfig.resolveDimId();
         final int curScale = xsm$scaleForUserScale(this.userScale, dim);
         final int blockSize = 64 * curScale;
         this.xsm$debugScale = curScale;
@@ -187,13 +218,13 @@ public class SeedMapMixin {
 
         // debug HUD
         int guiWidth = mc.getWindow().getGuiScaledWidth();
-        String line1 = "SeedMap scale=" + curScale + " | 鼠标方块: " + mouseBlockPosX + " " + mouseBlockPosY + " "
-                + mouseBlockPosZ;
+        String line1 = I18n.get("xsm.debug.scale", curScale, mouseBlockPosX, mouseBlockPosY, mouseBlockPosZ);
         MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font, line1, guiWidth / 2, 40, -1, 0.0F, 0.0F,
                 0.0F, 0.4F);
         String decision = this.xsm$debugDecision;
         if (decision != null) {
-            MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font, "fillGaps: " + decision,
+            MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font,
+                    I18n.get("xsm.debug.fill_gap", decision),
                     guiWidth / 2, 56, -1, 0.0F, 0.0F, 0.0F, 0.4F);
         }
     }
@@ -480,11 +511,9 @@ public class SeedMapMixin {
 
         if (isMouse) {
             if (drew == 0) {
-                xsm$debugDecision = "(" + cellX + "," + cellZ + ") S" + cellScale
-                        + " 全部" + total + "个tile均已探索，跳过补绘";
+                xsm$debugDecision = I18n.get("xsm.debug.all_explored", cellX, cellZ, cellScale, total);
             } else {
-                xsm$debugDecision = "(" + cellX + "," + cellZ + ") S" + cellScale
-                        + " 补绘" + drew + "/" + total + "个未探索tile";
+                xsm$debugDecision = I18n.get("xsm.debug.filled_tiles", cellX, cellZ, cellScale, drew, total);
             }
         }
     }
@@ -501,34 +530,4 @@ public class SeedMapMixin {
         bb.addVertex(matrix, x, y, 0.0F).setColor(-1).setUv(u0, v0);
     }
 
-    @Unique
-    private static long getWorldSeed() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.getSingleplayerServer() != null) {
-            MinecraftServer server = mc.getSingleplayerServer();
-            try {
-                return server.getWorldGenSettings().options().seed();
-            } catch (Exception e) {
-                return Long.MIN_VALUE;
-            }
-        }
-        return Long.MIN_VALUE;
-    }
-
-    @Unique
-    private int getCurrentDimensionId() {
-        try {
-            ResourceKey<Level> dimKey = this.mapProcessor.getMapWorld().getCurrentDimension().getDimId();
-            if (dimKey == Level.OVERWORLD) {
-                return 0;
-            } else if (dimKey == Level.NETHER) {
-                return -1;
-            } else if (dimKey == Level.END) {
-                return 1;
-            }
-            return 0;
-        } catch (Exception e) {
-            return Integer.MIN_VALUE;
-        }
-    }
 }

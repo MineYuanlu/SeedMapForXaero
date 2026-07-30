@@ -1,0 +1,61 @@
+{
+  "xsm.button.sm": "SM",
+  "xsm.button.settings": "种子地图设置",
+
+  "xsm.gui.switching.seed": "种子",
+  "xsm.gui.switching.confirm": "确定",
+  "xsm.gui.switching.current_seed": "当前世界种子:",
+
+  "xsm.gui.panel.search_biomes": "过滤生物群系",
+  "xsm.gui.panel.search_structures": "过滤结构",
+  "xsm.gui.panel.biomes_header": "生物群系: %s",
+  "xsm.gui.panel.structures_header": "结构: %s",
+  "xsm.gui.panel.color_scheme": "C",
+  "xsm.gui.panel.color_table": "颜色表: %s",
+  "xsm.gui.panel.icon_size": "图标大小",
+
+  "xsm.value.on": "开",
+  "xsm.value.off": "关",
+
+  "xsm.cursor.coords": "X: %d Y: %d Z: %d",
+  "xsm.cursor.coords_no_y": "X: %d Z: %d",
+
+  "xsm.debug.scale": "SeedMap scale=%d | 鼠标方块: %d %d %d",
+  "xsm.debug.fill_gap": "fillGaps: %s",
+  "xsm.debug.all_explored": "(%d,%d) S%d 全部%d个tile均已探索，跳过补绘",
+  "xsm.debug.filled_tiles": "(%d,%d) S%d 补绘%d/%d个未探索tile",
+
+  "xsm.color_provider.native": "Native",
+  "xsm.color_provider.minecraft_native": "Minecraft Native",
+  "xsm.color_provider.legacy_hardcoded": "Legacy (Hardcoded)",
+
+  "xsm.structure.feature": "地物",
+  "xsm.structure.desert_pyramid": "沙漠神殿",
+  "xsm.structure.jungle_temple": "丛林神庙",
+  "xsm.structure.jungle_pyramid": "丛林金字塔",
+  "xsm.structure.swamp_hut": "沼泽小屋",
+  "xsm.structure.igloo": "雪屋",
+  "xsm.structure.village": "村庄",
+  "xsm.structure.ocean_ruin": "海底废墟",
+  "xsm.structure.shipwreck": "沉船",
+  "xsm.structure.monument": "海底神殿",
+  "xsm.structure.mansion": "林地府邸",
+  "xsm.structure.outpost": "掠夺者前哨站",
+  "xsm.structure.ruined_portal": "废弃传送门",
+  "xsm.structure.ruined_portal_nether": "废弃传送门（下界）",
+  "xsm.structure.ancient_city": "远古城市",
+  "xsm.structure.treasure": "埋藏的宝藏",
+  "xsm.structure.mineshaft": "废弃矿井",
+  "xsm.structure.desert_well": "沙漠水井",
+  "xsm.structure.geode": "紫晶洞",
+  "xsm.structure.fortress": "下界要塞",
+  "xsm.structure.bastion": "堡垒遗迹",
+  "xsm.structure.end_city": "末地城",
+  "xsm.structure.end_gateway": "末地折跃门",
+  "xsm.structure.end_island": "末地岛屿",
+  "xsm.structure.trail_ruins": "古迹废墟",
+  "xsm.structure.trial_chambers": "试炼密室",
+  "xsm.structure.stronghold": "要塞",
+
+  "xsm.biome.unknown": "未知生物群系 (%d)"
+}

@@ -1,0 +1,61 @@
+{
+  "xsm.button.sm": "SM",
+  "xsm.button.settings": "Seed Map Settings",
+
+  "xsm.gui.switching.seed": "Seed",
+  "xsm.gui.switching.confirm": "Confirm",
+  "xsm.gui.switching.current_seed": "Current World Seed:",
+
+  "xsm.gui.panel.search_biomes": "Filter Biomes",
+  "xsm.gui.panel.search_structures": "Filter Structures",
+  "xsm.gui.panel.biomes_header": "Biomes: %s",
+  "xsm.gui.panel.structures_header": "Structures: %s",
+  "xsm.gui.panel.color_scheme": "C",
+  "xsm.gui.panel.color_table": "Color Table: %s",
+  "xsm.gui.panel.icon_size": "Icon Size",
+
+  "xsm.value.on": "ON",
+  "xsm.value.off": "OFF",
+
+  "xsm.cursor.coords": "X: %d Y: %d Z: %d",
+  "xsm.cursor.coords_no_y": "X: %d Z: %d",
+
+  "xsm.debug.scale": "SeedMap scale=%d | Mouse Block: %d %d %d",
+  "xsm.debug.fill_gap": "fillGaps: %s",
+  "xsm.debug.all_explored": "(%d,%d) S%d all %d tiles explored, skip fill",
+  "xsm.debug.filled_tiles": "(%d,%d) S%d filled %d/%d unexplored tiles",
+
+  "xsm.color_provider.native": "Native",
+  "xsm.color_provider.minecraft_native": "Minecraft Native",
+  "xsm.color_provider.legacy_hardcoded": "Legacy (Hardcoded)",
+
+  "xsm.structure.feature": "Feature",
+  "xsm.structure.desert_pyramid": "Desert Pyramid",
+  "xsm.structure.jungle_temple": "Jungle Temple",
+  "xsm.structure.jungle_pyramid": "Jungle Pyramid",
+  "xsm.structure.swamp_hut": "Swamp Hut",
+  "xsm.structure.igloo": "Igloo",
+  "xsm.structure.village": "Village",
+  "xsm.structure.ocean_ruin": "Ocean Ruin",
+  "xsm.structure.shipwreck": "Shipwreck",
+  "xsm.structure.monument": "Ocean Monument",
+  "xsm.structure.mansion": "Woodland Mansion",
+  "xsm.structure.outpost": "Pillager Outpost",
+  "xsm.structure.ruined_portal": "Ruined Portal",
+  "xsm.structure.ruined_portal_nether": "Ruined Portal (Nether)",
+  "xsm.structure.ancient_city": "Ancient City",
+  "xsm.structure.treasure": "Buried Treasure",
+  "xsm.structure.mineshaft": "Mineshaft",
+  "xsm.structure.desert_well": "Desert Well",
+  "xsm.structure.geode": "Amethyst Geode",
+  "xsm.structure.fortress": "Nether Fortress",
+  "xsm.structure.bastion": "Bastion Remnant",
+  "xsm.structure.end_city": "End City",
+  "xsm.structure.end_gateway": "End Gateway",
+  "xsm.structure.end_island": "End Island",
+  "xsm.structure.trail_ruins": "Trail Ruins",
+  "xsm.structure.trial_chambers": "Trial Chambers",
+  "xsm.structure.stronghold": "Stronghold",
+
+  "xsm.biome.unknown": "Unknown Biome (%d)"
+}

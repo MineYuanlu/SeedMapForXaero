@@ -22,6 +22,11 @@ public final class LegacyBiomeColor implements BiomeColorProvider {
     }
 
     @Override
+    public String translationKey() {
+        return "xsm.color_provider.legacy_hardcoded";
+    }
+
+    @Override
     public int getColor(int biomeId, int blockX, int blockZ) {
         if (biomeId >= 0 && biomeId < TABLE.length) {
             return TABLE[biomeId];

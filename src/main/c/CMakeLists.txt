@@ -21,35 +21,52 @@ add_subdirectory(cubiomes)
 
 target_compile_options(objects PRIVATE -w)
 
+# module sources
+file(GLOB_RECURSE XSM_APIS_SOURCES
+    xsm/apis/*.h
+    xsm/apis/*.c
+    xsm/apis/*.cpp
+)
+
 file(GLOB_RECURSE XSM_TEST_SOURCES
     xsm/test/*.h
     xsm/test/*.c
     xsm/test/*.cpp
 )
 
-file(GLOB_RECURSE XSM_SOURCES
-    xsm/*.h
-    xsm/*.c
-    xsm/*.cpp
+file(GLOB_RECURSE XSM_SANDBOX_SOURCES
+    xsm/sandbox/*.h
+    xsm/sandbox/*.c
+    xsm/sandbox/*.cpp
 )
-list(REMOVE_ITEM XSM_SOURCES ${XSM_TEST_SOURCES})
-add_library(xsmcore SHARED ${XSM_SOURCES})
+
+file(GLOB_RECURSE XSM_PRETOOLS_SOURCES
+    xsm/pretools/*.h
+    xsm/pretools/*.c
+    xsm/pretools/*.cpp
+)
+
+# xsmcore
+add_library(xsmcore SHARED ${XSM_APIS_SOURCES})
 target_link_libraries(xsmcore PRIVATE cubiomes_static)
 target_include_directories(xsmcore PRIVATE cubiomes)
-
-add_executable(xsmtest
-    xsm/test/unit_tests.cpp
-)
-target_include_directories(xsmtest PRIVATE cubiomes xsm/test)
-target_link_libraries(xsmtest PRIVATE xsmcore cubiomes_static)
-
-add_executable(xsmsandbox
-    xsm/test/sandbox.cpp
-)
-target_include_directories(xsmsandbox PRIVATE cubiomes xsm/test)
-target_link_libraries(xsmsandbox PRIVATE xsmcore cubiomes_static)
 
 if (WIN32)
     set_target_properties(xsmcore PROPERTIES PREFIX "")
     target_link_options(xsmcore PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
+
+# xsmtest
+add_executable(xsmtest ${XSM_TEST_SOURCES})
+target_include_directories(xsmtest PRIVATE cubiomes xsm/test)
+target_link_libraries(xsmtest PRIVATE xsmcore cubiomes_static)
+
+# xsmsandbox
+add_executable(xsmsandbox ${XSM_SANDBOX_SOURCES})
+target_include_directories(xsmsandbox PRIVATE cubiomes)
+target_link_libraries(xsmsandbox PRIVATE xsmcore cubiomes_static)
+
+# xsmpretools
+add_executable(xsmpretools ${XSM_PRETOOLS_SOURCES})
+target_include_directories(xsmpretools PRIVATE cubiomes)
+target_link_libraries(xsmpretools PRIVATE xsmcore cubiomes_static)

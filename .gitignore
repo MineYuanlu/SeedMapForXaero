@@ -41,6 +41,13 @@ replay_*.log
 *.jfr
 
 
+# local properties
+gradle.local.properties
+
 # tmp
 /tmp/
 /temp/
+/.cache
+
+# Python
+__pycache__/

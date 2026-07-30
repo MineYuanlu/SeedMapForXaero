@@ -23,6 +23,7 @@ public final class CacheHelper {
         lastDim = dim;
         CellCache.clear();
         QueryPointCache.clear();
+        StructureCache.clear();
     }
 
     static final ExecutorService CACHE_WORKER;
