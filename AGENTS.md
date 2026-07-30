@@ -21,13 +21,14 @@ cmake --build build-test --target xsmtest
 Benchmark: add `-DDEBUG_TIMINGS=ON` to cmake configure.
 
 jextract auto-downloaded on first build. Local copy: `-PjextractPath=/path/to/jextract`.
-Skip native entirely: `-PskipNativeBuild`.
+Skip native entirely: `-PskipNativeBuild`. Skip Windows only: `-PskipNativeWindows`.
+Local overrides via `gradle.local.properties` (gitignored, same key format).
 
 ## Native build pipeline
 
 `compileNative` (CMake) → `libxsmcore.so` → bundled in JAR.  
 `generateNativeBindings` (jextract) → `all.h` → `XsmNative.java` (FFM, gitignored).  
-`clean` deletes generated bindings.  
+`clean` deletes generated bindings + `src/main/c/build*`.  
 Windows cross-compile: `compileNativeWindows` via MinGW (`mingw-toolchain.cmake`).
 
 ## Release
@@ -58,9 +59,12 @@ Format: custom binary (`ConfigData.write`/`read`, magic word + version 0). Not J
 
 - Seed per (mainId, mwId) — `WorldConfig`
 - Color theme name — `ConfigData.theme` (restored via `BiomeColorTable.resolveProvider()`)
-- Toggle invisible — `ConfigData.invisible` (`SeedMapToggleMixin` reads/writes config)
+- Toggle invisible biomes — `ConfigData.invisibleBiomes` (`SeedMapToggleMixin` reads/writes config)
+- Toggle invisible structures — `ConfigData.invisibleStructures` (separate from biomes)
+- Structure icon size — `ConfigData.structureIconSize` (float 0.05~2.0, persisted)
 - Seed history — `ConfigData.allSeeds` (capped 1000, MRU-ordered)
 - Enabled structure types — `WorldConfig.enabledStructures` (`BitSet`, persisted per mwId)
+- Disabled biome types — `WorldConfig.disabledBiomes` (`BitSet`, persisted per mwId)
 
 ### Atomic save
 
@@ -82,12 +86,24 @@ src/client/java/bid/yuanlu/seedmap4xaero/client/
 ├── mixin/            # 7 client mixins (config in client .mixins.json)
 ├── render/           # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
 ├── structure/        # StructureType enum (26 types, config from C)
+├── biome/            # BiomeType (sprite index, loaded from biomes.ini)
+├── gui/              # SeedMapPanel (side panel), XsmIconButton
 ├── utils/            # BitSetView (immutable BitSet wrapper)
 └── accessor/         # SeedMapToggleAccessor interface
 src/main/
 ├── java/…/XaeroSeedMap.java   # ModInitializer (empty)
 ├── resources/
+│   └── assets/seed-map-for-xaero/
+│       ├── lang/en_us.json, zh_cn.json   # i18n (all UI strings extracted)
+│       └── textures/icons/               # biomes.png, structures.png, biomes.ini
 └── c/                # cubiomes submodule + xsm/apis/render.cpp + unit_tests.cpp
+    └── xsm/
+        ├── apis/     # C API headers for Java FFM bindings
+        ├── pretools/ # Dev tooling (tool.cpp — biome id→name dump)
+        ├── sandbox/  # Dev test sandbox
+        ├── test/     # Unit tests (unit_tests.cpp)
+        └── utils/    # Shared C utilities
+tools/                # gen_biomes_icon.py, gen_structures_icon.py, generate_lib_src.py
 ```
 
 ### 7 client mixins
@@ -97,14 +113,25 @@ src/main/
 | `SeedMapMixin`          | `GuiMap.extractRenderState` + `init` | Main tile overlay render after Xaero's 2nd draw |
 | `SeedMapCursorMixin`    | `GuiMap.extractRenderState`          | Replace coords/biome text for unexplored areas  |
 | `SeedMapToggleMixin`    | `GuiMap.init`                        | "S" toggle button, state from config            |
-| `BiomeColorSchemeMixin` | `GuiMap.init`                        | Color scheme cycle button, persists to config   |
+| `XsmMainPanelMixin`     | `GuiMap.init`                        | Settings panel button + mouse routing           |
 | `WorldSwitchMixin`      | `MapProcessor.checkForWorldUpdate`   | Detect world change → reload config             |
 | `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          |
 | `StructureOverlayMixin` | `GuiMap.extractRenderState`          | Structure icon overlay + hover tooltip          |
 
+`BiomeColorSchemeMixin` was removed — color scheme switching is now handled through the `SeedMapPanel` side panel.
+
+### SeedMapPanel side panel
+
+- Toggle via gear button (bottom-left of map screen, `XsmIconButton`)
+- Sections: biomes (collapsible with search), structures (collapsible with search)
+- Per-biome toggle → updates `WorldConfig.disabledBiomes` → C-side `setBiomeDisabled`
+- Per-structure toggle → updates `WorldConfig.enabledStructures`
+- Structure icon size slider (0.05~2.0, polynomial mapping: 0.5@t=0.25)
+- All text via `Component.translatable()` — see `lang/*.json`
+
 ### Rendering flow
 
-1. `GuiMap.extractRenderState` HEAD → `tickWorldInfo`: resolve seed/dim, call `Xsm.setWorld(seed, dim)` + `CacheHelper.setWorld` (clears all caches on change), `CacheHelper.tick()`
+1. `GuiMap.extractRenderState` HEAD → `tickWorldInfo`: resolve seed/dim, call `Xsm.setWorld(seed, dim)` + `CacheHelper.setWorld` (clears all caches on change), apply biome disabled bitset, `CacheHelper.tick()`
 2. Seed map tiles rendered after Xaero's 2nd draw via `renderSeedMapTiles` (injected at `INVOKE ordinal=1`)
 3. `curScale` from `userScale`: ≥0.5→1, ≥0.125→4, ≥0.03125→16, ≥0.0078125→64, else 256 (overworld) / 64
 4. Iterate visible `LeveledRegion`s; each cell: `CellCache.getOrRequest` → GPU texture or async gen on `CacheHelper.CACHE_WORKER` thread pool
@@ -112,7 +139,7 @@ src/main/
 6. SuperScale (×4) fallback + SubScale (÷4) overlay when cur-scale not ready
 7. `CellCache.cancelStalePending` + `CellCache.cleanByTTL` called each frame
 8. Structure overlay icons rendered after default framebuffer bind (from `StructureCache.REGIONS`, async via `CacheHelper.CACHE_WORKER`)
-9. Debug HUD always drawn at screen top center
+9. Debug HUD drawn at screen top center — gated by `DEBUG = false` constant in `SeedMapMixin` (set to `true` to enable)
 
 ### Tile coordinates
 
@@ -146,6 +173,9 @@ For each 16×16 sub-tile:
 - Structure queries are async via `CacheHelper.CACHE_WORKER`; results read from `StructureCache.REGIONS` each frame
 - `StructureCache.updateStructuresInArea` uses diff-based logic — only queries newly visible regions
 - LSP shows false errors for mixin targets and generated `XsmNative.java` — only `./gradlew build` is authoritative
+- All UI strings go through i18n (`Component.translatable` / `I18n.get`) — add both `en_us.json` and `zh_cn.json`
+- `BiomeType` loaded from `biomes.ini` at init — must regenerate `biomes.png` if biome list changes (`tools/gen_biomes_icon.py`)
+- Structure icons: `structures.png` (20×20 outlined) + `structures_plain.png` (16×16); regenerate with `tools/gen_structures_icon.py`
 
 ## Dependencies
 
