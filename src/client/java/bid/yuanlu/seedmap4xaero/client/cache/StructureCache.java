@@ -59,7 +59,8 @@ public class StructureCache {
             final int regionZ1 = Math.floorDiv(blockZ1 - 1, blockPerRegion) + 1;
             final long regionCount = (long) (regionX1 - regionX0) * (long) (regionZ1 - regionZ0);
             if (type.prob > 0) {
-                // 稀疏类型(regionSize=1, 逐区块低概率): 按期望命中量过滤, 超量整类跳过
+                // 稀疏类型(regionSize=1, 逐区块低概率): 按期望放置命中量过滤,
+                // 超量整类跳过 (prob = raw命中率×群系通过率, 群系过滤在 C 端扫描时完成)
                 final long expected = (long) Math.ceil(regionCount * type.prob);
                 if (expected > StructureType.MAX_REGION_HIDE)
                     continue;
