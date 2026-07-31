@@ -100,6 +100,40 @@ TEST_CASE("queryRegionStructuresGrid") {
   CHECK(n == 0);
 }
 
+TEST_CASE("queryStrongholdsRange") {
+  setupOrFail();
+
+  int32_t x[128], z[128];
+  uint32_t n = queryStrongholdsRange(0, 128, x, z);
+  REQUIRE_MESSAGE(n == 128, "queryStrongholdsRange(0,128) = ", n);
+
+  // 确定性: 两次调用结果一致
+  int32_t x2[128], z2[128];
+  REQUIRE(queryStrongholdsRange(0, 128, x2, z2) == 128);
+  for (uint32_t i = 0; i < 128; i++) {
+    CHECK(x2[i] == x[i]);
+    CHECK(z2[i] == z[i]);
+  }
+
+  // 区间拆分一致性: [0,64) + [64,128) == [0,128)
+  int32_t x0[64], z0[64], x1[64], z1[64];
+  REQUIRE(queryStrongholdsRange(0, 64, x0, z0) == 64);
+  REQUIRE(queryStrongholdsRange(64, 128, x1, z1) == 64);
+  for (int i = 0; i < 64; i++) {
+    CHECK(x0[i] == x[i]);
+    CHECK(z0[i] == z[i]);
+    CHECK(x1[i] == x[i + 64]);
+    CHECK(z1[i] == z[i + 64]);
+  }
+
+  // 范围 sanity: 全部在 ~27km 内 (最外环 ~24km)
+  for (uint32_t i = 0; i < 128; i++) {
+    int64_t dx = x[i], dz = z[i];
+    CHECK_MESSAGE(dx * dx + dz * dz < 27000LL * 27000LL,
+                  "stronghold ", i, " out of range: (", x[i], ", ", z[i], ")");
+  }
+}
+
 TEST_CASE("genCellImg scale=1 (generateRegion)") {
   setupOrFail();
   Img img;

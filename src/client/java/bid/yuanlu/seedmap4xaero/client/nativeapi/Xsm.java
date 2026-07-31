@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.cache.QueryPointCache;
+import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorProvider;
 import bid.yuanlu.seedmap4xaero.client.render.NativeBiomeColor;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
@@ -269,6 +270,33 @@ public final class Xsm {
             if (XsmNative.xsmBiome2str(biomeId, out, 64))
                 return out.getString(0);
             return null;
+        }
+    }
+
+    /**
+     * 查询要塞精确位置, 返回 index ∈ [from, to) 的部分 (按生成顺序)。
+     *
+     * @param from 起始 index (含)
+     * @param to   结束 index (不含)
+     * @return 实际返回的要塞位置数组
+     */
+    public static @NotNull StrongholdPos[] queryStrongholdsRange(int from, int to) {
+        if (to <= from)
+            return new StrongholdPos[0];
+        try (Arena arena = Arena.ofConfined()) {
+            int cap = to - from;
+            MemorySegment x = arena.allocate(4L * cap);
+            MemorySegment z = arena.allocate(4L * cap);
+            int n = XsmNative.queryStrongholdsRange(from, to, x, z);
+            if (n < 0 || n > cap)
+                n = 0;
+            StrongholdPos[] out = new StrongholdPos[n];
+            for (int i = 0; i < n; i++) {
+                out[i] = new StrongholdPos(from + i,
+                        x.getAtIndex(ValueLayout.JAVA_INT, i),
+                        z.getAtIndex(ValueLayout.JAVA_INT, i));
+            }
+            return out;
         }
     }
 }

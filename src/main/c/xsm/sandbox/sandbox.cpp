@@ -71,6 +71,43 @@ int test2() {
   return 0;
 }
 
+int test3() {
+  if (!setBiomeColorTableNative()) return -1;
+  if (!setGameVersion("26.1")) return -2;
+  if (!setWorld(0, 0)) return -3;
+
+  int32_t x[128], z[128];
+
+  // warmup: one full query
+  if (queryStrongholdsRange(0, 128, x, z) != 128) return -4;
+
+  constexpr int N = 20;
+  auto start = std::chrono::steady_clock::now();
+  for (int i = 0; i < N; i++)
+    queryStrongholdsRange(0, 128, x, z);
+  auto end = std::chrono::steady_clock::now();
+  double full_ms =
+      std::chrono::duration<double, std::milli>(end - start).count() / N;
+  std::printf("  full(128): %8.1f ms/call  (128 biome searches)\n", full_ms);
+
+  static const int ringEnds[] = {3, 9, 19, 34, 55, 83, 119, 128};
+  std::printf("  per-ring (incremental display cost):\n");
+  double total = 0;
+  for (int r = 0; r < 8; r++) {
+    int from = r == 0 ? 0 : ringEnds[r - 1];
+    int to = ringEnds[r];
+    auto s2 = std::chrono::steady_clock::now();
+    uint32_t n = queryStrongholdsRange(from, to, x, z);
+    auto e2 = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(e2 - s2).count();
+    total += ms;
+    std::printf("    ring %d [%3d,%3d): %8.1f ms  (%u strongholds)\n", r, from,
+                to, ms, n);
+  }
+  std::printf("  per-ring sum: %8.1f ms\n", total);
+  return 0;
+}
+
 int main() {
   int r;
   std::printf("Running tests...\n");
@@ -78,5 +115,7 @@ int main() {
   std::printf(" test1 passed\n");  // test1 passed
   if ((r = test2()) != 0) return r;
   std::printf(" test2 passed\n");  // test2 passed
+  if ((r = test3()) != 0) return r;
+  std::printf(" test3 passed\n");  // test3 passed
   return 0;
 }

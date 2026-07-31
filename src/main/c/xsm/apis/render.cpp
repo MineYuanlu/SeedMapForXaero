@@ -480,6 +480,34 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
   return cnt;
 }
 
+uint32_t queryStrongholdsRange(int32_t from, int32_t to,
+                               int32_t* outBlockX, int32_t* outBlockZ) {
+  if (!gen_setWorld || tn.g.dim != DIM_OVERWORLD) return 0;
+  if (to <= from || !outBlockX || !outBlockZ) return 0;
+
+  Generator g;
+  setupGenerator(&g, tn.g.mc, 0);
+  applySeed(&g, DIM_OVERWORLD, tn.g.seed);
+
+  const bool canSkip = tn.g.mc > MC_1_19_2;
+  StrongholdIter sh;
+  initFirstStronghold(&sh, tn.g.mc, tn.g.seed & MASK48);
+  uint32_t n = 0;
+  for (int k = 0; k < to; k++) {
+    const bool want = (k >= from);
+    const Generator* gk = (canSkip && !want) ? NULL : &g;
+    int rem = nextStronghold(&sh, gk);
+    if (rem < 0) break;
+    if (want) {
+      outBlockX[n] = sh.pos.x;
+      outBlockZ[n] = sh.pos.z;
+      n++;
+    }
+    if (rem == 0) break;
+  }
+  return n;
+}
+
 
 bool xsmBiome2str(int32_t biomeId, char* out, uint32_t outLen) {
   if (!gen_setGameVersion) return false;

@@ -78,7 +78,7 @@ public enum StructureType {
         this.maxRegionHide = Math.min(maxRegionHide, MAX_REGION_HIDE);
         this.spriteIndex = spriteIndex;
         this.config = Xsm.getStructureConfig(id);
-        if (this.config == null)
+        if (this.config == null && id != 25/* 要塞没有config */)
             LoggerHolder.LOGGER.warn("Can't load StructureType config for {} ({})", id, key);
     }
 

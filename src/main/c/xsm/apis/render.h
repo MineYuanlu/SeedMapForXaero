@@ -126,6 +126,20 @@ XSM_API uint32_t queryRegionStructuresGrid(
     int32_t* outBlockZ
 );
 
+/// @brief 查询要塞精确位置, 返回 index ∈ [from, to) 的部分
+/// @details 内部从 index 0 重放 RNG 链以保证链一致; 1.19.3+ 仅对目标区间
+/// 做生物群系搜索(区间外以近似推进), 旧版本为保证 RNG 链会对全部 index 搜索
+/// @param from 起始 index(含)
+/// @param to 结束 index(不含)
+/// @param outBlockX 输出 X, 容量 >= to-from
+/// @param outBlockZ 输出 Z, 容量 >= to-from
+/// @return 实际写入数量(可能小于 to-from, 如旧版仅 3 个要塞)
+XSM_API uint32_t queryStrongholdsRange(
+    int32_t from, int32_t to,
+    int32_t* outBlockX,
+    int32_t* outBlockZ
+);
+
 /// @brief 查询当前版本下, biomeId 对应的生物群系名称(key)
 XSM_API bool xsmBiome2str(int32_t biomeId, char* out, uint32_t outLen);
 

@@ -24,6 +24,7 @@ public final class CacheHelper {
         CellCache.clear();
         QueryPointCache.clear();
         StructureCache.clear();
+        StrongholdCache.clear();
     }
 
     static final ExecutorService CACHE_WORKER;

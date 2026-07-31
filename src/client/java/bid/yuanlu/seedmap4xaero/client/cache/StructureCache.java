@@ -5,7 +5,9 @@ import java.util.Collection;
 import java.util.EnumMap;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
@@ -60,6 +62,14 @@ public class StructureCache {
 
     public static void clear() {
         CACHES.clear();
+    }
+
+    /**
+     * 要塞精确位置 (按生成顺序, 按环渐进填充; null 槽位 = 未计算)。
+     * 首次调用触发异步分批计算。
+     */
+    public static @Nullable StrongholdPos[] strongholds() {
+        return StrongholdCache.update();
     }
 
     /**
