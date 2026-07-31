@@ -48,7 +48,11 @@ public enum StructureType {
     }
 
     public static final int FEATURE_NUM = Xsm.getStructFEATURE_NUM();
-    public static final int MAX_REGION_HIDE = 16384;// 全局最大上限
+    /** 普通结构专用上限: 视口内 region 数超过则整类跳过 (region 级缓存容量) */
+    public static final int MAX_REGION_HIDE = 16384;
+    /** 稀疏结构专用上限: 期望放置命中量 (regionCount×prob) 超过则整类跳过;
+     *  等于 C 端 querySparseStructures 单轮扫描 cap */
+    public static final int MAX_SPARSE_HITS = 8192;
     public static final int SHEET_SIZE = 25; // 精灵图横向图标数量
     public static final Identifier STRUCTURES_TEXTURE = Identifier.fromNamespaceAndPath(
             "seed-map-for-xaero", "textures/icons/structures.png");

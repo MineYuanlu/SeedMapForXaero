@@ -62,7 +62,7 @@ public class StructureCache {
                 // 稀疏类型(regionSize=1, 逐区块低概率): 按期望放置命中量过滤,
                 // 超量整类跳过 (prob = raw命中率×群系通过率, 群系过滤在 C 端扫描时完成)
                 final long expected = (long) Math.ceil(regionCount * type.prob);
-                if (expected > StructureType.MAX_REGION_HIDE)
+                if (expected > StructureType.MAX_SPARSE_HITS)
                     continue;
                 final var cache = SPARSE_CACHES.computeIfAbsent(type, t -> new TileCache2(t));
                 final var tiles = cache.update(regionX0, regionX1, regionZ0, regionZ1);
@@ -213,7 +213,7 @@ public class StructureCache {
             final boolean noExcl = ex0 >= ex1 || ez0 >= ez1;
             final int fex0 = noExcl ? 0 : ex0, fex1 = noExcl ? 0 : ex1;
             final int fez0 = noExcl ? 0 : ez0, fez1 = noExcl ? 0 : ez1;
-            final int cap = StructureType.MAX_REGION_HIDE;
+            final int cap = StructureType.MAX_SPARSE_HITS;
             final int id = type.id;
             CacheHelper.CACHE_WORKER.execute(() -> {
             final LongArrayList hits = new LongArrayList();
