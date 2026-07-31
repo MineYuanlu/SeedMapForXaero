@@ -243,13 +243,7 @@ public class StructureCache {
                     if (!hits.isEmpty()) {
                         LongOpenHashSet ns = new LongOpenHashSet(snapshot.size() + hits.size());
                         ns.addAll(snapshot);
-                        for (long k : hits) {
-                            int cx = (int) (k >> 32) >> 4;
-                            int cz = (int) (k & 0xFFFFFFFFL) >> 4;
-                            if (cx >= TileCache2.this.rx0 && cx < TileCache2.this.rx1
-                                    && cz >= TileCache2.this.rz0 && cz < TileCache2.this.rz1)
-                                ns.add(k);
-                        }
+                        ns.addAll(hits);
                         snapshot = ns;
                     }
                 }
