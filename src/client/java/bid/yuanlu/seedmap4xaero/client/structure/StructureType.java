@@ -30,15 +30,15 @@ public enum StructureType {
     RUINED_PORTAL(11, "ruined_portal", false, Integer.MAX_VALUE, 10), // 废弃传送门（主世界）
     RUINED_PORTAL_N(12, "ruined_portal_nether", false, Integer.MAX_VALUE, 11), // 废弃传送门（下界）
     ANCIENT_CITY(13, "ancient_city", true, Integer.MAX_VALUE, 12), // 远古城市
-    TREASURE(14, "treasure", false, 2048, 13), // 埋藏的宝藏
-    MINESHAFT(15, "mineshaft", false, 1024, 14), // 废弃矿井
-    DESERT_WELL(16, "desert_well", false, 2048, 15), // 沙漠水井
-    GEODE(17, "geode", false, 2048, 16), // 紫晶洞
+    TREASURE(14, "treasure", false, 2048, 13, 0.01f * 0.0333f), // 埋藏的宝藏
+    MINESHAFT(15, "mineshaft", false, 1024, 14, 0.004f), // 废弃矿井
+    DESERT_WELL(16, "desert_well", false, 2048, 15, 0.001f * 0.0213f), // 沙漠水井
+    GEODE(17, "geode", false, 2048, 16, 1f / 24), // 紫晶洞
     FORTRESS(18, "fortress", true, Integer.MAX_VALUE, 17), // 下界要塞
     BASTION(19, "bastion", true, Integer.MAX_VALUE, 18), // 堡垒遗迹
     END_CITY(20, "end_city", true, Integer.MAX_VALUE, 19), // 末地城
-    END_GATEWAY(21, "end_gateway", false, Integer.MAX_VALUE, 20), // 末地折跃门
-    END_ISLAND(22, "end_island", false, Integer.MAX_VALUE, 21), // 末地岛屿
+    END_GATEWAY(21, "end_gateway", false, Integer.MAX_VALUE, 20, 1f / 700 * 0.0883f), // 末地折跃门
+    END_ISLAND(22, "end_island", false, Integer.MAX_VALUE, 21, 1f / 14), // 末地岛屿
     TRAIL_RUINS(23, "trail_ruins", false, Integer.MAX_VALUE, 22), // 古迹废墟
     TRIAL_CHAMBERS(24, "trial_chambers", false, Integer.MAX_VALUE, 23), // 试炼密室
     STRONGHOLD(25, "stronghold", true, Integer.MAX_VALUE, 24); // 要塞
@@ -48,7 +48,11 @@ public enum StructureType {
     }
 
     public static final int FEATURE_NUM = Xsm.getStructFEATURE_NUM();
-    public static final int MAX_REGION_HIDE = 16384;// 全局最大上限
+    /** 普通结构专用上限: 视口内 region 数超过则整类跳过 (region 级缓存容量) */
+    public static final int MAX_REGION_HIDE = 16384;
+    /** 稀疏结构专用上限: 期望放置命中量 (regionCount×prob) 超过则整类跳过;
+     *  等于 C 端 querySparseStructures 单轮扫描 cap */
+    public static final int MAX_SPARSE_HITS = 8192;
     public static final int SHEET_SIZE = 25; // 精灵图横向图标数量
     public static final Identifier STRUCTURES_TEXTURE = Identifier.fromNamespaceAndPath(
             "seed-map-for-xaero", "textures/icons/structures.png");
@@ -69,16 +73,29 @@ public enum StructureType {
     public final boolean enableDefault;
     public final int maxRegionHide;
     public final int spriteIndex;
+    /** 
+     * 每区块实际放置概率 (raw RNG 命中率 × 群系约束通过率); 仅稀疏类型
+     * (regionSize=1) 大于0, 用于期望放置命中量过滤.
+     * 群系通过率为 MC_26.1 实测 (见 tmp/struct-prob-test):
+     * Treasure 0.01×0.0333, Desert_Well 0.001×0.0213, End_Gateway 1/700×0.0883
+     * -1表示未定义
+     */
+    public final float prob;
     public final @Nullable Config config;
 
     private StructureType(int id, @NotNull String key, boolean enableDefault, int maxRegionHide, int spriteIndex) {
+        this(id, key, enableDefault, maxRegionHide, spriteIndex, -1f);
+    }
+
+    private StructureType(int id, @NotNull String key, boolean enableDefault, int maxRegionHide, int spriteIndex, float prob) {
         this.id = id;
         this.key = key;
         this.enableDefault = enableDefault;
         this.maxRegionHide = Math.min(maxRegionHide, MAX_REGION_HIDE);
         this.spriteIndex = spriteIndex;
+        this.prob = prob;
         this.config = Xsm.getStructureConfig(id);
-        if (this.config == null)
+        if (this.config == null && id != 25/* 要塞没有config */)
             LoggerHolder.LOGGER.warn("Can't load StructureType config for {} ({})", id, key);
     }
 

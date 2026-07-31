@@ -1,7 +1,8 @@
 package bid.yuanlu.seedmap4xaero.client.mixin;
 
+import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
-import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.RegionPos;
+import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import net.minecraft.client.Minecraft;
@@ -36,6 +37,9 @@ public class StructureOverlayMixin {
 
     @Unique
     private String xsm$hoverText;
+
+    @Unique
+    private float xsm$bestDist;
 
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void updateStructures(GuiGraphicsExtractor guiGraphics,
@@ -84,41 +88,36 @@ public class StructureOverlayMixin {
         final float iconHalf = ICON_SIZE * iconScale * 0.5f;
 
         final Minecraft mc = Minecraft.getInstance();
-        final int windowW = mc.getWindow().getWidth();
-        final int windowH = mc.getWindow().getHeight();
         final double invScale = 1.0 / screenScale;
 
         xsm$hoverText = null;
-        float bestDist = iconHalf;
+        xsm$bestDist = iconHalf;
 
         for (var entry : StructureCache.REGIONS.entrySet()) {
             StructureType type = entry.getKey();
             float u0 = (float) (type.spriteIndex * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
             float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
-            for (RegionPos rp : entry.getValue()) {
-                if (!rp.loaded)
+            for (StructurePos rp : entry.getValue()) {
+                if (!rp.loaded())
                     continue;
+                xsm$drawStructureIcon(guiGraphics, type, u0, u1,
+                        rp.blockX(), rp.blockZ(), invScale, iconScale,
+                        scaledMouseX, scaledMouseY);
+            }
+        }
 
-                double pixelOffX = (rp.blockX - cameraX) * scale + windowW / 2.0;
-                double pixelOffZ = (rp.blockZ - cameraZ) * scale + windowH / 2.0;
-                double guiX = pixelOffX * invScale;
-                double guiZ = pixelOffZ * invScale;
-
-                guiGraphics.pose().pushMatrix();
-                guiGraphics.pose().translate((float) guiX, (float) guiZ);
-                guiGraphics.pose().scale(iconScale, iconScale);
-                guiGraphics.blit(StructureType.STRUCTURES_TEXTURE,
-                        -ICON_SIZE / 2, -ICON_SIZE / 2,
-                        ICON_SIZE / 2, ICON_SIZE / 2,
-                        u0, u1, 0.0F, 1.0F);
-                guiGraphics.pose().popMatrix();
-
-                double dx = scaledMouseX - guiX;
-                double dy = scaledMouseY - guiZ;
-                float dist = (float) Math.max(Math.abs(dx), Math.abs(dy));
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    xsm$hoverText = I18n.get(type.translationKey());
+        if (enabled.get(StructureType.STRONGHOLD.id)) {
+            final var strongholds = StructureCache.strongholds();
+            if (strongholds != null) {
+                final StructureType type = StructureType.STRONGHOLD;
+                float u0 = (float) (type.spriteIndex * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
+                float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
+                for (StrongholdPos sh : strongholds) {
+                    if (sh == null)
+                        continue;
+                    xsm$drawStructureIcon(guiGraphics, type, u0, u1,
+                            sh.blockX(), sh.blockZ(), invScale, iconScale,
+                            scaledMouseX, scaledMouseY);
                 }
             }
         }
@@ -128,6 +127,37 @@ public class StructureOverlayMixin {
                     mc.font, xsm$hoverText,
                     scaledMouseX + 12, scaledMouseY - 4,
                     -1, 0.0F, 0.0F, 0.0F, 0.6F);
+        }
+    }
+
+    @Unique
+    private void xsm$drawStructureIcon(GuiGraphicsExtractor guiGraphics, StructureType type,
+            float u0, float u1, int blockX, int blockZ,
+            double invScale, float iconScale, int scaledMouseX, int scaledMouseY) {
+        final Minecraft mc = Minecraft.getInstance();
+        final int windowW = mc.getWindow().getWidth();
+        final int windowH = mc.getWindow().getHeight();
+
+        double pixelOffX = (blockX - cameraX) * scale + windowW / 2.0;
+        double pixelOffZ = (blockZ - cameraZ) * scale + windowH / 2.0;
+        double guiX = pixelOffX * invScale;
+        double guiZ = pixelOffZ * invScale;
+
+        guiGraphics.pose().pushMatrix();
+        guiGraphics.pose().translate((float) guiX, (float) guiZ);
+        guiGraphics.pose().scale(iconScale, iconScale);
+        guiGraphics.blit(StructureType.STRUCTURES_TEXTURE,
+                -ICON_SIZE / 2, -ICON_SIZE / 2,
+                ICON_SIZE / 2, ICON_SIZE / 2,
+                u0, u1, 0.0F, 1.0F);
+        guiGraphics.pose().popMatrix();
+
+        double dx = scaledMouseX - guiX;
+        double dy = scaledMouseY - guiZ;
+        float dist = (float) Math.max(Math.abs(dx), Math.abs(dy));
+        if (dist < xsm$bestDist) {
+            xsm$bestDist = dist;
+            xsm$hoverText = I18n.get(type.translationKey());
         }
     }
 }

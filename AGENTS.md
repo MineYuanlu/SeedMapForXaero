@@ -85,7 +85,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/client/
 ├── cache/            # CellCache, StructureCache, QueryPointCache, CacheHelper
 ├── mixin/            # 7 client mixins (config in client .mixins.json)
 ├── render/           # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
-├── structure/        # StructureType enum (26 types, config from C)
+├── structure/        # StructureType enum (26 types, config from C, 稀疏类型自带 prob)
 ├── biome/            # BiomeType (sprite index, loaded from biomes.ini)
 ├── gui/              # SeedMapPanel (side panel), XsmIconButton
 ├── utils/            # BitSetView (immutable BitSet wrapper)
@@ -172,6 +172,7 @@ For each 16×16 sub-tile:
 - Config file is **not JSON** — binary format with magic word. Corrupt file silently falls back to `.old` then fresh config
 - Structure queries are async via `CacheHelper.CACHE_WORKER`; results read from `StructureCache.REGIONS` each frame
 - `StructureCache.updateStructuresInArea` uses diff-based logic — only queries newly visible regions
+- **Sparse structures** (regionSize=1: Treasure/Mineshaft/Desert_Well/Geode/End_Gateway/End_Island) go through `TileCache2` + C `querySparseStructures`: per-chunk low-probability scan, only hit positions stored (`blockX<<32|blockZ` in `LongOpenHashSet`, copy-on-write snapshot), cap = `MAX_SPARSE_HITS`(8192) with linear-index continuation (`*outNext`, same rect+excl, no rescan); per-frame `covered`/`pending` state machine scans only `V \ covered`. Gate: `ceil(regionCount × type.prob) > MAX_SPARSE_HITS` skips the type entirely (prob = placement rate = raw RNG prob × measured biome-pass rate from `tmp/struct-prob-test`; biome filtering happens in the C scan, so the gate estimates stored hits). Thresholds: `MAX_REGION_HIDE` = per-type region-count cap for normal structures, `MAX_SPARSE_HITS` = expected-hit cap for sparse types (= C-side scan cap). End types only queryable in their own dim; `End_Island` bypasses `isViableStructurePos` (cubiomes always returns 0 — "no constraint" semantics)
 - LSP shows false errors for mixin targets and generated `XsmNative.java` — only `./gradlew build` is authoritative
 - All UI strings go through i18n (`Component.translatable` / `I18n.get`) — add both `en_us.json` and `zh_cn.json`
 - `BiomeType` loaded from `biomes.ini` at init — must regenerate `biomes.png` if biome list changes (`tools/gen_biomes_icon.py`)

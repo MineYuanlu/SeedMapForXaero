@@ -480,6 +480,79 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
   return cnt;
 }
 
+uint32_t queryStrongholdsRange(int32_t from, int32_t to,
+                               int32_t* outBlockX, int32_t* outBlockZ) {
+  if (!gen_setWorld || tn.g.dim != DIM_OVERWORLD) return 0;
+  if (to <= from || !outBlockX || !outBlockZ) return 0;
+
+  Generator g;
+  setupGenerator(&g, tn.g.mc, 0);
+  applySeed(&g, DIM_OVERWORLD, tn.g.seed);
+
+  const bool canSkip = tn.g.mc > MC_1_19_2;
+  StrongholdIter sh;
+  initFirstStronghold(&sh, tn.g.mc, tn.g.seed & MASK48);
+  uint32_t n = 0;
+  for (int k = 0; k < to; k++) {
+    const bool want = (k >= from);
+    const Generator* gk = (canSkip && !want) ? NULL : &g;
+    int rem = nextStronghold(&sh, gk);
+    if (rem < 0) break;
+    if (want) {
+      outBlockX[n] = sh.pos.x;
+      outBlockZ[n] = sh.pos.z;
+      n++;
+    }
+    if (rem == 0) break;
+  }
+  return n;
+}
+
+
+uint32_t querySparseStructures(int32_t structureType,
+                               int32_t rx0, int32_t rz0,
+                               int32_t rx1, int32_t rz1,
+                               int32_t ex0, int32_t ez0,
+                               int32_t ex1, int32_t ez1,
+                               int64_t start, int32_t cap,
+                               int32_t* outBlockX, int32_t* outBlockZ,
+                               int64_t* outNext) {
+  if (outNext) *outNext = -1;
+  if (!gen_setWorld || cap <= 0 || !outBlockX || !outBlockZ || !outNext) return 0;
+  if (rx1 <= rx0 || rz1 <= rz0) return 0;
+
+  StructureConfig sconf;
+  if (!getStructureConfig(structureType, tn.g.mc, &sconf)) return 0;
+  // 维度过滤: 结构只在其所属维度查询
+  // (错误维度下 isViableStructurePos 会打印 stderr, 且位置无意义)
+  if (sconf.dim != tn.g.dim) return 0;
+  // End_Island 在 cubiomes 中 isViableStructurePos 恒返回 0
+  // (无群系约束语义), 直接视为可生成
+  const bool bypassViability = (structureType == End_Island);
+
+  uint32_t n = 0;
+  int64_t lin = 0;
+  for (int32_t x = rx0; x < rx1; x++) {
+    const bool inX = ex0 <= x && x < ex1;
+    for (int32_t z = rz0; z < rz1; z++, lin++) {
+      if (lin < start) continue;
+      if (inX && ez0 <= z && z < ez1) continue;
+
+      Pos pos;
+      if (!getStructurePos(structureType, tn.g.mc, tn.g.seed, x, z, &pos)) continue;
+      if (!bypassViability && !isViableStructurePos(structureType, &tn.g, pos.x, pos.z, 0)) continue;
+
+      if (n >= (uint32_t)cap) {
+        *outNext = lin;
+        return n;
+      }
+      outBlockX[n] = pos.x;
+      outBlockZ[n] = pos.z;
+      n++;
+    }
+  }
+  return n;
+}
 
 bool xsmBiome2str(int32_t biomeId, char* out, uint32_t outLen) {
   if (!gen_setGameVersion) return false;

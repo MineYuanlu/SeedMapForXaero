@@ -71,6 +71,85 @@ int test2() {
   return 0;
 }
 
+int test3() {
+  if (!setBiomeColorTableNative()) return -1;
+  if (!setGameVersion("26.1")) return -2;
+  if (!setWorld(0, 0)) return -3;
+
+  int32_t x[128], z[128];
+
+  // warmup: one full query
+  if (queryStrongholdsRange(0, 128, x, z) != 128) return -4;
+
+  constexpr int N = 20;
+  auto start = std::chrono::steady_clock::now();
+  for (int i = 0; i < N; i++)
+    queryStrongholdsRange(0, 128, x, z);
+  auto end = std::chrono::steady_clock::now();
+  double full_ms =
+      std::chrono::duration<double, std::milli>(end - start).count() / N;
+  std::printf("  full(128): %8.1f ms/call  (128 biome searches)\n", full_ms);
+
+  static const int ringEnds[] = {3, 9, 19, 34, 55, 83, 119, 128};
+  std::printf("  per-ring (incremental display cost):\n");
+  double total = 0;
+  for (int r = 0; r < 8; r++) {
+    int from = r == 0 ? 0 : ringEnds[r - 1];
+    int to = ringEnds[r];
+    auto s2 = std::chrono::steady_clock::now();
+    uint32_t n = queryStrongholdsRange(from, to, x, z);
+    auto e2 = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(e2 - s2).count();
+    total += ms;
+    std::printf("    ring %d [%3d,%3d): %8.1f ms  (%u strongholds)\n", r, from,
+                to, ms, n);
+  }
+  std::printf("  per-ring sum: %8.1f ms\n", total);
+  return 0;
+}
+
+int test4() {
+  if (!setBiomeColorTableNative()) return -1;
+  if (!setGameVersion("26.1")) return -2;
+
+  // 极限情况: 全屏 ~217.6 万区块 (1475x1475, regionSize=1 即逐 chunk)
+  constexpr int N = 1475;
+  constexpr int CAP = 16384;
+  static int32_t bx[CAP], bz[CAP];
+
+  static const struct {
+    int id;
+    const char* name;
+    int dim;
+  } types[] = {{14, "buried_treasure", 0},
+               {15, "mineshaft", 0},
+               {16, "desert_well", 0},
+               {17, "geode", 0},
+               {21, "end_gateway", 1},
+               {22, "end_island", 1}};
+
+  for (auto& t : types) {
+    if (!setWorld(12345, t.dim)) return -3;
+    // 预热 (小范围)
+    int64_t warmNext;
+    querySparseStructures(t.id, 0, 0, 16, 16, 0, 0, 0, 0, -1, CAP, bx, bz, &warmNext);
+    auto s = std::chrono::steady_clock::now();
+    uint32_t total = 0, rounds = 0;
+    int64_t next = -1;
+    do {
+      int64_t start = next;
+      uint32_t n = querySparseStructures(t.id, 0, 0, N, N, 0, 0, 0, 0, start, CAP, bx, bz, &next);
+      total += n;
+      rounds++;
+    } while (next >= 0);
+    auto e = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(e - s).count();
+    std::printf("  %-15s %8.1f ms  rounds=%u  found=%u (%.3f%%)\n",
+                t.name, ms, rounds, total, 100.0 * total / ((double)N * N));
+  }
+  return 0;
+}
+
 int main() {
   int r;
   std::printf("Running tests...\n");
@@ -78,5 +157,9 @@ int main() {
   std::printf(" test1 passed\n");  // test1 passed
   if ((r = test2()) != 0) return r;
   std::printf(" test2 passed\n");  // test2 passed
+  if ((r = test3()) != 0) return r;
+  std::printf(" test3 passed\n");  // test3 passed
+  if ((r = test4()) != 0) return r;
+  std::printf(" test4 passed\n");  // test4 passed
   return 0;
 }
