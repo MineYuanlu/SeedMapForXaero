@@ -108,6 +108,48 @@ int test3() {
   return 0;
 }
 
+int test4() {
+  if (!setBiomeColorTableNative()) return -1;
+  if (!setGameVersion("26.1")) return -2;
+
+  // 极限情况: 全屏 ~217.6 万区块 (1475x1475, regionSize=1 即逐 chunk)
+  constexpr int N = 1475;
+  constexpr int CAP = 16384;
+  static int32_t bx[CAP], bz[CAP];
+
+  static const struct {
+    int id;
+    const char* name;
+    int dim;
+  } types[] = {{14, "buried_treasure", 0},
+               {15, "mineshaft", 0},
+               {16, "desert_well", 0},
+               {17, "geode", 0},
+               {21, "end_gateway", 1},
+               {22, "end_island", 1}};
+
+  for (auto& t : types) {
+    if (!setWorld(12345, t.dim)) return -3;
+    // 预热 (小范围)
+    int64_t warmNext;
+    querySparseStructures(t.id, 0, 0, 16, 16, 0, 0, 0, 0, -1, CAP, bx, bz, &warmNext);
+    auto s = std::chrono::steady_clock::now();
+    uint32_t total = 0, rounds = 0;
+    int64_t next = -1;
+    do {
+      int64_t start = next;
+      uint32_t n = querySparseStructures(t.id, 0, 0, N, N, 0, 0, 0, 0, start, CAP, bx, bz, &next);
+      total += n;
+      rounds++;
+    } while (next >= 0);
+    auto e = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(e - s).count();
+    std::printf("  %-15s %8.1f ms  rounds=%u  found=%u (%.3f%%)\n",
+                t.name, ms, rounds, total, 100.0 * total / ((double)N * N));
+  }
+  return 0;
+}
+
 int main() {
   int r;
   std::printf("Running tests...\n");
@@ -117,5 +159,7 @@ int main() {
   std::printf(" test2 passed\n");  // test2 passed
   if ((r = test3()) != 0) return r;
   std::printf(" test3 passed\n");  // test3 passed
+  if ((r = test4()) != 0) return r;
+  std::printf(" test4 passed\n");  // test4 passed
   return 0;
 }

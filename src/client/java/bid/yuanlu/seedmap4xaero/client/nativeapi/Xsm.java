@@ -190,6 +190,66 @@ public final class Xsm {
         void set(int rx, int rz, boolean found, int bx, int bz);
     }
 
+    /**
+     * 稀疏结构(regionSize=1, 逐区块低概率)批量查询: 只回传命中的 block 坐标。
+     *
+     * @return 续传点(线性序号); -1 表示扫描完成。返回 >= 0 时本次结果已满,
+     *         需以相同矩形+排除矩形+该返回值再次调用以继续。
+     */
+    public static long querySparseStructures(
+            int structureType,
+            int rx0, int rz0, int rx1, int rz1,
+            int ex0, int ez0, int ex1, int ez1,
+            long start, int cap,
+            SparseStructureSetter setter) {
+        int cex0, cex1, cez0, cez1;
+        if (ex0 >= ex1) {
+            cex0 = 0;
+            cex1 = 0;
+        } else {
+            cex0 = Math.max(rx0, ex0);
+            cex1 = Math.min(rx1, ex1);
+        }
+        if (ez0 >= ez1) {
+            cez0 = 0;
+            cez1 = 0;
+        } else {
+            cez0 = Math.max(rz0, ez0);
+            cez1 = Math.min(rz1, ez1);
+        }
+        if (cex0 >= cex1) {
+            cex0 = 0;
+            cex1 = 0;
+        }
+        if (cez0 >= cez1) {
+            cez0 = 0;
+            cez1 = 0;
+        }
+        if (cap <= 0 || rx1 <= rx0 || rz1 <= rz0)
+            return -1;
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment bx = arena.allocate(4L * cap);
+            MemorySegment bz = arena.allocate(4L * cap);
+            MemorySegment next = arena.allocate(8);
+            int n = XsmNative.querySparseStructures(
+                    structureType,
+                    rx0, rz0, rx1, rz1,
+                    cex0, cez0, cex1, cez1,
+                    start, cap, bx, bz, next);
+            long nextVal = next.get(ValueLayout.JAVA_LONG, 0);
+            for (int i = 0; i < n; i++) {
+                setter.set(bx.getAtIndex(ValueLayout.JAVA_INT, i),
+                        bz.getAtIndex(ValueLayout.JAVA_INT, i));
+            }
+            return nextVal;
+        }
+    }
+
+    public interface SparseStructureSetter {
+        void set(int blockX, int blockZ);
+    }
+
     public static void queryRegionStructuresGrid(
             int structureType,
             int rx0, int rz0, int rx1, int rz1,

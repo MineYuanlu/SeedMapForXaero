@@ -2,7 +2,7 @@ package bid.yuanlu.seedmap4xaero.client.mixin;
 
 import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
-import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.RegionPos;
+import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import net.minecraft.client.Minecraft;
@@ -97,11 +97,11 @@ public class StructureOverlayMixin {
             StructureType type = entry.getKey();
             float u0 = (float) (type.spriteIndex * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
             float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
-            for (RegionPos rp : entry.getValue()) {
-                if (!rp.loaded)
+            for (StructurePos rp : entry.getValue()) {
+                if (!rp.loaded())
                     continue;
                 xsm$drawStructureIcon(guiGraphics, type, u0, u1,
-                        rp.blockX, rp.blockZ, invScale, iconScale,
+                        rp.blockX(), rp.blockZ(), invScale, iconScale,
                         scaledMouseX, scaledMouseY);
             }
         }

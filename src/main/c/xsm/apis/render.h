@@ -140,6 +140,33 @@ XSM_API uint32_t queryStrongholdsRange(
     int32_t* outBlockZ
 );
 
+/// @brief 批量查询稀疏结构(regionSize=1 的逐区块低概率结构), 只返回命中位置(变长结果)
+/// @details 用于 Treasure/Mineshaft/Desert_Well/Geode/End_Gateway/End_Island 等
+/// 每区块独立掷骰的结构: 逐区块扫描 [rx0,rx1)×[rz0,rz1) 中不在排除矩形内的 region
+/// (x 优先遍历), 命中位置(block 坐标)最多写入 cap 个。
+/// 结果量超过 cap 时返回截断: *outNext = 下一个待扫描 region 的线性序号,
+/// 调用方下次以相同矩形+排除矩形+该 start 续传(不重不漏); 全部扫完则 *outNext = -1。
+/// @param structureType 结构类型
+/// @param rx0,rz0,rx1,rz1 扫描矩形(region 坐标, 含左不含右)
+/// @param ex0,ez0,ex1,ez1 排除矩形(已扫描区域, 可为空)
+/// @param start 线性续传点(-1 = 从头开始)
+/// @param cap 输出数组容量(每个数组 >= cap)
+/// @param outBlockX 输出 X(block 坐标)
+/// @param outBlockZ 输出 Z(block 坐标)
+/// @param outNext 续传点输出; 完成时为 -1
+/// @return 实际写入的命中数量 (<= cap)
+XSM_API uint32_t querySparseStructures(
+    int32_t  structureType,
+    int32_t  rx0, int32_t rz0,
+    int32_t  rx1, int32_t rz1,
+    int32_t  ex0, int32_t ez0,
+    int32_t  ex1, int32_t ez1,
+    int64_t  start, int32_t cap,
+    int32_t* outBlockX,
+    int32_t* outBlockZ,
+    int64_t* outNext
+);
+
 /// @brief 查询当前版本下, biomeId 对应的生物群系名称(key)
 XSM_API bool xsmBiome2str(int32_t biomeId, char* out, uint32_t outLen);
 
