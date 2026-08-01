@@ -95,14 +95,15 @@ public class StructureOverlayMixin {
 
         for (var entry : StructureCache.REGIONS.entrySet()) {
             StructureType type = entry.getKey();
-            float u0 = (float) (type.spriteIndex * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
-            float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
             for (StructurePos rp : entry.getValue()) {
                 if (!rp.loaded())
                     continue;
+                int idx = type.getSpriteIndex(rp.getVariant());
+                float u0 = (float) (idx * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
+                float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
                 xsm$drawStructureIcon(guiGraphics, type, u0, u1,
-                        rp.blockX(), rp.blockZ(), invScale, iconScale,
-                        scaledMouseX, scaledMouseY);
+                        rp.blockX(), rp.blockZ(), rp.getVariant(),
+                        invScale, iconScale, scaledMouseX, scaledMouseY);
             }
         }
 
@@ -110,14 +111,14 @@ public class StructureOverlayMixin {
             final var strongholds = StructureCache.strongholds();
             if (strongholds != null) {
                 final StructureType type = StructureType.STRONGHOLD;
-                float u0 = (float) (type.spriteIndex * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
+                float u0 = (float) (type.getSpriteIndex(0) * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
                 float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
                 for (StrongholdPos sh : strongholds) {
                     if (sh == null)
                         continue;
-                    xsm$drawStructureIcon(guiGraphics, type, u0, u1,
-                            sh.blockX(), sh.blockZ(), invScale, iconScale,
-                            scaledMouseX, scaledMouseY);
+                xsm$drawStructureIcon(guiGraphics, type, u0, u1,
+                        sh.blockX(), sh.blockZ(), sh.getVariant(),
+                        invScale, iconScale, scaledMouseX, scaledMouseY);
                 }
             }
         }
@@ -132,7 +133,7 @@ public class StructureOverlayMixin {
 
     @Unique
     private void xsm$drawStructureIcon(GuiGraphicsExtractor guiGraphics, StructureType type,
-            float u0, float u1, int blockX, int blockZ,
+            float u0, float u1, int blockX, int blockZ, int variant,
             double invScale, float iconScale, int scaledMouseX, int scaledMouseY) {
         final Minecraft mc = Minecraft.getInstance();
         final int windowW = mc.getWindow().getWidth();
@@ -157,7 +158,11 @@ public class StructureOverlayMixin {
         float dist = (float) Math.max(Math.abs(dx), Math.abs(dy));
         if (dist < xsm$bestDist) {
             xsm$bestDist = dist;
-            xsm$hoverText = I18n.get(type.translationKey());
+            String hover = I18n.get(type.translationKey());
+            String vk = type.variantTranslationKey(variant);
+            if (vk != null)
+                hover += " (" + I18n.get(vk) + ")";
+            xsm$hoverText = hover;
         }
     }
 }

@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <random>
 
+#include "../../cubiomes/finders.h"
 #include "../../cubiomes/util.h"
 #include "../apis/render.h"
 
@@ -132,13 +133,13 @@ int test4() {
     if (!setWorld(12345, t.dim)) return -3;
     // 预热 (小范围)
     int64_t warmNext;
-    querySparseStructures(t.id, 0, 0, 16, 16, 0, 0, 0, 0, -1, CAP, bx, bz, &warmNext);
+    querySparseStructures(t.id, 0, 0, 16, 16, 0, 0, 0, 0, -1, CAP, bx, bz, NULL, &warmNext);
     auto s = std::chrono::steady_clock::now();
     uint32_t total = 0, rounds = 0;
     int64_t next = -1;
     do {
       int64_t start = next;
-      uint32_t n = querySparseStructures(t.id, 0, 0, N, N, 0, 0, 0, 0, start, CAP, bx, bz, &next);
+      uint32_t n = querySparseStructures(t.id, 0, 0, N, N, 0, 0, 0, 0, start, CAP, bx, bz, NULL, &next);
       total += n;
       rounds++;
     } while (next >= 0);

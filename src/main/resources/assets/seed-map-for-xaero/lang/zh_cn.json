@@ -57,5 +57,23 @@
   "xsm.structure.trial_chambers": "试炼密室",
   "xsm.structure.stronghold": "要塞",
 
+  "xsm.structure.end_city.variant.ship": "带末地船",
+  "xsm.structure.village.variant.desert": "沙漠",
+  "xsm.structure.village.variant.savanna": "热带草原",
+  "xsm.structure.village.variant.taiga": "针叶林",
+  "xsm.structure.village.variant.snowy": "雪原",
+  "xsm.structure.village.variant.zombie": "僵尸",
+  "xsm.structure.bastion.variant.hoglin_stable": "猪灵兽厩",
+  "xsm.structure.bastion.variant.treasure": "藏宝室",
+  "xsm.structure.bastion.variant.bridge": "桥",
+  "xsm.structure.igloo.variant.basement": "带地下室",
+  "xsm.structure.shipwreck.variant.beached": "搁浅",
+  "xsm.structure.ruined_portal.variant.giant": "巨型",
+  "xsm.structure.ruined_portal.variant.underground": "地下",
+  "xsm.structure.ruined_portal.variant.airpocket": "气袋",
+  "xsm.structure.geode.variant.cracked": "开裂",
+  "xsm.structure.trial_chambers.variant.corridor": "走廊",
+  "xsm.structure.trial_chambers.variant.end": "尽头",
+
   "xsm.biome.unknown": "未知生物群系 (%d)"
 }

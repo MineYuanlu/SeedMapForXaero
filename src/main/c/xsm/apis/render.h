@@ -105,25 +105,53 @@ XSM_API int32_t xsmGetStructureConfig(
 /// @brief 获取结构类型数量(枚举最大值)
 XSM_API int32_t xsmGetStructFEATURE_NUM(void);
 
+/* 结构变种位码 (仅作为查询输出的变种码, 语义按结构类型定义; 无变种类型恒为 0):
+ *
+ * End_City         bit0 (1) 含末地船(鞘翅)
+ * Igloo            bit0 (1) 有地下室
+ * Shipwreck        bit0 (1) 搁浅
+ * Geode            bit0 (1) 开裂
+ * Village          bit0-2   村庄类型 0平原 1沙漠 2稀树 3针叶 4雪原
+ *                  bit3 (8) 僵尸村
+ * Bastion          bit0-1   类型 0兵营(units) 1猪灵兽厩(hoglin_stable)
+ *                           2藏宝室(treasure) 3桥(bridge)
+ * Ruined_Portal/   bit0 (1) 巨型  bit1 (2) 地下  bit2 (4) 气袋
+ * Ruined_Portal_N
+ * Trial_Chambers   bit0-1   变种 0走廊(corridor) 1结尾(end)
+ */
+#define XSM_VAR_END_CITY_SHIP          (1 << 0)
+#define XSM_VAR_IGLOO_BASEMENT         (1 << 0)
+#define XSM_VAR_SHIPWRECK_BEACHED      (1 << 0)
+#define XSM_VAR_GEODE_CRACKED          (1 << 0)
+#define XSM_VAR_VILLAGE_TYPE_MASK      (0x07)
+#define XSM_VAR_VILLAGE_ZOMBIE         (1 << 3)
+#define XSM_VAR_BASTION_TYPE_MASK      (0x03)
+#define XSM_VAR_PORTAL_GIANT           (1 << 0)
+#define XSM_VAR_PORTAL_UNDERGROUND     (1 << 1)
+#define XSM_VAR_PORTAL_AIRPOCKET       (1 << 2)
+#define XSM_VAR_TRIAL_CHAMBERS_MASK    (0x03)
+
 /// @brief 批量查询某个结构类型在矩形 (rx0, rz0) ~ (rx1, rz1) 但不在矩形 (rx2, rz2) ~ (rx3, rz3) 区域内的结构位置。
 /// @details 对每个 region (rx, rz) ∈ [rx0, rx1) × [rz0, rz1) 且 (rx, rz) ∉ [rx2, rx3) × [rz2, rz3)：
 ///   index 为x优先的遍历，抛除不在区域内的 region
-///   如果该 region 有有效的结构生成点：
+///  如果该 region 有有效的结构生成点：
 ///     outFound[index] = 1
 ///     outBlockX[index] = pos.x
 ///     outBlockZ[index] = pos.z
-///   否则：
+///     outVariant[index] = 变种位码 (见 XSM_VAR_*)
+///  否则：
 ///     outFound[index] = 0
 /// 输出数组由调用方预分配，大小 = (rx1 - rx0) * (rz1 - rz0) - (rx3 - rx2) * (rz3 - rz2)。
 XSM_API uint32_t queryRegionStructuresGrid(
     int32_t  structureType,
     int32_t  rx0, int32_t rz0,
-    int32_t rx1, int32_t rz1,
+    int32_t  rx1, int32_t rz1,
     int32_t  rx2, int32_t rz2,
-    int32_t rx3, int32_t rz3,
+    int32_t  rx3, int32_t rz3,
     int8_t*  outFound,
     int32_t* outBlockX,
-    int32_t* outBlockZ
+    int32_t* outBlockZ,
+    int32_t* outVariant
 );
 
 /// @brief 查询要塞精确位置, 返回 index ∈ [from, to) 的部分
@@ -153,6 +181,7 @@ XSM_API uint32_t queryStrongholdsRange(
 /// @param cap 输出数组容量(每个数组 >= cap)
 /// @param outBlockX 输出 X(block 坐标)
 /// @param outBlockZ 输出 Z(block 坐标)
+/// @param outVariant 输出变种位码 (见 XSM_VAR_*)
 /// @param outNext 续传点输出; 完成时为 -1
 /// @return 实际写入的命中数量 (<= cap)
 XSM_API uint32_t querySparseStructures(
@@ -164,6 +193,7 @@ XSM_API uint32_t querySparseStructures(
     int64_t  start, int32_t cap,
     int32_t* outBlockX,
     int32_t* outBlockZ,
+    int32_t* outVariant,
     int64_t* outNext
 );
 
