@@ -193,11 +193,19 @@ TEST_CASE("querySparseStructures") {
       CHECK(got[i] == expect[i]);
   }
 
-  // 5. End 类型: 仅 End 维度可查; End_Island 绕过 viability
+  // 5. End 类型: 仅 End 维度可查; 1.18+ End_Island 仅在小岛群系 (small_end_islands)
+  //    区块命中 (真实浮岛只在其中生成, 其余群系标记为虚假)
   int32_t xe[4096], ze[4096];
   setWorld(0, 1);  // DIM_END
   n = querySparseStructures(End_Island, 0, 0, 64, 64, 0, 0, 0, 0, -1, 4096, xe, ze, nullptr, &next);
   CHECK_MESSAGE(n > 0, "End_Island in End dim should be found, got ", n);
+  Generator eg;
+  setupGenerator(&eg, MC_26_1, 0);
+  applySeed(&eg, DIM_END, 0);
+  for (uint32_t i = 0; i < n; i++)
+    CHECK_MESSAGE(getBiomeAt(&eg, 16, xe[i] >> 4, 0, ze[i] >> 4) == small_end_islands,
+                  "End_Island hit at (", xe[i], ", ", ze[i],
+                  ") not in small_end_islands biome");
   n = querySparseStructures(End_Gateway, 0, 0, 64, 64, 0, 0, 0, 0, -1, 4096, xe, ze, nullptr, &next);
   CHECK(next == -1);  // 单轮即可扫完(命中远小于 cap)
   // 错误维度: End_Island 在主世界 → 0

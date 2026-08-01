@@ -153,6 +153,15 @@ static int xsmStructureBiome(Generator* g, int structureType,
   return id;
 }
 
+/// 1.18+ 末地浮岛仅在 small_end_islands 群系的区块生成 (镜像 cubiomes
+/// mapEndIslandHeight / isEndChunkEmpty 的语义, 即末地小岛装饰地物只在该群系
+/// 运行); ≤1.17 末地只有单一 the_end 群系, 无群系约束。
+static bool xsmEndIslandViable(const Generator* g, int32_t blockX,
+                               int32_t blockZ) {
+  if (g->mc <= MC_1_17) return true;
+  return getBiomeAt(g, 16, blockX >> 4, 0, blockZ >> 4) == small_end_islands;
+}
+
 /// 计算单个结构的变种码 (见 render.h XSM_VAR_*); 无变种/不支持返回 0
 static int32_t xsmComputeVariant(int32_t structureType, int32_t blockX,
                                  int32_t blockZ) {
@@ -650,8 +659,10 @@ uint32_t querySparseStructures(int32_t structureType,
   // 维度过滤: 结构只在其所属维度查询
   // (错误维度下 isViableStructurePos 会打印 stderr, 且位置无意义)
   if (sconf.dim != tn.g.dim) return 0;
-  // End_Island 在 cubiomes 中 isViableStructurePos 恒返回 0
-  // (无群系约束语义), 直接视为可生成
+  // End_Island 在 cubiomes 中 isViableStructurePos 恒返回 0 (无群系约束语义),
+  // 但 1.18+ 末地浮岛只在 small_end_islands 群系的区块生成, 此处自行按群系过滤
+  // (见 xsmEndIslandViable), 否则大岛区域 (midlands/highlands/barrens) 的
+  // 标记全部是虚假的
   const bool bypassViability = (structureType == End_Island);
 
   uint32_t n = 0;
@@ -665,6 +676,7 @@ uint32_t querySparseStructures(int32_t structureType,
       Pos pos;
       if (!getStructurePos(structureType, tn.g.mc, tn.g.seed, x, z, &pos)) continue;
       if (!bypassViability && !isViableStructurePos(structureType, &tn.g, pos.x, pos.z, 0)) continue;
+      if (bypassViability && !xsmEndIslandViable(&tn.g, pos.x, pos.z)) continue;
 
       if (n >= (uint32_t)cap) {
         *outNext = lin;
