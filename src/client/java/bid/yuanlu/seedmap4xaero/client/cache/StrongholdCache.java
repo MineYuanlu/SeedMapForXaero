@@ -4,6 +4,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 
 /**
@@ -98,7 +99,12 @@ public final class StrongholdCache {
      * @param blockX 精确方块坐标 X
      * @param blockZ 精确方块坐标 Z
      */
-    public static record StrongholdPos(int index, int blockX, int blockZ) {
+    public static record StrongholdPos(int index, int blockX, int blockZ) implements StructurePos {
+
+        @Override
+        public boolean loaded() {
+            return true;
+        }
     }
 
 }

@@ -187,7 +187,7 @@ public final class Xsm {
     }
 
     public interface RegionStructureSetter {
-        void set(int rx, int rz, boolean found, int bx, int bz);
+        void set(int rx, int rz, boolean found, int bx, int bz, int variant);
     }
 
     /**
@@ -231,23 +231,25 @@ public final class Xsm {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment bx = arena.allocate(4L * cap);
             MemorySegment bz = arena.allocate(4L * cap);
+            MemorySegment vr = arena.allocate(4L * cap);
             MemorySegment next = arena.allocate(8);
             int n = XsmNative.querySparseStructures(
                     structureType,
                     rx0, rz0, rx1, rz1,
                     cex0, cez0, cex1, cez1,
-                    start, cap, bx, bz, next);
+                    start, cap, bx, bz, vr, next);
             long nextVal = next.get(ValueLayout.JAVA_LONG, 0);
             for (int i = 0; i < n; i++) {
                 setter.set(bx.getAtIndex(ValueLayout.JAVA_INT, i),
-                        bz.getAtIndex(ValueLayout.JAVA_INT, i));
+                        bz.getAtIndex(ValueLayout.JAVA_INT, i),
+                        vr.getAtIndex(ValueLayout.JAVA_INT, i));
             }
             return nextVal;
         }
     }
 
     public interface SparseStructureSetter {
-        void set(int blockX, int blockZ);
+        void set(int blockX, int blockZ, int variant);
     }
 
     public static void queryRegionStructuresGrid(
@@ -277,12 +279,13 @@ public final class Xsm {
             MemorySegment found = arena.allocate(n);
             MemorySegment bx = arena.allocate(4L * n);
             MemorySegment bz = arena.allocate(4L * n);
+            MemorySegment vr = arena.allocate(4L * n);
 
             XsmNative.queryRegionStructuresGrid(
                     structureType,
                     rx0, rz0, rx1, rz1,
                     ex0, ez0, ex1, ez1,
-                    found, bx, bz);
+                    found, bx, bz, vr);
 
             int index = 0;
             for (int x = rx0; x < rx1; x++) {
@@ -294,7 +297,8 @@ public final class Xsm {
                     setter.set(x, z,
                             found.get(ValueLayout.JAVA_BYTE, idx) != 0,
                             bx.getAtIndex(ValueLayout.JAVA_INT, idx),
-                            bz.getAtIndex(ValueLayout.JAVA_INT, idx));
+                            bz.getAtIndex(ValueLayout.JAVA_INT, idx),
+                            vr.getAtIndex(ValueLayout.JAVA_INT, idx));
                 }
             }
         }

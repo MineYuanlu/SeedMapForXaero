@@ -13,10 +13,10 @@ import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+import it.unimi.dsi.fastutil.longs.Long2IntMap;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongArrayList;
-import it.unimi.dsi.fastutil.longs.LongIterator;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectIterator;
 
 public class StructureCache {
 
@@ -98,6 +98,11 @@ public class StructureCache {
         int blockX();
 
         int blockZ();
+
+        /** 变种码 (见 Xsm 变种位码语义); 无变种恒为 0 */
+        default int getVariant() {
+            return 0;
+        }
     }
 
     /**
@@ -107,8 +112,8 @@ public class StructureCache {
      */
     private static final class TileCache2 extends AbstractCollection<StructurePos> {
         private final @NotNull StructureType type;
-        /** 已发布快照: (blockX<<32)|(blockZ&0xffffffff); 渲染线程只读 */
-        private volatile LongOpenHashSet snapshot = new LongOpenHashSet();
+        /** 已发布快照: (blockX<<32)|(blockZ&0xffffffff) → 变种码(缺省 0 = 无变种); 渲染线程只读 */
+        private volatile Long2IntOpenHashMap snapshot = new Long2IntOpenHashMap();
         /** 上一帧 region 矩形(检测变化, 移除框外命中) */
         private int rx0, rx1, rz0, rz1;
         /** 已完整扫描的矩形; 仅当一次扫描无截断时推进 */
@@ -173,17 +178,18 @@ public class StructureCache {
 
         /** 移除矩形外的命中 (需持有锁) */
         private void retainIn(int rx0, int rx1, int rz0, int rz1) {
-            final LongOpenHashSet s = snapshot;
+            final Long2IntOpenHashMap s = snapshot;
             if (s.isEmpty())
                 return;
-            final LongOpenHashSet ns = new LongOpenHashSet(s.size());
-            var it = s.iterator();
+            final Long2IntOpenHashMap ns = new Long2IntOpenHashMap(s.size());
+            var it = s.long2IntEntrySet().fastIterator();
             while (it.hasNext()) {
-                long key = it.nextLong();
+                var e = it.next();
+                long key = e.getLongKey();
                 int cx = (int) (key >> 32) >> 4;
                 int cz = (int) (key & 0xFFFFFFFFL) >> 4;
                 if (cx >= rx0 && cx < rx1 && cz >= rz0 && cz < rz1)
-                    ns.add(key);
+                    ns.put(key, e.getIntValue());
             }
             snapshot = ns;
         }
@@ -216,13 +222,16 @@ public class StructureCache {
             final int cap = StructureType.MAX_SPARSE_HITS;
             final int id = type.id;
             CacheHelper.CACHE_WORKER.execute(() -> {
-            final LongArrayList hits = new LongArrayList();
+                final Long2IntOpenHashMap hitVariants = new Long2IntOpenHashMap();
                 final long next = Xsm.querySparseStructures(
                         id,
                         rx0, rz0, rx1, rz1,
                         fex0, fez0, fex1, fez1,
                         start, cap,
-                        (bx, bz) -> hits.add(((long) bx << 32) | (bz & 0xFFFFFFFFL)));
+                        (bx, bz, v) -> {
+                            long key = ((long) bx << 32) | (bz & 0xFFFFFFFFL);
+                            hitVariants.put(key, v);
+                        });
                 synchronized (TileCache2.this) {
                     jobRunning = false;
                     if (next >= 0) {
@@ -240,10 +249,11 @@ public class StructureCache {
                         covZ0 = rz0;
                         covZ1 = rz1;
                     }
-                    if (!hits.isEmpty()) {
-                        LongOpenHashSet ns = new LongOpenHashSet(snapshot.size() + hits.size());
-                        ns.addAll(snapshot);
-                        ns.addAll(hits);
+                    if (!hitVariants.isEmpty()) {
+                        Long2IntOpenHashMap ns = new Long2IntOpenHashMap(
+                                snapshot.size() + hitVariants.size());
+                        ns.putAll(snapshot);
+                        ns.putAll(hitVariants);
                         snapshot = ns;
                     }
                 }
@@ -267,25 +277,28 @@ public class StructureCache {
             if (!pos.loaded())
                 return false;
             long key = (long) pos.blockX() << 32 | (pos.blockZ() & 0xFFFFFFFFL);
-            return snapshot.contains(key);
+            return snapshot.containsKey(key);
         }
 
         private static final class PosIterator implements Iterator<StructurePos>, StructurePos {
-            private final LongIterator longIt;
+            private final ObjectIterator<Long2IntMap.Entry> it;
             private long pos;
+            private int variant;
 
-            PosIterator(LongOpenHashSet set) {
-                longIt = set.iterator();
+            PosIterator(Long2IntOpenHashMap map) {
+                it = map.long2IntEntrySet().fastIterator();
             }
 
             @Override
             public boolean hasNext() {
-                return longIt.hasNext();
+                return it.hasNext();
             }
 
             @Override
             public StructurePos next() {
-                pos = longIt.nextLong();
+                var e = it.next();
+                pos = e.getLongKey();
+                variant = e.getIntValue();
                 return this;
             }
 
@@ -302,6 +315,11 @@ public class StructureCache {
             @Override
             public int blockZ() {
                 return (int) (pos & 0xFFFFFFFFL);
+            }
+
+            @Override
+            public int getVariant() {
+                return variant;
             }
         }
     }
@@ -374,7 +392,7 @@ public class StructureCache {
                     type.id,
                     rx0, rz0, rx1, rz1,
                     fex0, fez0, fex1, fez1,
-                    (rx, rz, loaded, bx, bz) -> {
+                    (rx, rz, loaded, bx, bz, variant) -> {
                         if (!loaded)
                             return;
                         long key = ((long) rx << 32) | (rz & 0xFFFFFFFFL);
@@ -384,6 +402,7 @@ public class StructureCache {
                         rp.loaded = true;
                         rp.blockX = bx;
                         rp.blockZ = bz;
+                        rp.variant = variant;
                     }));
 
             return tiles.values();
@@ -397,12 +416,15 @@ public class StructureCache {
         private static final class RegionPos implements StructurePos {
             public volatile int blockX;
             public volatile int blockZ;
+            /** 变种码 (见 Xsm 变种位码语义) */
+            public volatile int variant;
             /** 代表blockX/Z是否有效; false代表加载中/此区域没有生成结构/程序出错 */
             public volatile boolean loaded;
 
             public RegionPos() {
                 this.blockX = 0;
                 this.blockZ = 0;
+                this.variant = 0;
                 this.loaded = false;
             }
 
@@ -419,6 +441,11 @@ public class StructureCache {
             @Override
             public int blockZ() {
                 return blockZ;
+            }
+
+            @Override
+            public int getVariant() {
+                return variant;
             }
 
         }

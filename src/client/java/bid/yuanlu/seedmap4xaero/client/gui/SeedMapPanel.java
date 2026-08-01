@@ -314,8 +314,8 @@ public class SeedMapPanel {
                     && my >= itemY && my <= itemY + ITEM_H;
             renderCheckbox(g, PADDING, itemY + (ITEM_H - 9) / 2, si, hover);
 
-            float u0 = (s.spriteIndex * 16f) / 400f;
-            float u1 = u0 + 16f / 400f;
+            float u0 = (s.getSpriteIndex(0) * 16f) / StructureType.PLAIN_SPRITESHEET_WIDTH;
+            float u1 = u0 + 16f / StructureType.PLAIN_SPRITESHEET_WIDTH;
             g.blit(StructureType.STRUCTURES_PLAIN_TEXTURE,
                     PADDING + 12, itemY + 1,
                     PADDING + 22, itemY + 11,

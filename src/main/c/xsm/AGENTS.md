@@ -13,7 +13,7 @@
 - Terrain lighting: Overworld only (C-side hardcoded)
 - MC version string map in `render.cpp` lines 23–61 must be updated for new MC releases
 - `Xsm.setBiomeColorTable` must be called before any gen — C-side defaults to black image
-- `querySparseStructures`: dim filter (wrong-dim `isViableStructurePos` prints stderr + meaningless positions); `End_Island` bypasses viability (cubiomes always returns 0 — "no constraint"); cap → `*outNext` linear index, `-1` = scan complete
+- `querySparseStructures`: dim filter (wrong-dim `isViableStructurePos` prints stderr + meaningless positions); `End_Island` skips `isViableStructurePos` (cubiomes always returns 0 — "no constraint") but 1.18+ requires the chunk biome to be `small_end_islands` (real floating islands only generate there, per cubiomes `mapEndIslandHeight`/`isEndChunkEmpty`); cap → `*outNext` linear index, `-1` = scan complete
 - `queryStrongholdsRange`: replays RNG chain from index 0 (positions are sequential — cannot jump-skip); `mc > 1.19.2` passes `NULL` generator to skip biome search for out-of-range indices; overworld only; returns count of positions in `[from, to)`
 - New C API functions must be added to `includes.txt` for jextract to pick them up
 - Benchmark with `-DDEBUG_TIMINGS=ON`; tests via `./build-test/xsmtest`

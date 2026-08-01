@@ -11,6 +11,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "../utils/mutex.h"
 
@@ -18,6 +19,8 @@
 #include "../../cubiomes/terrainnoise.h"
 #include "../../cubiomes/util.h"
 #include "../../cubiomes/finders.h"
+#include "../../cubiomes/biomenoise.h"
+#include "../../cubiomes/features/end_city.h"
 
 namespace {
 static const std::unordered_map<std::string, MCVersion> mcVersionMap = {
@@ -74,6 +77,8 @@ unsigned char biomeColorTableMask[MAX_BIOMES][3];
 
 /// 生成器实例（TerrainNoise 内嵌 Generator g 作为第一成员，&tn.g 即为 Generator*）
 TerrainNoise tn{};
+/// 末地表面噪声（isViableEndCityTerrain 的必需前置，见 setWorld）
+SurfaceNoise endSn{};
 bool gen_setGameVersion = false;  ///< 是否已经设置游戏版本
 bool gen_setWorld = false;        ///< 是否已经设置世界信息
 
@@ -92,6 +97,131 @@ static const float XSM_MAX_LIGHT        = 1.40f;   // 最高亮度 multiplier
 static const float XSM_DEPTH_MIN        = 0.85f;   // y=0 处的深度暗化系数
 static const float XSM_AQUA_RED_GREEN   = 0.85f;   // 水下红/绿衰减
 static const float XSM_AQUA_BLUE        = 0.90f;   // 水下蓝衰减
+
+// ===== Structure variant helpers (见 render.h XSM_VAR_*) =====
+
+/// 采样结构生成点所在群系 (镜像 cubiomes isViableStructurePos 对应分支)
+/// @param structureType 仅 Village 或 Shipwreck
+/// @return biomeID; -1 = 采样失败/无需采样
+static int xsmStructureBiome(Generator* g, int structureType,
+                             int blockX, int blockZ) {
+  const int chunkX = blockX >> 4, chunkZ = blockZ >> 4;
+  if (structureType == Village && g->mc <= MC_1_9)
+    return -1;  // getVariant 对 <=1.9 恒返回 0, 无需群系
+  if (g->mc >= MC_1_18) {
+    if (structureType == Village) {
+      // 1.18+ 村庄类型逐类探测 (cubiomes isViableStructurePos Village 分支)
+      const int vv[] = {plains, desert, savanna, taiga, snowy_tundra};
+      for (size_t i = 0; i < sizeof(vv) / sizeof(vv[0]); i++) {
+        StructureVariant sv;
+        getVariant(&sv, Village, g->mc, g->seed, blockX, blockZ, vv[i]);
+        const int sampleX = (chunkX * 32 + 2 * sv.x + sv.sx - 1) / 2 >> 2;
+        const int sampleZ = (chunkZ * 32 + 2 * sv.z + sv.sz - 1) / 2 >> 2;
+        const int id = getBiomeAt(g, 0, sampleX, 319 >> 2, sampleZ);
+        if (id == vv[i] || (id == meadow && vv[i] == plains))
+          return vv[i];
+      }
+      return -1;
+    }
+    return getBiomeAt(g, 0, chunkX * 4 + 2, 319 >> 2, chunkZ * 4 + 2);
+  }
+  // <= 1.17: 切换 entry 层采样 (镜像 cubiomes; 与 isViableStructurePos 一致)
+  Layer* const savedEntry = g->entry;
+  int sampleX, sampleZ, id;
+  const int post189 = g->mc > MC_1_8_9;
+  if (structureType == Village) {
+    if (g->mc == MC_1_15) {
+      g->entry = &g->ls.layers[L_VORONOI_1];
+      sampleX = chunkX * 16 + 9;
+      sampleZ = chunkZ * 16 + 9;
+    } else {
+      g->entry = &g->ls.layers[L_RIVER_MIX_4];
+      sampleX = chunkX * 4 + 2;
+      sampleZ = chunkZ * 4 + 2;
+    }
+    id = getBiomeAt(g, 0, sampleX, 0, sampleZ);
+  } else {  // Shipwreck (L_feature 分支)
+    if (g->mc <= MC_1_15) {
+      g->entry = &g->ls.layers[L_VORONOI_1];
+      sampleX = chunkX * 16 + 8 + post189;
+      sampleZ = chunkZ * 16 + 8 + post189;
+    } else {
+      g->entry = &g->ls.layers[L_RIVER_MIX_4];
+      sampleX = chunkX * 4 + 2;
+      sampleZ = chunkZ * 4 + 2;
+    }
+    id = getBiomeAt(g, 0, sampleX, 319 >> 2, sampleZ);
+  }
+  g->entry = savedEntry;
+  return id;
+}
+
+/// 1.18+ 末地浮岛仅在 small_end_islands 群系的区块生成 (镜像 cubiomes
+/// mapEndIslandHeight / isEndChunkEmpty 的语义, 即末地小岛装饰地物只在该群系
+/// 运行); ≤1.17 末地只有单一 the_end 群系, 无群系约束。
+static bool xsmEndIslandViable(const Generator* g, int32_t blockX,
+                               int32_t blockZ) {
+  if (g->mc <= MC_1_17) return true;
+  return getBiomeAt(g, 16, blockX >> 4, 0, blockZ >> 4) == small_end_islands;
+}
+
+/// 计算单个结构的变种码 (见 render.h XSM_VAR_*); 无变种/不支持返回 0
+static int32_t xsmComputeVariant(int32_t structureType, int32_t blockX,
+                                 int32_t blockZ) {
+  if (structureType == End_City) {
+    // getVariant 不支持 End_City; 完整重放 piece 生成, 检查是否含末地船
+    thread_local std::vector<Piece> pieces;
+    pieces.assign(END_CITY_PIECES_MAX, Piece{});
+    const int n = getEndCityPieces(pieces.data(), tn.g.seed, blockX >> 4,
+                                   blockZ >> 4);
+    for (int i = 0; i < n; i++) {
+      if (pieces[i].type == END_SHIP)
+        return XSM_VAR_END_CITY_SHIP;
+    }
+    return 0;
+  }
+  int biomeID = -1;
+  if (structureType == Village || structureType == Shipwreck)
+    biomeID = xsmStructureBiome(&tn.g, structureType, blockX, blockZ);
+  StructureVariant sv;
+  if (!getVariant(&sv, structureType, tn.g.mc, tn.g.seed, blockX, blockZ,
+                  biomeID))
+    return 0;
+  switch (structureType) {
+  case Village: {
+    int type;
+    switch (sv.biome) {
+    case desert: type = 1; break;
+    case savanna: type = 2; break;
+    case taiga: type = 3; break;
+    case snowy_tundra: type = 4; break;
+    default: type = 0; break;  // plains / meadow->plains
+    }
+    return type | (sv.abandoned ? XSM_VAR_VILLAGE_ZOMBIE : 0);
+  }
+  case Bastion:
+    return sv.start & XSM_VAR_BASTION_TYPE_MASK;
+  case Igloo:
+    return sv.basement ? XSM_VAR_IGLOO_BASEMENT : 0;
+  case Shipwreck:
+    // getVariant 内部以 biomeID 判定搁浅: 非海洋群系 nextInt(11), 海洋 nextInt(20)
+    return sv.start < 11 ? XSM_VAR_SHIPWRECK_BEACHED : 0;
+  case Ruined_Portal:
+  case Ruined_Portal_N: {
+    int v = 0;
+    if (sv.giant) v |= XSM_VAR_PORTAL_GIANT;
+    if (sv.underground) v |= XSM_VAR_PORTAL_UNDERGROUND;
+    if (sv.airpocket) v |= XSM_VAR_PORTAL_AIRPOCKET;
+    return v;
+  }
+  case Geode:
+    return sv.cracked ? XSM_VAR_GEODE_CRACKED : 0;
+  case Trial_Chambers:
+    return sv.start & XSM_VAR_TRIAL_CHAMBERS_MASK;
+  default:
+    return 0;
+  }
+}
 }  // namespace
 
 
@@ -154,6 +284,7 @@ bool setWorld(uint64_t seed, int dim) {
   std::lock_guard<xsm::mutex> lock(setting_mtx);
   if (!gen_setGameVersion) return false;
   initTerrainNoise(&tn, seed, dim);
+  initSurfaceNoise(&endSn, DIM_END, seed);
   gen_setWorld = true;
   return true;
 }
@@ -448,7 +579,8 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
                                    int32_t rz0, int32_t rx1, int32_t rz1,
                                    int32_t rx2, int32_t rz2, int32_t rx3,
                                    int32_t rz3, int8_t* outFound,
-                                   int32_t* outBlockX, int32_t* outBlockZ) {
+                                   int32_t* outBlockX, int32_t* outBlockZ,
+                                   int32_t* outVariant) {
   if (!gen_setWorld) return 0;
 
 
@@ -465,15 +597,25 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
       Pos pos;
       if (!getStructurePos(structureType, tn.g.mc, tn.g.seed, x, z, &pos)) {
         outFound[idx] = 0;
+        if (outVariant) outVariant[idx] = 0;
         continue;
       }
       if (!isViableStructurePos(structureType, &tn.g, pos.x, pos.z, 0)) {
         outFound[idx] = 0;
+        if (outVariant) outVariant[idx] = 0;
+        continue;
+      }
+      if (structureType == End_City && tn.g.dim == DIM_END &&
+          !isViableEndCityTerrain(&tn.g, &endSn, pos.x, pos.z)) {
+        outFound[idx] = 0;
+        if (outVariant) outVariant[idx] = 0;
         continue;
       }
       outFound[idx] = 1;
       outBlockX[idx] = pos.x;
       outBlockZ[idx] = pos.z;
+      if (outVariant)
+        outVariant[idx] = xsmComputeVariant(structureType, pos.x, pos.z);
       ++cnt;
     }
   }
@@ -516,6 +658,7 @@ uint32_t querySparseStructures(int32_t structureType,
                                int32_t ex1, int32_t ez1,
                                int64_t start, int32_t cap,
                                int32_t* outBlockX, int32_t* outBlockZ,
+                               int32_t* outVariant,
                                int64_t* outNext) {
   if (outNext) *outNext = -1;
   if (!gen_setWorld || cap <= 0 || !outBlockX || !outBlockZ || !outNext) return 0;
@@ -526,8 +669,10 @@ uint32_t querySparseStructures(int32_t structureType,
   // 维度过滤: 结构只在其所属维度查询
   // (错误维度下 isViableStructurePos 会打印 stderr, 且位置无意义)
   if (sconf.dim != tn.g.dim) return 0;
-  // End_Island 在 cubiomes 中 isViableStructurePos 恒返回 0
-  // (无群系约束语义), 直接视为可生成
+  // End_Island 在 cubiomes 中 isViableStructurePos 恒返回 0 (无群系约束语义),
+  // 但 1.18+ 末地浮岛只在 small_end_islands 群系的区块生成, 此处自行按群系过滤
+  // (见 xsmEndIslandViable), 否则大岛区域 (midlands/highlands/barrens) 的
+  // 标记全部是虚假的
   const bool bypassViability = (structureType == End_Island);
 
   uint32_t n = 0;
@@ -541,6 +686,7 @@ uint32_t querySparseStructures(int32_t structureType,
       Pos pos;
       if (!getStructurePos(structureType, tn.g.mc, tn.g.seed, x, z, &pos)) continue;
       if (!bypassViability && !isViableStructurePos(structureType, &tn.g, pos.x, pos.z, 0)) continue;
+      if (bypassViability && !xsmEndIslandViable(&tn.g, pos.x, pos.z)) continue;
 
       if (n >= (uint32_t)cap) {
         *outNext = lin;
@@ -548,6 +694,8 @@ uint32_t querySparseStructures(int32_t structureType,
       }
       outBlockX[n] = pos.x;
       outBlockZ[n] = pos.z;
+      if (outVariant)
+        outVariant[n] = xsmComputeVariant(structureType, pos.x, pos.z);
       n++;
     }
   }

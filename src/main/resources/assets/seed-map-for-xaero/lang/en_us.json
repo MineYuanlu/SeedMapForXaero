@@ -57,5 +57,23 @@
   "xsm.structure.trial_chambers": "Trial Chambers",
   "xsm.structure.stronghold": "Stronghold",
 
+  "xsm.structure.end_city.variant.ship": "with End Ship",
+  "xsm.structure.village.variant.desert": "Desert",
+  "xsm.structure.village.variant.savanna": "Savanna",
+  "xsm.structure.village.variant.taiga": "Taiga",
+  "xsm.structure.village.variant.snowy": "Snowy",
+  "xsm.structure.village.variant.zombie": "Zombie",
+  "xsm.structure.bastion.variant.hoglin_stable": "Hoglin Stable",
+  "xsm.structure.bastion.variant.treasure": "Treasure Room",
+  "xsm.structure.bastion.variant.bridge": "Bridge",
+  "xsm.structure.igloo.variant.basement": "with Basement",
+  "xsm.structure.shipwreck.variant.beached": "Beached",
+  "xsm.structure.ruined_portal.variant.giant": "Giant",
+  "xsm.structure.ruined_portal.variant.underground": "Underground",
+  "xsm.structure.ruined_portal.variant.airpocket": "Air Pocket",
+  "xsm.structure.geode.variant.cracked": "Cracked",
+  "xsm.structure.trial_chambers.variant.corridor": "Corridor",
+  "xsm.structure.trial_chambers.variant.end": "End",
+
   "xsm.biome.unknown": "Unknown Biome (%d)"
 }
