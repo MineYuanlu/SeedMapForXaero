@@ -19,6 +19,7 @@
 #include "../../cubiomes/terrainnoise.h"
 #include "../../cubiomes/util.h"
 #include "../../cubiomes/finders.h"
+#include "../../cubiomes/biomenoise.h"
 #include "../../cubiomes/features/end_city.h"
 
 namespace {
@@ -76,6 +77,8 @@ unsigned char biomeColorTableMask[MAX_BIOMES][3];
 
 /// 生成器实例（TerrainNoise 内嵌 Generator g 作为第一成员，&tn.g 即为 Generator*）
 TerrainNoise tn{};
+/// 末地表面噪声（isViableEndCityTerrain 的必需前置，见 setWorld）
+SurfaceNoise endSn{};
 bool gen_setGameVersion = false;  ///< 是否已经设置游戏版本
 bool gen_setWorld = false;        ///< 是否已经设置世界信息
 
@@ -281,6 +284,7 @@ bool setWorld(uint64_t seed, int dim) {
   std::lock_guard<xsm::mutex> lock(setting_mtx);
   if (!gen_setGameVersion) return false;
   initTerrainNoise(&tn, seed, dim);
+  initSurfaceNoise(&endSn, DIM_END, seed);
   gen_setWorld = true;
   return true;
 }
@@ -597,6 +601,12 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
         continue;
       }
       if (!isViableStructurePos(structureType, &tn.g, pos.x, pos.z, 0)) {
+        outFound[idx] = 0;
+        if (outVariant) outVariant[idx] = 0;
+        continue;
+      }
+      if (structureType == End_City && tn.g.dim == DIM_END &&
+          !isViableEndCityTerrain(&tn.g, &endSn, pos.x, pos.z)) {
         outFound[idx] = 0;
         if (outVariant) outVariant[idx] = 0;
         continue;
