@@ -323,6 +323,7 @@ publishMods {
 	modrinth {
 		projectId = "UoJSF4vW"
 		accessToken = providers.environmentVariable("MODRINTH_TOKEN")
-		minecraftVersions.add("${project.minecraft_version}")
+		def matrix = new groovy.json.JsonSlurper().parse(file('versions.json'))
+		matrix.versions.each { v -> minecraftVersions.add(v.id as String) }
 	}
 }

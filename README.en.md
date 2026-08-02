@@ -4,6 +4,9 @@
 
 > **Not affiliated with or endorsed by xaero96. Requires Xaero's World Map.**
 
+[![matrix-test](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml/badge.svg?branch=master)](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml)
+[![release](https://img.shields.io/github/v/release/MineYuanlu/SeedMapForXaero)](https://github.com/MineYuanlu/SeedMapForXaero/releases)
+
 Seed-based biome and structure preview on Xaero's World Map, powered by cubiomes native library.
 
 ---
@@ -49,13 +52,17 @@ This mod automatically fills in **unexplored** areas on Xaero's World Map with b
 
 ### Dependencies
 
-| Dependency        | Version                   |
-| ----------------- | ------------------------- |
-| Minecraft         | 26.1                      |
-| Fabric Loader     | Latest                    |
-| Fabric API        | 0.153.0+                  |
-| Xaero's World Map | 1.41.0+                   |
-| Java              | **25** (FFM API required) |
+Supported versions verified by the CI matrix (`versions.json`, 4 MC × old/new Xaero combos):
+
+| Dependency        | Version                            |
+| ----------------- | ---------------------------------- |
+| Minecraft         | 26.1 / 26.1.1 / 26.1.2 / 26.2      |
+| Fabric Loader     | Latest                             |
+| Fabric API        | 0.155.2+ (26.1) / 0.156.0+ (26.2)  |
+| Xaero's World Map | 1.40.14+ (26.1) / 1.41.0+ (26.2)   |
+| Java              | **25** (FFM API required)          |
+
+Default build target: Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0 (see `gradle.properties`).
 
 ---
 
@@ -161,10 +168,10 @@ UI strings in English and Chinese. `src/main/resources/assets/seed-map-for-xaero
 
 | Component         | Description                                                                                                                          |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Minecraft         | 26.1.2 (no obfuscation mapping)                                                                                                      |
+| Minecraft         | 26.1.2 (default, no obfuscation mapping)                                                                       |
 | Fabric Loom       | 1.17                                                                                                                                 |
-| Fabric API        | 0.153.0+26.1.2                                                                                                                       |
-| Xaero's World Map | 1.41.0                                                                                                                               |
+| Fabric API        | 0.153.0+26.1.2 (default)                                                                                                             |
+| Xaero's World Map | 1.41.0 (default)                                                                                                                     |
 | cubiomes          | Git submodule (C native lib), originally by [Cubitect](https://github.com/Cubitect), maintained by [xpple](https://github.com/xpple) |
 | Java              | 25 (FFM API)                                                                                                                         |
 | Build Tools       | Gradle + CMake                                                                                                                       |
