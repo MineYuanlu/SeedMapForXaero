@@ -8,7 +8,6 @@ Seed-based biome and structure preview on Xaero's World Map, powered by cubiomes
 
 ---
 
-
 <div align="center">
    <img src="doc/hero.png" width="800" alt="Showcase">
 </div>
@@ -130,14 +129,18 @@ Add `-DDEBUG_TIMINGS=ON` to enable performance timing.
 
 ### CI/CD
 
-Two workflows in `.github/workflows/`:
+Four workflows in `.github/workflows/`:
 
-| Workflow      | Trigger           | Action                                      |
-| ------------- | ----------------- | ------------------------------------------- |
-| `build.yml`   | Push / PR         | Non-master: Linux build; master: 3-platform |
-| `release.yml` | workflow_dispatch | Version bump + 3-platform build + Modrinth  |
+| Workflow               | Trigger           | Action                                                              |
+| ---------------------- | ----------------- | ------------------------------------------------------------------- |
+| `build.yml`            | Push / PR         | Non-master: Linux build; master/tag: 3-platform native + package    |
+| `matrix-test.yml`      | Push / manual     | 8-combo version matrix (4 MC × old/new Xaero) + client E2E GameTest |
+| `refresh-versions.yml` | Weekly + manual   | Refresh `versions.json` matrix (commits only on real changes)       |
+| `release.yml`          | workflow_dispatch | Version bump + 3-platform build + Modrinth + Release                |
 
 Modrinth project ID: `UoJSF4vW`
+
+Three test layers (see `doc/testing.md`): JVM unit tests → native integration → E2E client GameTest.
 
 ### Color Schemes
 

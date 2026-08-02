@@ -129,8 +129,8 @@ def main():
     clone_xpple_cubiomes()
     config = get_gradle_properties()
     xpple_cubiomes_version=config['xpple_cubiomes_version']
-    xaero_map_version=config['xaero_map_version']
-    xaero_lib_version=config['xaero_lib_version']
+    xaero_map_version=config['xaeroMapVersion']
+    xaero_lib_version=config['xaeroLibVersion']
     unpack_dep(f"dev.xpple:cubiomes:{xpple_cubiomes_version}",os.path.join(DST_DIR,'cubiomes'))
     unpack_dep(f"xaero.map:xaeroworldmap-fabric-26.1.2:{xaero_map_version}",os.path.join(DST_DIR,'xaeroworldmap'))
     unpack_dep(f"xaero.lib:xaerolib-fabric-26.1.2:{xaero_lib_version}",os.path.join(DST_DIR,'xaerolib'))

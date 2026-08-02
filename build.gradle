@@ -13,21 +13,15 @@ base {
 	archivesName = project.archives_base_name
 }
 
-// 矩阵参数（可按 -P 覆盖，见 versions.json / tools/resolve_versions.py）
-def matrixMinecraftVersion = project.minecraft_version
-def matrixFabricApiVersion = project.findProperty('fabricApiVersion') ?: project.fabric_api_version
-def matrixXaeroMapLine = project.findProperty('xaeroMapLine') ?: project.xaero_map_line
-def matrixXaeroMapVersion = project.findProperty('xaeroMapVersion') ?: project.xaero_map_version
-
 repositories {
 	maven { url "https://chocolateminecraft.com/maven" }
 	maven { url "https://api.modrinth.com/maven" }
 	maven { url "https://maven.aliyun.com/repository/public" }
 	mavenCentral()
-    maven {
-        name = 'xpple'
-        url = 'https://maven.xpple.dev/maven2'
-    }
+	maven {
+		name = 'xpple'
+		url = 'https://maven.xpple.dev/maven2'
+	}
 }
 
 loom {
@@ -45,18 +39,16 @@ fabricApi {
 	configureTests {
 		createSourceSet = true
 		modId = "seed-map-for-xaero-gametest"
-		// 服务端 runGameTest 会在 game test server 上加载 XaeroLib，其
-		// serverStarting 仅对 DedicatedServer 调 freeze() → registry 未冻结崩溃。
-		// 我们的 E2E 目标只有客户端 gametest，禁用服务端测试（也会从 check 摘除）。
+		// 服务端 gametest 的 game test server 上 XaeroLib 的 serverStarting 只对
+		// DedicatedServer 调 freeze() → registry 永不冻结崩溃；我们只要客户端 E2E。
 		enableGameTests = false
 		enableClientGameTests = true
-		// 同意 Minecraft EULA（测试用 client gametest 启动单机世界需要）
 		eula = true
 	}
 }
 
-// gametest source set（configureTests 创建）输出打包为独立 mod jar，供 production 运行加载。
-// 必须在 dependencies 块之前注册，否则 productionRuntimeMods 引用时找不到任务。
+// 测试 mod 是独立 source set（gametest），production 运行只收集
+// jar/remapJar + productionRuntimeMods —— 打包成 jar 显式加入，否则测试类不加载。
 def gametestModJar = tasks.register("gametestModJar", Jar) {
 	group = "verification"
 	from sourceSets.gametest.output
@@ -65,41 +57,27 @@ def gametestModJar = tasks.register("gametestModJar", Jar) {
 }
 
 dependencies {
-	minecraft "com.mojang:minecraft:${matrixMinecraftVersion}"
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
 
-	implementation "net.fabricmc.fabric-api:fabric-api:${matrixFabricApiVersion}"
-
-	// Better PVP is a separate optional Xaero mod — its POM pins `+` which can resolve
-	// to a version incompatible with old World Map builds (e.g. 26.4.2 needs ≥1.44.0).
-	// Our mod never uses it; exclude to keep the test classpath valid across the matrix.
-	compileOnly("xaero.map:xaeroworldmap-fabric-${matrixXaeroMapLine}:${matrixXaeroMapVersion}") {
-		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${matrixXaeroMapLine}"
-	}
-	runtimeOnly("xaero.map:xaeroworldmap-fabric-${matrixXaeroMapLine}:${matrixXaeroMapVersion}") {
-		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${matrixXaeroMapLine}"
-	}
-	// The mod compiles directly against XaeroLib (GpuTextureAndView, Tooltip, …).
-	// Old World Map POMs declare XaeroLib with runtime scope, which `compileOnly`
-	// does not carry onto the compile classpath — declare it explicitly instead.
-	// The `[1.1.0,)` range mirrors Xaero's own lower bound and resolves to the
-	// newest available on each artifact line (matching World Map's runtime pick).
-	compileOnly("xaero.lib:xaerolib-fabric-${matrixXaeroMapLine}:[1.1.0,)")
-	runtimeOnly("xaero.lib:xaerolib-fabric-${matrixXaeroMapLine}:[1.1.0,)")
+	// Better PVP 是可选独立 Xaero mod，其 POM 的 `+` 版本可能解析出不兼容旧版
+	// World Map 的版本；本 mod 不用它，排除以保证矩阵下 classpath 有效。
+	def xaeroMap = "xaero.map:xaeroworldmap-fabric-${project.xaeroMapLine}:${project.xaeroMapVersion}"
+	compileOnly(xaeroMap) { exclude group: 'xaero.pvp' }
+	runtimeOnly(xaeroMap) { exclude group: 'xaero.pvp' }
+	// 旧版 World Map POM 把 XaeroLib 声明为 runtime scope，compileOnly 不携带，
+	// 显式声明；`[1.1.0,)` 与 Xaero 自身下限一致，各线解析到最新。
+	compileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	runtimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 
-	// Production run task（CI client gametest）只从 jar/remapJar + productionRuntimeMods
-	// 收集 mods —— runtimeOnly 的 fabric-api / xaero 不会自动进，需显式声明。
-	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${matrixFabricApiVersion}"
-	productionRuntimeMods("xaero.map:xaeroworldmap-fabric-${matrixXaeroMapLine}:${matrixXaeroMapVersion}") {
-		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${matrixXaeroMapLine}"
-	}
-	productionRuntimeMods("xaero.lib:xaerolib-fabric-${matrixXaeroMapLine}:[1.1.0,)")
-
-	// 测试 mod 是独立 source set（gametest），production 运行收集 mods 时只含
-	// jar/remapJar + productionRuntimeMods —— 把 gametest 输出打包成 jar 加入，
-	// 否则 runProductionClientGameTest 里测试类根本不会加载。
+	// production 运行的 mods 只来自 jar/remapJar + productionRuntimeMods，
+	// fabric-api / xaero / 测试 mod 都要显式声明。
+	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
+	productionRuntimeMods(xaeroMap) { exclude group: 'xaero.pvp' }
+	productionRuntimeMods("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
 	productionRuntimeMods files(gametestModJar)
 }
 
@@ -107,13 +85,12 @@ test {
 	useJUnitPlatform()
 }
 
-// CI headless client gametest（生产运行）：Xvfb + fabric.client.gametest 开关
+// CI headless client gametest（生产运行）：Xvfb + fabric.client.gametest 开关。
 tasks.register("runProductionClientGameTest", net.fabricmc.loom.task.prod.ClientProductionRunTask) {
 	jvmArgs.add("-Dfabric.client.gametest")
-	// GH Actions 网络同步器 bug 规避（官方 automatic-testing 文档 warning）。
-	// 当前版本默认已 true，显式声明以防上游改默认值。
+	// 网络同步器 bug 规避（fabric-docs automatic-testing warning）。
 	jvmArgs.add("-Dfabric.client.gametest.disableNetworkSynchronizer=true")
-	// CI 下用 Xvfb 无头运行；本机有真实 DISPLAY 时直接用（可 -PclientGameTestXVFB=true/false 覆盖）
+	// CI 无头用 Xvfb；本机有真实 DISPLAY 时直接用（-PclientGameTestXVFB 可覆盖）。
 	def xvfbProp = project.findProperty('clientGameTestXVFB')
 	useXVFB = (xvfbProp != null) ? (xvfbProp as boolean) : (System.getenv('CI') != null)
 }
@@ -121,167 +98,166 @@ tasks.register("runProductionClientGameTest", net.fabricmc.loom.task.prod.Client
 // ─── Native C build ─────────────────────────────────────────────────────────
 
 def skipNative = project.findProperty('skipNativeBuild') ?: 'false'
+def skipNativeWindows = project.findProperty('skipNativeWindows') ?: 'false'
 
+// gradle.local.properties（gitignored）里也可覆盖上面的属性，与 -P 同格式。
 def localPropsFile = file('gradle.local.properties')
 if (localPropsFile.exists()) {
-    def props = new Properties()
-    localPropsFile.withInputStream { props.load(it) }
-    props.each { k, v -> project.ext[k] = v }
+	def props = new Properties()
+	localPropsFile.withInputStream { props.load(it) }
+	props.each { k, v -> project.ext[k] = v }
 }
-def skipNativeWindows = project.findProperty('skipNativeWindows') ?: 'false'
 
 ext.JEXTRACT_VERSION = '25'
 ext.JEXTRACT_BUILD = '2'
 ext.JEXTRACT_REV = '4'
 
 def jextractUrl() {
-    def osPart = Os.isFamily(Os.FAMILY_MAC) ?
-        (System.getProperty("os.arch") == "aarch64" ? "macos-aarch64" : "macos-x64") :
-        Os.isFamily(Os.FAMILY_WINDOWS) ? "windows-x64" : "linux-x64"
-    return "https://download.java.net/java/early_access/jextract/${project.JEXTRACT_VERSION}/${project.JEXTRACT_BUILD}/" +
-        "openjdk-${project.JEXTRACT_VERSION}-jextract+${project.JEXTRACT_BUILD}-${project.JEXTRACT_REV}_${osPart}_bin.tar.gz"
+	def osPart = Os.isFamily(Os.FAMILY_MAC) ?
+		(System.getProperty("os.arch") == "aarch64" ? "macos-aarch64" : "macos-x64") :
+		Os.isFamily(Os.FAMILY_WINDOWS) ? "windows-x64" : "linux-x64"
+	return "https://download.java.net/java/early_access/jextract/${project.JEXTRACT_VERSION}/${project.JEXTRACT_BUILD}/" +
+		"openjdk-${project.JEXTRACT_VERSION}-jextract+${project.JEXTRACT_BUILD}-${project.JEXTRACT_REV}_${osPart}_bin.tar.gz"
 }
 
 def defaultJextractDir = file("build/jextract/jextract-${project.JEXTRACT_VERSION}")
 def defaultJextractBinary = file("${defaultJextractDir}/bin/jextract")
 def jextractBinary = project.findProperty('jextractPath')
-    ? file(project.findProperty('jextractPath').toString()).absolutePath
-    : defaultJextractBinary.absolutePath
+	? file(project.findProperty('jextractPath').toString()).absolutePath
+	: defaultJextractBinary.absolutePath
 
 task downloadJextract() {
-    description 'Download pre-built jextract binary from jdk.java.net.'
-    onlyIf { !project.hasProperty('jextractPath') && !defaultJextractBinary.exists() }
-    doLast {
-        defaultJextractDir.parentFile.mkdirs()
-        def tarball = file("${defaultJextractDir.parentFile}/jextract.tar.gz")
-        def url = jextractUrl()
-        logger.lifecycle("Downloading jextract from $url ...")
-        new URL(url).withInputStream { i -> tarball.withOutputStream { it << i } }
-        logger.lifecycle("Extracting jextract ...")
-        new ProcessBuilder('tar', '-xzf', tarball.absolutePath, '-C', defaultJextractDir.parentFile.absolutePath)
-            .inheritIO().start().waitFor()
-        tarball.delete()
-        new ProcessBuilder('chmod', '+x', defaultJextractBinary.absolutePath)
-            .inheritIO().start().waitFor()
-        logger.lifecycle("jextract ready at $defaultJextractBinary")
-    }
+	description 'Download pre-built jextract binary from jdk.java.net.'
+	onlyIf { !project.hasProperty('jextractPath') && !defaultJextractBinary.exists() }
+	doLast {
+		defaultJextractDir.parentFile.mkdirs()
+		def tarball = file("${defaultJextractDir.parentFile}/jextract.tar.gz")
+		def url = jextractUrl()
+		logger.lifecycle("Downloading jextract from $url ...")
+		new URL(url).withInputStream { i -> tarball.withOutputStream { it << i } }
+		logger.lifecycle("Extracting jextract ...")
+		new ProcessBuilder('tar', '-xzf', tarball.absolutePath, '-C', defaultJextractDir.parentFile.absolutePath)
+			.inheritIO().start().waitFor()
+		tarball.delete()
+		new ProcessBuilder('chmod', '+x', defaultJextractBinary.absolutePath)
+			.inheritIO().start().waitFor()
+		logger.lifecycle("jextract ready at $defaultJextractBinary")
+	}
 }
 
 def defaultCCompiler() {
-    // Prefer clang if available (supports cubiomes C patterns on older GCC hosts)
-    try {
-        def out = new ByteArrayOutputStream()
-        exec {
-            commandLine 'which', 'clang-21'
-            ignoreExitValue true
-            standardOutput = out
-        }
-        return out.toString().trim() ?: 'cc'
-    } catch (Exception ignored) {
-        return 'cc'
-    }
+	// Prefer clang if available (supports cubiomes C patterns on older GCC hosts)
+	try {
+		def out = new ByteArrayOutputStream()
+		exec {
+			commandLine 'which', 'clang-21'
+			ignoreExitValue true
+			standardOutput = out
+		}
+		return out.toString().trim() ?: 'cc'
+	} catch (Exception ignored) {
+		return 'cc'
+	}
 }
 
 task compileNative {
-    description 'Compile the native shared library via CMake.'
-    onlyIf { skipNative != 'true' }
-    doLast {
-        def cc = System.getenv('CC') ?: defaultCCompiler()
-        def cdir = file('src/main/c')
-
-        def cfg = new ProcessBuilder(
-            'cmake', '-S', '.', '-B', 'build',
-            '-DCMAKE_BUILD_TYPE=Release',
-            "-DCMAKE_C_COMPILER=${cc}")
-            .directory(cdir).inheritIO().start()
-        if (cfg.waitFor() != 0) {
-            throw new RuntimeException('cmake configure failed')
-        }
-
-        def bld = new ProcessBuilder(
-            'cmake', '--build', 'build', '--config', 'Release',
-            '--target', 'xsmcore')
-            .directory(cdir).inheritIO().start()
-        if (bld.waitFor() != 0) {
-            throw new RuntimeException('cmake build failed')
-        }
-    }
+	description 'Compile the native shared library via CMake.'
+	onlyIf { skipNative != 'true' }
+	doLast {
+		def cc = System.getenv('CC') ?: defaultCCompiler()
+		def cdir = file('src/main/c')
+		def cfg = new ProcessBuilder(
+			'cmake', '-S', '.', '-B', 'build',
+			'-DCMAKE_BUILD_TYPE=Release',
+			"-DCMAKE_C_COMPILER=${cc}")
+			.directory(cdir).inheritIO().start()
+		if (cfg.waitFor() != 0) {
+			throw new RuntimeException('cmake configure failed')
+		}
+		def bld = new ProcessBuilder(
+			'cmake', '--build', 'build', '--config', 'Release',
+			'--target', 'xsmcore')
+			.directory(cdir).inheritIO().start()
+		if (bld.waitFor() != 0) {
+			throw new RuntimeException('cmake build failed')
+		}
+	}
 }
 
 task generateNativeBindings(type: Exec) {
-    description 'Run jextract on src/main/c/xsm/apis/all.h → XsmNative.java FFM bindings.'
-    dependsOn downloadJextract
-    workingDir projectDir
-    def includeArgs = file('src/main/c/includes.txt').readLines()
-        .collectMany { it.split(/\s+/) as List }
-    commandLine([jextractBinary,
-        '--output', 'src/client/java',
-        '--target-package', 'bid.yuanlu.seedmap4xaero.client.nativeapi',
-        '--header-class-name', 'XsmNative',
-        '--include-dir', 'src/main/c/xsm/apis',
-    ] + includeArgs + ['all.h'])
-    doLast {
-        // Fix platform-dependent C_LONG / C_LONG_DOUBLE — our API never uses
-        // long or long double, so hardcode the LP64 variant (safe cross-platform).
-        def shared = file('src/client/java/bid/yuanlu/seedmap4xaero/client/nativeapi/XsmNative$shared.java')
-        if (shared.exists()) {
-            def text = shared.text
-            .replace('(ValueLayout.OfLong) Linker.nativeLinker().canonicalLayouts().get("long")',
-                     'ValueLayout.JAVA_LONG')
-            .replace('(ValueLayout.OfDouble) Linker.nativeLinker().canonicalLayouts().get("double")',
-                     'ValueLayout.JAVA_DOUBLE')
-            shared.text = text
-        }
-    }
+	description 'Run jextract on src/main/c/xsm/apis/all.h → XsmNative.java FFM bindings.'
+	dependsOn downloadJextract
+	workingDir projectDir
+	def includeArgs = file('src/main/c/includes.txt').readLines()
+		.collectMany { it.split(/\s+/) as List }
+	commandLine([jextractBinary,
+		'--output', 'src/client/java',
+		'--target-package', 'bid.yuanlu.seedmap4xaero.client.nativeapi',
+		'--header-class-name', 'XsmNative',
+		'--include-dir', 'src/main/c/xsm/apis',
+	] + includeArgs + ['all.h'])
+	doLast {
+		// 修正平台相关 C_LONG/C_LONG_DOUBLE —— API 不用 long/long double，
+		// 硬编码 LP64 变体（跨平台安全）。
+		def shared = file('src/client/java/bid/yuanlu/seedmap4xaero/client/nativeapi/XsmNative$shared.java')
+		if (shared.exists()) {
+			def text = shared.text
+			.replace('(ValueLayout.OfLong) Linker.nativeLinker().canonicalLayouts().get("long")',
+					 'ValueLayout.JAVA_LONG')
+			.replace('(ValueLayout.OfDouble) Linker.nativeLinker().canonicalLayouts().get("double")',
+					 'ValueLayout.JAVA_DOUBLE')
+			shared.text = text
+		}
+	}
 }
 
 tasks.named('compileClientJava') {
-    dependsOn generateNativeBindings
+	dependsOn generateNativeBindings
 }
 
 task compileNativeWindows {
-    description 'Cross-compile xsmcore.dll for Windows via MinGW.'
-    onlyIf { skipNative != 'true' && skipNativeWindows != 'true' }
-    doLast {
-        def cdir = file('src/main/c')
-        def cfg = new ProcessBuilder(
-            'cmake', '-S', '.', '-B', 'build-mingw',
-            '-DCMAKE_BUILD_TYPE=Release',
-            '-DCMAKE_TOOLCHAIN_FILE=mingw-toolchain.cmake')
-            .directory(cdir).inheritIO().start()
-        if (cfg.waitFor() != 0) {
-            throw new RuntimeException('cmake MinGW configure failed')
-        }
-        def bld = new ProcessBuilder(
-            'cmake', '--build', 'build-mingw', '--config', 'Release',
-            '--target', 'xsmcore')
-            .directory(cdir).inheritIO().start()
-        if (bld.waitFor() != 0) {
-            throw new RuntimeException('cmake MinGW build failed')
-        }
-    }
+	description 'Cross-compile xsmcore.dll for Windows via MinGW.'
+	onlyIf { skipNative != 'true' && skipNativeWindows != 'true' }
+	doLast {
+		def cdir = file('src/main/c')
+		def cfg = new ProcessBuilder(
+			'cmake', '-S', '.', '-B', 'build-mingw',
+			'-DCMAKE_BUILD_TYPE=Release',
+			'-DCMAKE_TOOLCHAIN_FILE=mingw-toolchain.cmake')
+			.directory(cdir).inheritIO().start()
+		if (cfg.waitFor() != 0) {
+			throw new RuntimeException('cmake MinGW configure failed')
+		}
+		def bld = new ProcessBuilder(
+			'cmake', '--build', 'build-mingw', '--config', 'Release',
+			'--target', 'xsmcore')
+			.directory(cdir).inheritIO().start()
+		if (bld.waitFor() != 0) {
+			throw new RuntimeException('cmake MinGW build failed')
+		}
+	}
 }
 
 processClientResources {
-    if (skipNative != 'true') {
-        dependsOn compileNative
-        if (skipNativeWindows != 'true') {
-            dependsOn compileNativeWindows
-        }
-    }
-    from('src/main/c/build') {
-        include 'libxsmcore.so'
-        include 'libxsmcore.dylib'
-    }
-    if (skipNativeWindows != 'true') {
-        from('src/main/c/build-mingw') {
-            include 'xsmcore.dll'
-        }
-    }
+	if (skipNative != 'true') {
+		dependsOn compileNative
+		if (skipNativeWindows != 'true') {
+			dependsOn compileNativeWindows
+		}
+	}
+	from('src/main/c/build') {
+		include 'libxsmcore.so'
+		include 'libxsmcore.dylib'
+	}
+	if (skipNativeWindows != 'true') {
+		from('src/main/c/build-mingw') {
+			include 'xsmcore.dll'
+		}
+	}
 }
 
 processResources {
-    inputs.property "version", project.version
+	inputs.property "version", project.version
 	inputs.property "minecraft_version", project.minecraft_version
 	inputs.property "loader_version", project.loader_version
 	filteringCharset "UTF-8"
@@ -294,12 +270,12 @@ processResources {
 }
 
 clean {
-    delete fileTree('src/client/java/bid/yuanlu/seedmap4xaero/client/nativeapi') {
-        include 'XsmNative.java'
-        exclude 'NativeLibLoader.java'
-    }
-    delete 'src/main/c/build'
-    delete 'src/main/c/build-mingw'
+	delete fileTree('src/client/java/bid/yuanlu/seedmap4xaero/client/nativeapi') {
+		include 'XsmNative.java'
+		exclude 'NativeLibLoader.java'
+	}
+	delete 'src/main/c/build'
+	delete 'src/main/c/build-mingw'
 }
 
 def targetJavaVersion = 25
