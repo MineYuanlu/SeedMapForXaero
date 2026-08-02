@@ -1,0 +1,115 @@
+name: matrix-test
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Resolve: expand versions.json into the strategy matrix ──
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.emit.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Check versions.json freshness (advisory, never blocks)
+        run: |
+          python3 tools/resolve_versions.py check || \
+            echo "::warning::versions.json is stale — run the refresh workflow"
+      - name: Emit matrix JSON
+        id: emit
+        run: |
+          python3 tools/resolve_versions.py matrix > /tmp/matrix.json
+          {
+            echo "matrix<<EOF"
+            cat /tmp/matrix.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  # ── Test: 8 combos (4 MC × oldest/newest Xaero) ──
+  test:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'microsoft'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: C unit tests (xsmtest)
+        run: |
+          cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-test --target xsmtest
+          XSM_TEST_MC_VERSION=${{ matrix.mc }} ./build-test/xsmtest
+      - name: Build JAR + JUnit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build -x compileNativeWindows \
+            -Pminecraft_version=${{ matrix.mc }} \
+            -PxaeroMapLine=${{ matrix.xaeroLine }} \
+            -PxaeroMapVersion=${{ matrix.xaeroVersion }} \
+            -PfabricApiVersion=${{ matrix.fabricApi }}
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.mc }}-${{ matrix.xaeroVersion }}
+          path: |
+            build/reports/tests/test
+            build/test-results/test
+
+  # ── Client E2E gametest（生产运行，headless）──────────────────────────────
+  # 对照 Fabric 官方 CI（fabric-api/.github/workflows/build.yml client_test job）：
+  # 无显示 ubuntu + xvfb + 上传截图。验证真实启动 MC 客户端后种子地图渲染链路。
+  client-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install dependencies (cmake/gcc/xvfb)
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc xvfb
+      - name: Run client gametest (production, headless via xvfb)
+        timeout-minutes: 20
+        run: |
+          chmod +x ./gradlew
+          # 不指定 -P 版本覆盖 → 用 gradle.properties 主版本（26.1.2 / Xaero 1.41.0）。
+          # -PskipNativeWindows=true：CI ubuntu 无 MinGW，runProductionClientGameTest
+          # 的任务链会带 processClientResources → compileNativeWindows 交叉编译失败。
+          ./gradlew runProductionClientGameTest -PskipNativeWindows=true --stacktrace > gametest.log 2>&1
+          # 断言全部通过才算成功；挂起由 timeout-minutes 兜底 kill
+          grep -q "seed-map E2E assertions passed" gametest.log || {
+            echo "::error::client gametest assertions did not pass"
+            exit 1
+          }
+      - name: Upload gametest log (diagnose hangs)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-gametest-log
+          path: gametest.log
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-gametest-screenshots
+          path: run/screenshots

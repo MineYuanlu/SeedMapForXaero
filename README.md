@@ -4,6 +4,9 @@
 
 > **与 xaero96 无关，亦未获其认可。需要 Xaero's World Map。**
 
+[![matrix-test](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml/badge.svg?branch=master)](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml)
+[![release](https://img.shields.io/github/v/release/MineYuanlu/SeedMapForXaero)](https://github.com/MineYuanlu/SeedMapForXaero/releases)
+
 在 Xaero's World Map 上显示基于种子的生物群系和结构预览，由 cubiomes 原生库驱动。
 
 ---
@@ -49,13 +52,17 @@
 
 ### 前置依赖
 
-| 依赖              | 说明                   |
-| ----------------- | ---------------------- |
-| Minecraft         | 26.1                   |
-| Fabric Loader     | 最新                   |
-| Fabric API        | 0.153.0+               |
-| Xaero's World Map | 1.41.0+                |
-| Java              | **25**（FFM API 必需） |
+CI 矩阵验证的支持版本（`versions.json`，4 个 MC × 新旧 Xaero 各组合）：
+
+| 依赖              | 版本                                    |
+| ----------------- | --------------------------------------- |
+| Minecraft         | 26.1 / 26.1.1 / 26.1.2 / 26.2           |
+| Fabric Loader     | 最新                                    |
+| Fabric API        | 0.155.2+（26.1）/ 0.156.0+（26.2）      |
+| Xaero's World Map | 1.40.14+（26.1）/ 1.41.0+（26.2）       |
+| Java              | **25**（FFM API 必需）                  |
+
+默认构建目标：Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0（见 `gradle.properties`）。
 
 ---
 
@@ -129,14 +136,18 @@ cmake --build build-test --target xsmtest
 
 ### CI/CD
 
-`.github/workflows/` 下两个 workflow：
+`.github/workflows/` 下四个 workflow：
 
-| 工作流        | 触发方式          | 行为                                          |
-| ------------- | ----------------- | --------------------------------------------- |
-| `build.yml`   | 推送 / PR         | 非 master：Linux 构建；master：三平台原生编译 |
-| `release.yml` | workflow_dispatch | 版本提升 + 三平台编译 + Modrinth + Release    |
+| 工作流                 | 触发方式          | 行为                                                        |
+| ---------------------- | ----------------- | ----------------------------------------------------------- |
+| `build.yml`            | 推送 / PR         | 非 master：Linux 构建；master/tag：三平台原生编译 + 打包    |
+| `matrix-test.yml`      | 推送 / 手动       | 8 组合版本矩阵（4 个 MC × 新旧 Xaero）+ 客户端 E2E GameTest |
+| `refresh-versions.yml` | 每周一 + 手动     | 刷新 `versions.json` 版本矩阵（有变更才提交）               |
+| `release.yml`          | workflow_dispatch | 版本提升 + 三平台编译 + Modrinth + Release                  |
 
 Modrinth project ID: `UoJSF4vW`
+
+测试三层（详见 `doc/testing.md`）：JVM 单测 → native 集成 → E2E 客户端 GameTest。
 
 ### 配色方案
 
@@ -157,10 +168,10 @@ Modrinth project ID: `UoJSF4vW`
 
 | 组件              | 说明                                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Minecraft         | 26.1.2（无混淆映射）                                                                                            |
+| Minecraft         | 26.1.2（默认，无混淆映射）                                                                                       |
 | Fabric Loom       | 1.17                                                                                                            |
-| Fabric API        | 0.153.0+26.1.2                                                                                                  |
-| Xaero's World Map | 1.41.0                                                                                                          |
+| Fabric API        | 0.153.0+26.1.2（默认）                                                                                          |
+| Xaero's World Map | 1.41.0（默认）                                                                                                  |
 | cubiomes          | Git submodule（C 原生库），[Cubitect](https://github.com/Cubitect) 原作，[xpple](https://github.com/xpple) 维护 |
 | Java              | 25（FFM API）                                                                                                   |
 | 构建工具          | Gradle + CMake                                                                                                  |

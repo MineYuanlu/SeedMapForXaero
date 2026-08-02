@@ -50,9 +50,9 @@ public class StructureCache {
         for (int i = enabledTypes.nextSetBit(0); 0 <= i
                 && i < StructureType.FEATURE_NUM; i = enabledTypes.nextSetBit(i + 1)) {
             final var type = StructureType.byId(i);
-            if (type.config == null)
+            if (type.config() == null)
                 continue;
-            final int blockPerRegion = type.config.regionSize() * 16;
+            final int blockPerRegion = type.config().regionSize() * 16;
             final int regionX0 = Math.floorDiv(blockX0, blockPerRegion);
             final int regionX1 = Math.floorDiv(blockX1 - 1, blockPerRegion) + 1;
             final int regionZ0 = Math.floorDiv(blockZ0, blockPerRegion);

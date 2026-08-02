@@ -4,10 +4,12 @@
 
 > **Not affiliated with or endorsed by xaero96. Requires Xaero's World Map.**
 
+[![matrix-test](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml/badge.svg?branch=master)](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml)
+[![release](https://img.shields.io/github/v/release/MineYuanlu/SeedMapForXaero)](https://github.com/MineYuanlu/SeedMapForXaero/releases)
+
 Seed-based biome and structure preview on Xaero's World Map, powered by cubiomes native library.
 
 ---
-
 
 <div align="center">
    <img src="doc/hero.png" width="800" alt="Showcase">
@@ -50,13 +52,17 @@ This mod automatically fills in **unexplored** areas on Xaero's World Map with b
 
 ### Dependencies
 
-| Dependency        | Version                   |
-| ----------------- | ------------------------- |
-| Minecraft         | 26.1                      |
-| Fabric Loader     | Latest                    |
-| Fabric API        | 0.153.0+                  |
-| Xaero's World Map | 1.41.0+                   |
-| Java              | **25** (FFM API required) |
+Supported versions verified by the CI matrix (`versions.json`, 4 MC × old/new Xaero combos):
+
+| Dependency        | Version                            |
+| ----------------- | ---------------------------------- |
+| Minecraft         | 26.1 / 26.1.1 / 26.1.2 / 26.2      |
+| Fabric Loader     | Latest                             |
+| Fabric API        | 0.155.2+ (26.1) / 0.156.0+ (26.2)  |
+| Xaero's World Map | 1.40.14+ (26.1) / 1.41.0+ (26.2)   |
+| Java              | **25** (FFM API required)          |
+
+Default build target: Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0 (see `gradle.properties`).
 
 ---
 
@@ -130,14 +136,18 @@ Add `-DDEBUG_TIMINGS=ON` to enable performance timing.
 
 ### CI/CD
 
-Two workflows in `.github/workflows/`:
+Four workflows in `.github/workflows/`:
 
-| Workflow      | Trigger           | Action                                      |
-| ------------- | ----------------- | ------------------------------------------- |
-| `build.yml`   | Push / PR         | Non-master: Linux build; master: 3-platform |
-| `release.yml` | workflow_dispatch | Version bump + 3-platform build + Modrinth  |
+| Workflow               | Trigger           | Action                                                              |
+| ---------------------- | ----------------- | ------------------------------------------------------------------- |
+| `build.yml`            | Push / PR         | Non-master: Linux build; master/tag: 3-platform native + package    |
+| `matrix-test.yml`      | Push / manual     | 8-combo version matrix (4 MC × old/new Xaero) + client E2E GameTest |
+| `refresh-versions.yml` | Weekly + manual   | Refresh `versions.json` matrix (commits only on real changes)       |
+| `release.yml`          | workflow_dispatch | Version bump + 3-platform build + Modrinth + Release                |
 
 Modrinth project ID: `UoJSF4vW`
+
+Three test layers (see `doc/testing.md`): JVM unit tests → native integration → E2E client GameTest.
 
 ### Color Schemes
 
@@ -158,10 +168,10 @@ UI strings in English and Chinese. `src/main/resources/assets/seed-map-for-xaero
 
 | Component         | Description                                                                                                                          |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Minecraft         | 26.1.2 (no obfuscation mapping)                                                                                                      |
+| Minecraft         | 26.1.2 (default, no obfuscation mapping)                                                                       |
 | Fabric Loom       | 1.17                                                                                                                                 |
-| Fabric API        | 0.153.0+26.1.2                                                                                                                       |
-| Xaero's World Map | 1.41.0                                                                                                                               |
+| Fabric API        | 0.153.0+26.1.2 (default)                                                                                                             |
+| Xaero's World Map | 1.41.0 (default)                                                                                                                     |
 | cubiomes          | Git submodule (C native lib), originally by [Cubitect](https://github.com/Cubitect), maintained by [xpple](https://github.com/xpple) |
 | Java              | 25 (FFM API)                                                                                                                         |
 | Build Tools       | Gradle + CMake                                                                                                                       |

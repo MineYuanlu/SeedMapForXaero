@@ -1,0 +1,37 @@
+name: refresh-versions
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'  # every Monday 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: recursive
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Update versions.json from upstream
+        run: python3 tools/resolve_versions.py update
+      - name: Commit if version list changed
+        run: |
+          # ignore the `generated` timestamp — commit only on real matrix changes
+          BEFORE=$(git show HEAD:versions.json | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["versions"], sort_keys=True))')
+          AFTER=$(python3 -c 'import json; print(json.dumps(json.load(open("versions.json"))["versions"], sort_keys=True))')
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "version matrix unchanged"
+            exit 0
+          fi
+          git add versions.json
+          git commit -m "chore(ci): refresh version matrix"
+          git push origin master
+          echo "pushed updated versions.json"
