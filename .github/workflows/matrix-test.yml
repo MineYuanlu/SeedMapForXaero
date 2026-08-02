@@ -1,0 +1,72 @@
+name: matrix-test
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Resolve: expand versions.json into the strategy matrix ──
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.emit.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Check versions.json freshness (advisory, never blocks)
+        run: |
+          python3 tools/resolve_versions.py check || \
+            echo "::warning::versions.json is stale — run the refresh workflow"
+      - name: Emit matrix JSON
+        id: emit
+        run: |
+          python3 tools/resolve_versions.py matrix > /tmp/matrix.json
+          {
+            echo "matrix<<EOF"
+            cat /tmp/matrix.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  # ── Test: 8 combos (4 MC × oldest/newest Xaero) ──
+  test:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'microsoft'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: C unit tests (xsmtest)
+        run: |
+          cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-test --target xsmtest
+          XSM_TEST_MC_VERSION=${{ matrix.mc }} ./build-test/xsmtest
+      - name: Build JAR + JUnit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build -x compileNativeWindows \
+            -Pminecraft_version=${{ matrix.mc }} \
+            -PxaeroMapLine=${{ matrix.xaeroLine }} \
+            -PxaeroMapVersion=${{ matrix.xaeroVersion }} \
+            -PfabricApiVersion=${{ matrix.fabricApi }}
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.mc }}-${{ matrix.xaeroVersion }}
+          path: |
+            build/reports/tests/test
+            build/test-results/test
