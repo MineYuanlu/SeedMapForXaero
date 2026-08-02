@@ -43,8 +43,22 @@ dependencies {
 
 	def xaeroMapLine = project.findProperty('xaeroMapLine') ?: project.xaero_map_line
 	def xaeroMapVersion = project.findProperty('xaeroMapVersion') ?: project.xaero_map_version
-	compileOnly "xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}"
-	runtimeOnly "xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}"
+	// Better PVP is a separate optional Xaero mod — its POM pins `+` which can resolve
+	// to a version incompatible with old World Map builds (e.g. 26.4.2 needs ≥1.44.0).
+	// Our mod never uses it; exclude to keep the test classpath valid across the matrix.
+	compileOnly("xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}") {
+		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${xaeroMapLine}"
+	}
+	runtimeOnly("xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}") {
+		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${xaeroMapLine}"
+	}
+	// The mod compiles directly against XaeroLib (GpuTextureAndView, Tooltip, …).
+	// Old World Map POMs declare XaeroLib with runtime scope, which `compileOnly`
+	// does not carry onto the compile classpath — declare it explicitly instead.
+	// The `[1.1.0,)` range mirrors Xaero's own lower bound and resolves to the
+	// newest available on each artifact line (matching World Map's runtime pick).
+	compileOnly("xaero.lib:xaerolib-fabric-${xaeroMapLine}:[1.1.0,)")
+	runtimeOnly("xaero.lib:xaerolib-fabric-${xaeroMapLine}:[1.1.0,)")
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 }
