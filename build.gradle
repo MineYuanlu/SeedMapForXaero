@@ -13,6 +13,12 @@ base {
 	archivesName = project.archives_base_name
 }
 
+// 矩阵参数（可按 -P 覆盖，见 versions.json / tools/resolve_versions.py）
+def matrixMinecraftVersion = project.minecraft_version
+def matrixFabricApiVersion = project.findProperty('fabricApiVersion') ?: project.fabric_api_version
+def matrixXaeroMapLine = project.findProperty('xaeroMapLine') ?: project.xaero_map_line
+def matrixXaeroMapVersion = project.findProperty('xaeroMapVersion') ?: project.xaero_map_version
+
 repositories {
 	maven { url "https://chocolateminecraft.com/maven" }
 	maven { url "https://api.modrinth.com/maven" }
@@ -35,36 +41,81 @@ loom {
 	}
 }
 
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "seed-map-for-xaero-gametest"
+		// 服务端 runGameTest 会在 game test server 上加载 XaeroLib，其
+		// serverStarting 仅对 DedicatedServer 调 freeze() → registry 未冻结崩溃。
+		// 我们的 E2E 目标只有客户端 gametest，禁用服务端测试（也会从 check 摘除）。
+		enableGameTests = false
+		enableClientGameTests = true
+		// 同意 Minecraft EULA（测试用 client gametest 启动单机世界需要）
+		eula = true
+	}
+}
+
+// gametest source set（configureTests 创建）输出打包为独立 mod jar，供 production 运行加载。
+// 必须在 dependencies 块之前注册，否则 productionRuntimeMods 引用时找不到任务。
+def gametestModJar = tasks.register("gametestModJar", Jar) {
+	group = "verification"
+	from sourceSets.gametest.output
+	archiveBaseName = "seed-map-for-xaero-gametest"
+	destinationDirectory = layout.buildDirectory.dir("gametest-mods")
+}
+
 dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	minecraft "com.mojang:minecraft:${matrixMinecraftVersion}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.findProperty('fabricApiVersion') ?: project.fabric_api_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${matrixFabricApiVersion}"
 
-	def xaeroMapLine = project.findProperty('xaeroMapLine') ?: project.xaero_map_line
-	def xaeroMapVersion = project.findProperty('xaeroMapVersion') ?: project.xaero_map_version
 	// Better PVP is a separate optional Xaero mod — its POM pins `+` which can resolve
 	// to a version incompatible with old World Map builds (e.g. 26.4.2 needs ≥1.44.0).
 	// Our mod never uses it; exclude to keep the test classpath valid across the matrix.
-	compileOnly("xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}") {
-		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${xaeroMapLine}"
+	compileOnly("xaero.map:xaeroworldmap-fabric-${matrixXaeroMapLine}:${matrixXaeroMapVersion}") {
+		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${matrixXaeroMapLine}"
 	}
-	runtimeOnly("xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}") {
-		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${xaeroMapLine}"
+	runtimeOnly("xaero.map:xaeroworldmap-fabric-${matrixXaeroMapLine}:${matrixXaeroMapVersion}") {
+		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${matrixXaeroMapLine}"
 	}
 	// The mod compiles directly against XaeroLib (GpuTextureAndView, Tooltip, …).
 	// Old World Map POMs declare XaeroLib with runtime scope, which `compileOnly`
 	// does not carry onto the compile classpath — declare it explicitly instead.
 	// The `[1.1.0,)` range mirrors Xaero's own lower bound and resolves to the
 	// newest available on each artifact line (matching World Map's runtime pick).
-	compileOnly("xaero.lib:xaerolib-fabric-${xaeroMapLine}:[1.1.0,)")
-	runtimeOnly("xaero.lib:xaerolib-fabric-${xaeroMapLine}:[1.1.0,)")
+	compileOnly("xaero.lib:xaerolib-fabric-${matrixXaeroMapLine}:[1.1.0,)")
+	runtimeOnly("xaero.lib:xaerolib-fabric-${matrixXaeroMapLine}:[1.1.0,)")
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
+
+	// Production run task（CI client gametest）只从 jar/remapJar + productionRuntimeMods
+	// 收集 mods —— runtimeOnly 的 fabric-api / xaero 不会自动进，需显式声明。
+	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${matrixFabricApiVersion}"
+	productionRuntimeMods("xaero.map:xaeroworldmap-fabric-${matrixXaeroMapLine}:${matrixXaeroMapVersion}") {
+		exclude group: 'xaero.pvp', module: "xaerobetterpvp-fabric-${matrixXaeroMapLine}"
+	}
+	productionRuntimeMods("xaero.lib:xaerolib-fabric-${matrixXaeroMapLine}:[1.1.0,)")
+
+	// 测试 mod 是独立 source set（gametest），production 运行收集 mods 时只含
+	// jar/remapJar + productionRuntimeMods —— 把 gametest 输出打包成 jar 加入，
+	// 否则 runProductionClientGameTest 里测试类根本不会加载。
+	productionRuntimeMods files(gametestModJar)
 }
 
 test {
 	useJUnitPlatform()
+}
+
+// CI headless client gametest（生产运行）：Xvfb + fabric.client.gametest 开关
+tasks.register("runProductionClientGameTest", net.fabricmc.loom.task.prod.ClientProductionRunTask) {
+	jvmArgs.add("-Dfabric.client.gametest")
+	// GH Actions 网络同步器 bug 规避（官方 automatic-testing 文档 warning）。
+	// 当前版本默认已 true，显式声明以防上游改默认值。
+	jvmArgs.add("-Dfabric.client.gametest.disableNetworkSynchronizer=true")
+	// CI 下用 Xvfb 无头运行；本机有真实 DISPLAY 时直接用（可 -PclientGameTestXVFB=true/false 覆盖）
+	def xvfbProp = project.findProperty('clientGameTestXVFB')
+	useXVFB = (xvfbProp != null) ? (xvfbProp as boolean) : (System.getenv('CI') != null)
 }
 
 // ─── Native C build ─────────────────────────────────────────────────────────
