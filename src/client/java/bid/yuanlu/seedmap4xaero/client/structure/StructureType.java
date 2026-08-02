@@ -52,7 +52,26 @@ public enum StructureType {
         private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/StructureType");
     }
 
-    public static final int FEATURE_NUM = Xsm.getStructFEATURE_NUM();
+    public static final int FEATURE_NUM = safeFeatureNum();
+
+    /**
+     * native 库不可用时的回退值: 由枚举定义的最大 id + 1 推导。
+     * 生产环境 native 必定可用(启动时 setGameVersion 强制), 此回退仅服务于
+     * 无 native 的单元测试 JVM。
+     */
+    private static int safeFeatureNum() {
+        try {
+            return Xsm.getStructFEATURE_NUM();
+        } catch (Throwable t) {
+            int max = -1;
+            for (StructureType v : values())
+                max = Math.max(max, v.id);
+            LoggerHolder.LOGGER.warn(
+                    "FEATURE_NUM from native unavailable, falling back to {}", max + 1);
+            return max + 1;
+        }
+    }
+
     /** 普通结构专用上限: 视口内 region 数超过则整类跳过 (region 级缓存容量) */
     public static final int MAX_REGION_HIDE = 16384;
     /**
@@ -97,7 +116,8 @@ public enum StructureType {
      * -1表示未定义
      */
     public final float prob;
-    public final @Nullable Config config;
+
+    private volatile @Nullable Config lazyConfig;
 
     private StructureType(int id, @NotNull String key, boolean enableDefault, int maxRegionHide) {
         this(id, key, enableDefault, maxRegionHide, -1f);
@@ -109,9 +129,26 @@ public enum StructureType {
         this.enableDefault = enableDefault;
         this.maxRegionHide = Math.min(maxRegionHide, MAX_REGION_HIDE);
         this.prob = prob;
-        this.config = Xsm.getStructureConfig(id);
-        if (this.config == null && id != 25/* 要塞没有config */)
-            LoggerHolder.LOGGER.warn("Can't load StructureType config for {} ({})", id, key);
+    }
+
+    /**
+     * 惰性加载 native 侧结构配置 (cubiomes getStructureConfig)。
+     * 延迟到首次访问而非枚举类初始化, 使无 native 的测试 JVM 可以安全加载枚举。
+     */
+    public @Nullable Config config() {
+        var c = lazyConfig;
+        if (c != null)
+            return c;
+        synchronized (this) {
+            c = lazyConfig;
+            if (c == null) {
+                c = Xsm.getStructureConfig(id);
+                if (c == null && id != 25/* 要塞没有config */)
+                    LoggerHolder.LOGGER.warn("Can't load StructureType config for {} ({})", id, key);
+                lazyConfig = c;
+            }
+        }
+        return c;
     }
 
     public static StructureType byId(int id) {

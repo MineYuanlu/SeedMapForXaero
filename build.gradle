@@ -39,11 +39,18 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.findProperty('fabricApiVersion') ?: project.fabric_api_version}"
 
+	def xaeroMapLine = project.findProperty('xaeroMapLine') ?: project.xaero_map_line
+	def xaeroMapVersion = project.findProperty('xaeroMapVersion') ?: project.xaero_map_version
+	compileOnly "xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}"
+	runtimeOnly "xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}"
 
-	compileOnly "xaero.map:xaeroworldmap-fabric-26.1.2:${project.xaero_map_version}"
-	runtimeOnly "xaero.map:xaeroworldmap-fabric-26.1.2:${project.xaero_map_version}"
+	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
+}
+
+test {
+	useJUnitPlatform()
 }
 
 // ─── Native C build ─────────────────────────────────────────────────────────

@@ -52,20 +52,20 @@ public final class ServerConfig {
                 .resolve("seed-map-for-xaero");
     }
 
-    private static Path worldDir(String mainId) {
-        return baseDir().resolve(mainId);
+    private static Path worldDir(Path base, String mainId) {
+        return base.resolve(mainId);
     }
 
-    private static Path targetFile(String mainId) {
-        return worldDir(mainId).resolve(CONFIG_FILE);
+    private static Path targetFile(Path base, String mainId) {
+        return worldDir(base, mainId).resolve(CONFIG_FILE);
     }
 
-    private static Path tmpFile(String mainId) {
-        return worldDir(mainId).resolve(CONFIG_FILE + TMP_SUFFIX);
+    private static Path tmpFile(Path base, String mainId) {
+        return worldDir(base, mainId).resolve(CONFIG_FILE + TMP_SUFFIX);
     }
 
-    private static Path oldFile(String mainId) {
-        return worldDir(mainId).resolve(CONFIG_FILE + OLD_SUFFIX);
+    private static Path oldFile(Path base, String mainId) {
+        return worldDir(base, mainId).resolve(CONFIG_FILE + OLD_SUFFIX);
     }
 
     public static @Nullable String activeMainId() {
@@ -212,13 +212,28 @@ public final class ServerConfig {
         if (cfg == null || !cfg.dirty.compareAndSet(true, false)) {
             return;
         }
+        saveConfig(baseDir(), mainId, cfg);
+    }
+
+    /**
+     * 将 {@code cfg} 原子写入 {@code base/<mainId>/server_config.sm4x}。
+     * base 参数独立注入以便单元测试 (不依赖 Minecraft 客户端)。
+     * <p>
+     * 流程：
+     * <ol>
+     * <li>将 {@code cfg} 序列化写入 {@code server_config.sm4x.tmp}
+     * <li>若主文件存在，移动到 {@code .old}
+     * <li>将 {@code .tmp} 移动到主文件（尽力原子操作）
+     * </ol>
+     */
+    static void saveConfig(Path base, String mainId, ConfigData cfg) {
         try {
-            var dir = worldDir(mainId);
+            var dir = worldDir(base, mainId);
             Files.createDirectories(dir);
 
-            var target = targetFile(mainId);
-            var tmp = tmpFile(mainId);
-            var old = oldFile(mainId);
+            var target = targetFile(base, mainId);
+            var tmp = tmpFile(base, mainId);
+            var old = oldFile(base, mainId);
 
             // 1. 写入临时文件
             cfg.write(tmp);
@@ -242,7 +257,15 @@ public final class ServerConfig {
      * 从磁盘加载配置，文件不存在时返回空配置。
      */
     private static ConfigData load(String mainId) {
-        final var target = targetFile(mainId);
+        return loadConfig(baseDir(), mainId);
+    }
+
+    /**
+     * 从 {@code base/&lt;mainId&gt;} 加载配置: 主文件 → 损坏则删主文件回退 {@code .old} →
+     * 损坏或不存在则新建。base 参数独立注入以便单元测试。
+     */
+    static ConfigData loadConfig(Path base, String mainId) {
+        final var target = targetFile(base, mainId);
         if (Files.exists(target)) {
             try {
                 return ConfigData.read(target);
@@ -254,7 +277,7 @@ public final class ServerConfig {
                 }
             }
         }
-        final var old = oldFile(mainId);
+        final var old = oldFile(base, mainId);
         if (Files.exists(old)) {
             try {
                 return ConfigData.read(old);

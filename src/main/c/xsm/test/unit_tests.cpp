@@ -28,9 +28,23 @@ struct Img {
   uint8_t* data() { return d; }
 };
 
+// MC 版本来自环境变量 XSM_TEST_MC_VERSION (矩阵化测试用), 默认 26.1
+const char* testMcVersion() {
+  const char* v = std::getenv("XSM_TEST_MC_VERSION");
+  return (v != nullptr && v[0] != '\0') ? v : "26.1";
+}
+
+// 当前测试版本的 cubiomes MCVersion 枚举
+static MCVersion testMcEnum() {
+  const int32_t mc = xsmGetMCVersion(testMcVersion());
+  REQUIRE_MESSAGE(mc > MC_UNDEF, "unknown MC version for test: ", testMcVersion());
+  return (MCVersion)mc;
+}
+
 static void setupOrFail() {
   REQUIRE(setBiomeColorTableNative());
-  REQUIRE(setGameVersion("26.1"));
+  REQUIRE_MESSAGE(setGameVersion(testMcVersion()),
+                  "setGameVersion(", testMcVersion(), ") failed — unsupported MC version");
   REQUIRE(setWorld(0, 0));
 }
 
@@ -200,7 +214,7 @@ TEST_CASE("querySparseStructures") {
   n = querySparseStructures(End_Island, 0, 0, 64, 64, 0, 0, 0, 0, -1, 4096, xe, ze, nullptr, &next);
   CHECK_MESSAGE(n > 0, "End_Island in End dim should be found, got ", n);
   Generator eg;
-  setupGenerator(&eg, MC_26_1, 0);
+  setupGenerator(&eg, testMcEnum(), 0);
   applySeed(&eg, DIM_END, 0);
   for (uint32_t i = 0; i < n; i++)
     CHECK_MESSAGE(getBiomeAt(&eg, 16, xe[i] >> 4, 0, ze[i] >> 4) == small_end_islands,
