@@ -12,10 +12,10 @@ import org.slf4j.LoggerFactory;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.TextureFormat;
 
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import xaero.lib.client.graphics.GpuTextureAndView;
+import xaero.map.region.texture.RegionTexture;
 
 public class CellCache {
 
@@ -113,7 +113,7 @@ public class CellCache {
             NativeImage img = new NativeImage(NativeImage.Format.RGBA, 1, 1, false);
             img.setPixelABGR(0, 0, 0xFF808080);
             GpuTexture gpuTex = dev.createTexture(
-                    "xsm_placeholder", 1, TextureFormat.RGBA8, 1, 1, 1, 1);
+                    "xsm_placeholder", 1, RegionTexture.DEFAULT_INTERNAL_FORMAT, 1, 1, 1, 1);
             var encoder = dev.createCommandEncoder();
             encoder.writeToTexture(gpuTex, img);
             img.close();
@@ -136,7 +136,7 @@ public class CellCache {
         GpuTexture gpuTex = RenderSystem.getDevice().createTexture(
                 "xsm",
                 15,
-                TextureFormat.RGBA8,
+                RegionTexture.DEFAULT_INTERNAL_FORMAT,
                 TEXTURE_SIDE, TEXTURE_SIDE,
                 1, 1);
         var encoder = RenderSystem.getDevice().createCommandEncoder();

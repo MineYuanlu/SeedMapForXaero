@@ -280,6 +280,13 @@ bool setGameVersion(const char* version) {
 }
 
 
+int32_t xsmGetMCVersion(const char* version) {
+  const auto v = mcVersionMap.find(std::string(version));
+  if (v == mcVersionMap.end()) return MC_UNDEF;
+  return (int32_t)v->second;
+}
+
+
 bool setWorld(uint64_t seed, int dim) {
   std::lock_guard<xsm::mutex> lock(setting_mtx);
   if (!gen_setGameVersion) return false;

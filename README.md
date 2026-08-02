@@ -129,14 +129,18 @@ cmake --build build-test --target xsmtest
 
 ### CI/CD
 
-`.github/workflows/` 下两个 workflow：
+`.github/workflows/` 下四个 workflow：
 
-| 工作流        | 触发方式          | 行为                                          |
-| ------------- | ----------------- | --------------------------------------------- |
-| `build.yml`   | 推送 / PR         | 非 master：Linux 构建；master：三平台原生编译 |
-| `release.yml` | workflow_dispatch | 版本提升 + 三平台编译 + Modrinth + Release    |
+| 工作流                 | 触发方式          | 行为                                                        |
+| ---------------------- | ----------------- | ----------------------------------------------------------- |
+| `build.yml`            | 推送 / PR         | 非 master：Linux 构建；master/tag：三平台原生编译 + 打包    |
+| `matrix-test.yml`      | 推送 / 手动       | 8 组合版本矩阵（4 个 MC × 新旧 Xaero）+ 客户端 E2E GameTest |
+| `refresh-versions.yml` | 每周一 + 手动     | 刷新 `versions.json` 版本矩阵（有变更才提交）               |
+| `release.yml`          | workflow_dispatch | 版本提升 + 三平台编译 + Modrinth + Release                  |
 
 Modrinth project ID: `UoJSF4vW`
+
+测试三层（详见 `doc/testing.md`）：JVM 单测 → native 集成 → E2E 客户端 GameTest。
 
 ### 配色方案
 

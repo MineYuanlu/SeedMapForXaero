@@ -38,6 +38,11 @@ XSM_API bool setBiomeColorTableNative(void);
 /// @param version 版本字符串; 来自 `SharedConstants.getCurrentVersion().name()`
 XSM_API bool setGameVersion(const char* version);
 
+/// @brief 将版本字符串解析为 cubiomes MCVersion 枚举
+/// @param version 版本字符串 (与 setGameVersion 相同语义)
+/// @return 枚举值; MC_UNDEF(0) 表示未知版本
+XSM_API int32_t xsmGetMCVersion(const char* version);
+
 /// @brief 设置世界信息
 /// @param seed 世界种子
 /// @param dim 世界维度(-1: NETHER; 0: OVERWORLD; 1: THE_END)
