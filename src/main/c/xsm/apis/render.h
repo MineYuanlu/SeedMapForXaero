@@ -132,8 +132,6 @@ XSM_API int32_t xsmGetStructFEATURE_NUM(void);
 #define XSM_VAR_VILLAGE_ZOMBIE         (1 << 3)
 #define XSM_VAR_BASTION_TYPE_MASK      (0x03)
 #define XSM_VAR_PORTAL_GIANT           (1 << 0)
-#define XSM_VAR_PORTAL_UNDERGROUND     (1 << 1)
-#define XSM_VAR_PORTAL_AIRPOCKET       (1 << 2)
 #define XSM_VAR_TRIAL_CHAMBERS_MASK    (0x03)
 
 /// @brief 批量查询某个结构类型在矩形 (rx0, rz0) ~ (rx1, rz1) 但不在矩形 (rx2, rz2) ~ (rx3, rz3) 区域内的结构位置。

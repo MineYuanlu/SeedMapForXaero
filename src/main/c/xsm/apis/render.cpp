@@ -207,13 +207,9 @@ static int32_t xsmComputeVariant(int32_t structureType, int32_t blockX,
     // getVariant 内部以 biomeID 判定搁浅: 非海洋群系 nextInt(11), 海洋 nextInt(20)
     return sv.start < 11 ? XSM_VAR_SHIPWRECK_BEACHED : 0;
   case Ruined_Portal:
-  case Ruined_Portal_N: {
-    int v = 0;
-    if (sv.giant) v |= XSM_VAR_PORTAL_GIANT;
-    if (sv.underground) v |= XSM_VAR_PORTAL_UNDERGROUND;
-    if (sv.airpocket) v |= XSM_VAR_PORTAL_AIRPOCKET;
-    return v;
-  }
+  case Ruined_Portal_N:
+    // 只保留 普通(0)/巨型(1); 地下/空穴等位折叠进普通, 不单独区分
+    return sv.giant ? XSM_VAR_PORTAL_GIANT : 0;
   case Geode:
     return sv.cracked ? XSM_VAR_GEODE_CRACKED : 0;
   case Trial_Chambers:

@@ -420,16 +420,14 @@ TEST_CASE("structure variants") {
       auto hits = queryHits(t.id, 0, 0, 50, 50);
       bool seen = false;
       for (auto& h : hits) {
-        if (t.id == Ruined_Portal) {
-          bool okBits = (h.v & ~(XSM_VAR_PORTAL_GIANT | XSM_VAR_PORTAL_UNDERGROUND |
-                                  XSM_VAR_PORTAL_AIRPOCKET)) == 0;
-          CHECK_MESSAGE(okBits, "bad portal bits: ", h.v);
-          if (h.v & t.wantBit) seen = true;
-        } else if (t.id == Trial_Chambers) {
+        if (t.id == Trial_Chambers) {
           bool okBits = (h.v & ~XSM_VAR_TRIAL_CHAMBERS_MASK) == 0;
           CHECK_MESSAGE(okBits, "bad trial chamber bits: ", h.v);
           if (h.v != 0) seen = true;
         } else {
+          // 单码类型 (Igloo/Shipwreck/Ruined_Portal): 只能是 0 或 wantBit
+          bool okBits = (h.v & ~t.wantBit) == 0;
+          CHECK_MESSAGE(okBits, "bad ", t.name, " variant bits: ", h.v);
           if (h.v == t.wantBit) seen = true;
         }
       }

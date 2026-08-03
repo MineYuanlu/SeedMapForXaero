@@ -4,6 +4,7 @@ import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlagView;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -52,7 +53,7 @@ public class StructureOverlayMixin {
         final var wc = ServerConfig.getActiveWorldConfig();
         if (wc == null)
             return;
-        final var enabled = wc.getEnabledStructures();
+        final var enabled = wc.getStructureTypeSet();
         if (enabled.isEmpty())
             return;
 
@@ -80,7 +81,7 @@ public class StructureOverlayMixin {
         final var wc = ServerConfig.getActiveWorldConfig();
         if (wc == null)
             return;
-        final var enabled = wc.getEnabledStructures();
+        final var enabled = wc.getStructureTypeSet();
         if (enabled.isEmpty())
             return;
 
@@ -90,13 +91,19 @@ public class StructureOverlayMixin {
         final Minecraft mc = Minecraft.getInstance();
         final double invScale = 1.0 / screenScale;
 
+        // 两级过滤仅作用于渲染, 生成/缓存不变: 结构整体禁用 或 该变种禁用 则不显示
+        final StructureBitFlagView flags = wc.getDisabledStructures();
+
         xsm$hoverText = null;
         xsm$bestDist = iconHalf;
 
         for (var entry : StructureCache.REGIONS.entrySet()) {
             StructureType type = entry.getKey();
+            final int typeId = type.id;
             for (StructurePos rp : entry.getValue()) {
                 if (!rp.loaded())
+                    continue;
+                if (flags.isStructureSet(typeId) || flags.isVariantSet(typeId, rp.getVariant()))
                     continue;
                 int idx = type.getSpriteIndex(rp.getVariant());
                 float u0 = (float) (idx * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
@@ -107,7 +114,7 @@ public class StructureOverlayMixin {
             }
         }
 
-        if (enabled.get(StructureType.STRONGHOLD.id)) {
+        if (!flags.isStructureSet(StructureType.STRONGHOLD.id)) {
             final var strongholds = StructureCache.strongholds();
             if (strongholds != null) {
                 final StructureType type = StructureType.STRONGHOLD;

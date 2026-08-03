@@ -28,6 +28,7 @@ Format: custom binary (`ConfigData.write`/`read`, magic word + version 0). **Not
 - Seed history — `ConfigData.allSeeds` (capped 1000, MRU-ordered)
 - Enabled structure types — `WorldConfig.enabledStructures` (`BitSet`, persisted per mwId)
 - Disabled biome types — `WorldConfig.disabledBiomes` (`BitSet`, persisted per mwId)
+- Two-level structure filter — `WorldConfig.disabledStructure` (`StructureBitFlag`, persisted per mwId; bit0 = 整类禁用, bit1+ = 变种禁用, 默认全 0 = 全部可见). 变种过滤仅作用于渲染, 生成/缓存不变. 可见性 = `!isStructureSet(id) && !isVariantSet(id, variant)`, 由调用方组合. `WorldConfig` format **version 1**; version 0 configs migrate by flipping legacy `enabledStructures` into `disabledStructure` (variant bits stay 0 = all visible).
 
 ## Atomic save
 

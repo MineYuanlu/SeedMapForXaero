@@ -11,8 +11,11 @@ import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.WorldConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlag;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlagView;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -54,7 +57,20 @@ public class SeedMapPanel {
 
     // filtered lists
     private List<BiomeType> filteredBiomes;
-    private List<StructureType> filteredStructures;
+    private List<StructRow> filteredStructures;
+
+    /**
+     * 结构区一行: 类型行 (variant==null) 或该类型下的变种行 (缩进)。
+     * 树形结构, 默认全部展开。
+     */
+    private record StructRow(StructureType type, @Nullable Integer variant) {
+        boolean isVariant() {
+            return variant != null;
+        }
+    }
+
+    /** 无配置时的回退 flags: 全 0 = 全部可见 */
+    private static final StructureBitFlagView DEFAULT_FLAGS = new StructureBitFlag();
 
     // slider
     private float sliderValue = 1.0f;
@@ -301,25 +317,45 @@ public class SeedMapPanel {
 
         int end = Math.min(structScrollOff + visible, size);
         var wc = ServerConfig.getActiveWorldConfig();
-        BitSetView enabledStructs = wc != null ? wc.getEnabledStructures() : StructureType.defaultEnabled();
+        StructureBitFlagView flags = wc != null ? wc.getDisabledStructures() : DEFAULT_FLAGS;
 
         for (int i = structScrollOff; i < end; i++) {
-            StructureType s = filteredStructures.get(i);
+            StructRow row = filteredStructures.get(i);
             int itemY = y + (i - structScrollOff) * ITEM_H;
-            boolean si = enabledStructs.get(s.id);
             boolean hover = mx >= PADDING && mx <= PANEL_WIDTH - PADDING
                     && my >= itemY && my <= itemY + ITEM_H;
-            renderCheckbox(g, PADDING, itemY + (ITEM_H - 9) / 2, si, hover);
+            if (row.isVariant()) {
+                // 变种行: 缩进显示, 用变种专属图标
+                final int v = row.variant();
+                boolean on = !flags.isStructureSet(row.type().id) && !flags.isVariantSet(row.type().id, v);
+                int cbX = PADDING + 14;
+                renderCheckbox(g, cbX, itemY + (ITEM_H - 9) / 2, on, hover);
+                float v0 = (row.type().getSpriteIndex(v) * 16f)
+                        / StructureType.PLAIN_SPRITESHEET_WIDTH;
+                float v1 = v0 + 16f / StructureType.PLAIN_SPRITESHEET_WIDTH;
+                g.blit(StructureType.STRUCTURES_PLAIN_TEXTURE,
+                        cbX + 12, itemY + 1,
+                        cbX + 22, itemY + 11,
+                        v0, v1, 0.0F, 1.0F);
+                g.text(font, I18n.get(row.type().variantTranslationKey(v)),
+                        cbX + 24, itemY + (ITEM_H - font.lineHeight) / 2,
+                        on ? 0xFFFFFFFF : 0xFF888888);
+            } else {
+                StructureType s = row.type();
+                boolean si = !flags.isStructureSet(s.id);
+                renderCheckbox(g, PADDING, itemY + (ITEM_H - 9) / 2, si, hover);
 
-            float u0 = (s.getSpriteIndex(0) * 16f) / StructureType.PLAIN_SPRITESHEET_WIDTH;
-            float u1 = u0 + 16f / StructureType.PLAIN_SPRITESHEET_WIDTH;
-            g.blit(StructureType.STRUCTURES_PLAIN_TEXTURE,
-                    PADDING + 12, itemY + 1,
-                    PADDING + 22, itemY + 11,
-                    u0, u1, 0.0F, 1.0F);
+                float u0 = (s.getSpriteIndex(0) * 16f) / StructureType.PLAIN_SPRITESHEET_WIDTH;
+                float u1 = u0 + 16f / StructureType.PLAIN_SPRITESHEET_WIDTH;
+                g.blit(StructureType.STRUCTURES_PLAIN_TEXTURE,
+                        PADDING + 12, itemY + 1,
+                        PADDING + 22, itemY + 11,
+                        u0, u1, 0.0F, 1.0F);
 
-            g.text(font, I18n.get(s.translationKey()), PADDING + 24, itemY + (ITEM_H - font.lineHeight) / 2,
-                    si ? 0xFFFFFFFF : 0xFF888888);
+                g.text(font, I18n.get(s.translationKey()), PADDING + 24,
+                        itemY + (ITEM_H - font.lineHeight) / 2,
+                        si ? 0xFFFFFFFF : 0xFF888888);
+            }
         }
 
         y += visible * ITEM_H;
@@ -469,11 +505,20 @@ public class SeedMapPanel {
             for (int i = structScrollOff; i < end; i++) {
                 int itemY = y + (i - structScrollOff) * ITEM_H;
                 if (my >= itemY && my <= itemY + ITEM_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING) {
-                    StructureType s = filteredStructures.get(i);
+                    StructRow row = filteredStructures.get(i);
                     var wc = ServerConfig.getActiveWorldConfig();
                     if (wc != null) {
-                        boolean cur = wc.getEnabledStructures().get(s.id);
-                        wc.setStructureEnabled(s.id, !cur);
+                        StructureBitFlagView flags = wc.getDisabledStructures();
+                        if (row.isVariant()) {
+                            int v = row.variant();
+                            boolean cur = !flags.isStructureSet(row.type().id)
+                                    && !flags.isVariantSet(row.type().id, v);
+                            wc.setVariantEnabled(row.type().id, v, !cur);
+                        } else {
+                            boolean cur = !flags.isStructureSet(row.type().id);
+                            wc.setStructureEnabled(row.type().id, !cur);
+                            updateStructFilter(); // 结构禁用 → 收拢变种行
+                        }
                     }
                     return true;
                 }
@@ -637,21 +682,42 @@ public class SeedMapPanel {
     private void updateStructFilter() {
         filteredStructures = new ArrayList<>();
         String search = structSearchText.toLowerCase();
+        var wc = ServerConfig.getActiveWorldConfig();
+        StructureBitFlagView flags = wc != null ? wc.getDisabledStructures() : DEFAULT_FLAGS;
         for (StructureType s : StructureType.values()) {
-            if (search.isEmpty()) {
-                filteredStructures.add(s);
+            boolean typeMatch = search.isEmpty();
+            if (!typeMatch) {
+                if (Integer.toString(s.id).contains(search)) {
+                    typeMatch = true;
+                } else if (s.key.contains(search)) {
+                    typeMatch = true;
+                } else if (I18n.get(s.translationKey()).toLowerCase().contains(search)) {
+                    typeMatch = true;
+                }
+            }
+            boolean structVisible = !flags.isStructureSet(s.id);
+            IntList variants = s.getVariants();
+            if (typeMatch) {
+                filteredStructures.add(new StructRow(s, null));
+                if (structVisible) {
+                    for (int v : variants)
+                        filteredStructures.add(new StructRow(s, v));
+                }
                 continue;
             }
-            if (Integer.toString(s.id).contains(search)) {
-                filteredStructures.add(s);
+            if (variants.isEmpty())
                 continue;
-            }
-            if (s.key.contains(search)) {
-                filteredStructures.add(s);
-                continue;
-            }
-            if (I18n.get(s.translationKey()).toLowerCase().contains(search)) {
-                filteredStructures.add(s);
+            // 搜索命中变种名 → 显示类型行 + 仅命中的变种行
+            boolean addedType = false;
+            for (int v : variants) {
+                if (I18n.get(s.variantTranslationKey(v)).toLowerCase().contains(search)) {
+                    if (!addedType) {
+                        filteredStructures.add(new StructRow(s, null));
+                        addedType = true;
+                    }
+                    if (structVisible)
+                        filteredStructures.add(new StructRow(s, v));
+                }
             }
         }
     }
