@@ -37,19 +37,20 @@ public class SeedMapPanel {
     private final Minecraft mc;
     private final Font font;
 
-    public boolean panelOpen;
+    // session-scoped UI state: survives map screen reopen, cleared only when the game closes
+    public static boolean panelOpen;
 
     // section expand state
-    private boolean biomeExpanded;
-    private boolean structureExpanded;
+    private static boolean biomeExpanded;
+    private static boolean structureExpanded;
 
     // scroll
-    private int biomeScrollOff;
-    private int structScrollOff;
+    private static int biomeScrollOff;
+    private static int structScrollOff;
 
     // search state (keys only, no EditBox widget for now)
-    private String biomeSearchText = "";
-    private String structSearchText = "";
+    private static String biomeSearchText = "";
+    private static String structSearchText = "";
 
     // filtered lists
     private List<BiomeType> filteredBiomes;
@@ -76,10 +77,6 @@ public class SeedMapPanel {
         panelOpen = !panelOpen;
         if (panelOpen) {
             sliderDragging = false;
-            biomeScrollOff = 0;
-            structScrollOff = 0;
-            biomeExpanded = false;
-            structureExpanded = false;
             sliderValue = ServerConfig.getStructureIconSize();
             updateBiomeFilter();
             updateStructFilter();
@@ -99,8 +96,8 @@ public class SeedMapPanel {
 
         // recreate search fields if panel is open
         if (panelOpen) {
-            String prevBiome = biomeSearchField != null ? biomeSearchField.getValue() : "";
-            String prevStruct = structSearchField != null ? structSearchField.getValue() : "";
+            String prevBiome = biomeSearchText;
+            String prevStruct = structSearchText;
 
             int searchY = PADDING + HEADER_H + PADDING + 20 + PADDING;
             biomeSearchField = new EditBox(font, PADDING + 24, searchY, PANEL_WIDTH - PADDING - 28, 14,
@@ -372,12 +369,9 @@ public class SeedMapPanel {
         return mx >= cbX && mx <= cbX + 9 && my >= cbY && my <= cbY + 9;
     }
 
-    private boolean hitArrow(int mx, int my, int headerY, boolean expanded) {
-        String arrow = expanded ? "▼" : "▶";
-        int arrX = PANEL_WIDTH - PADDING - font.width(arrow);
-        int arrY = headerY + (HEADER_H - font.lineHeight) / 2;
-        return mx >= arrX && mx <= arrX + font.width(arrow)
-                && my >= arrY && my <= arrY + font.lineHeight;
+    private boolean hitHeader(int mx, int my, int headerY) {
+        return my >= headerY && my < headerY + HEADER_H
+                && mx >= PADDING && mx <= PANEL_WIDTH - PADDING;
     }
 
     // ─── MOUSE ──────────────────────────────────────────────
@@ -406,13 +400,13 @@ public class SeedMapPanel {
         // clicking panel → unfocus EditBox and clear screen focus
         screen.setFocused(null);
 
-        // biome section header
+        // biome section header: checkbox toggles enable, rest of the header toggles expand
         int y = PADDING;
         if (hitCheckbox(mx, my, y)) {
             toggleBiome();
             return true;
         }
-        if (hitArrow(mx, my, y, biomeExpanded)) {
+        if (hitHeader(mx, my, y)) {
             biomeExpanded = !biomeExpanded;
             return true;
         }
@@ -452,12 +446,12 @@ public class SeedMapPanel {
 
         y += 5;
 
-        // structure section header
+        // structure section header: checkbox toggles enable, rest of the header toggles expand
         if (hitCheckbox(mx, my, y)) {
             ServerConfig.setStructureEnabled(!ServerConfig.isStructureEnabled());
             return true;
         }
-        if (hitArrow(mx, my, y, structureExpanded)) {
+        if (hitHeader(mx, my, y)) {
             structureExpanded = !structureExpanded;
             return true;
         }
