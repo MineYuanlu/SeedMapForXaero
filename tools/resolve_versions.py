@@ -131,16 +131,23 @@ def write_versions(rows: "list[dict]") -> None:
         f.write("\n")
 
 
-def print_matrix(rows: "list[dict]") -> None:
+def print_matrix(rows: "list[dict]", tag: str = "all") -> None:
+    """Emit the GitHub Actions strategy matrix JSON.
+
+    tag=all: every MC version × oldest+newest Xaero (compile/JUnit matrix).
+    tag=newest/oldest: only that Xaero endpoint (E2E matrix uses newest).
+    """
     include = []
     for r in rows:
-        for tag, ver in (("oldest", r["xaeroOldest"]), ("newest", r["xaeroNewest"])):
+        for t, ver in (("oldest", r["xaeroOldest"]), ("newest", r["xaeroNewest"])):
+            if tag != "all" and t != tag:
+                continue
             include.append({
                 "mc": r["id"],
                 "java": r["java"],
                 "xaeroLine": r["xaeroArtifactLine"],
                 "xaeroVersion": ver,
-                "xaeroTag": tag,
+                "xaeroTag": t,
                 "fabricApi": r["fabricApi"],
             })
     print(json.dumps({"include": include}, indent=2))
@@ -177,9 +184,9 @@ def cmd_check(_args) -> int:
     return 1
 
 
-def cmd_matrix(_args) -> int:
+def cmd_matrix(args) -> int:
     committed = load_committed()
-    print_matrix(committed["versions"])
+    print_matrix(committed["versions"], tag=args.tag)
     return 0
 
 
@@ -188,6 +195,8 @@ def main() -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mode", choices=["update", "check", "matrix"],
                         help="operation to run")
+    parser.add_argument("--tag", choices=["all", "oldest", "newest"], default="all",
+                        help="matrix mode: only emit Xaero endpoint(s) for this tag (default: all)")
     args = parser.parse_args()
     return {"update": cmd_update, "check": cmd_check, "matrix": cmd_matrix}[args.mode](args)
 
