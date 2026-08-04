@@ -9,6 +9,7 @@
     "SeedMapCursorMixin",
     "WorldSwitchMixin",
     "GuiMapSwitchingMixin",
+    "GameRendererAccessorMixin",
     "StructureOverlayMixin",
     "XsmMainPanelMixin"
   ],

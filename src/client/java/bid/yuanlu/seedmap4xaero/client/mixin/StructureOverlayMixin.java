@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
@@ -115,7 +116,7 @@ public class StructureOverlayMixin {
         final StructureBitFlagView flags = wc.getDisabledStructures();
 
         final Minecraft mc = Minecraft.getInstance();
-        final var guiRenderState = mc.gameRenderer.getGameRenderState().guiRenderState;
+        final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
         // 新开一层 stratum: 保证图标渲染在 map composite 之上 (addBlitToCurrentLayer 只挂到
         // current, 而 current 在 Xaero 的 debug 文本等操作后不可靠, 可能在地图之下被覆盖)
         guiRenderState.nextStratum();
