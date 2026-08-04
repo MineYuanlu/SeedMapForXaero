@@ -78,17 +78,13 @@ SPRITES: "dict[int, str | tuple[str, ...] | dict[int, str | tuple[str, ...]]]" =
     8: "ItemSprite_prismarine-crystals.png",  # monument
     9: "EnvSprite_mansion.png",  # mansion
     10: "EntitySprite_johnny.png",  # outpost
-    11: {  # ruined_portal: 0 normal, 1 giant, 2 underground, 4 airpocket
+    11: {  # ruined_portal: 0 normal, 1 giant
         0: "EnvSprite_overworld-ruined-portal.png",
         1: "EnvSprite_overworld-ruined-portal.png",
-        2: "EnvSprite_overworld-ruined-portal.png",
-        4: "EnvSprite_overworld-ruined-portal.png",
     },
     12: {  # ruined_portal_nether: 同上
         0: ("EnvSprite_ruined-portal.png", "EnvSprite_the-nether-ruined-portal.png"),
         1: ("EnvSprite_ruined-portal.png", "EnvSprite_the-nether-ruined-portal.png"),
-        2: ("EnvSprite_ruined-portal.png", "EnvSprite_the-nether-ruined-portal.png"),
-        4: ("EnvSprite_ruined-portal.png", "EnvSprite_the-nether-ruined-portal.png"),
     },
     13: "EnvSprite_ancient-city.png",  # ancient_city
     14: ("EnvSprite_bonus-chest.png", "EnvSprite_buried-treasure.png"),  # treasure

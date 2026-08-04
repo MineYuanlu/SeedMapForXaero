@@ -59,11 +59,13 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 
 ### CI（`.github/workflows/matrix-test.yml`）
 
-| Job            | 内容                                                                                                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolve`      | 校验 `versions.json` 新鲜度（过期仅告警不阻塞）+ 输出矩阵                                                                                                                 |
-| `test`（8 行） | `cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）                                                                         |
-| `client-test`  | 主版本 E2E：`./gradlew runProductionClientGameTest -PskipNativeWindows=true`，grep `seed-map E2E assertions passed` 判定成功；`gametest.log` + `run/screenshots` 始终上传 |
+- `resolve`：校验 `versions.json` 新鲜度（过期仅告警不阻塞）+ 输出两套矩阵
+  - `matrix`：8 组合（4 MC × oldest/newest Xaero），`test` 用
+  - `matrix-e2e`：4 组合（每 MC × **newest** Xaero），`client-test` 用
+- `test`（8 行）：`cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）—— 只验证**编译**，mixin 运行时是否生效不做保证
+- `client-test`（4 行）：真实启动 MC 的 E2E，`./gradlew runProductionClientGameTest -PskipNativeWindows=true` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
+
+> **运行时 vs 编译**：`test` 的 8 组合矩阵保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；但 mixin 的运行时应用（目标方法/字段在对应版本真实存在、注入点命中）只能由 `client-test` 的真实客户端启动验证。两个 job 互补，缺一不可。
 
 ### 失败诊断
 

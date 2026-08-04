@@ -6,10 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.BitSet;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,7 +43,7 @@ class ServerConfigTest {
 
     private void assertWorldEq(WorldConfig expect, WorldConfig actual) {
         assertEquals(expect.seed(), actual.seed());
-        assertEquals(expect.getEnabledStructures(), actual.getEnabledStructures());
+        assertEquals(expect.getDisabledStructures(), actual.getDisabledStructures());
         assertEquals(expect.getDisabledBiomes(), actual.getDisabledBiomes());
     }
 
@@ -161,18 +166,78 @@ class ServerConfigTest {
         wc.setStructureEnabled(StructureType.VILLAGE.id, true);
         for (int id = 0; id < 10; id++)
             wc.setBiomeDisabled(id, true);
+        wc.setVariantEnabled(StructureType.VILLAGE.id, 8, false); // 僵尸平原村禁用
 
         Path file = tmp.resolve("bits.sm4x");
         cfg.write(file);
         ConfigData read = ConfigData.read(file);
 
-        BitSetView en = read.getWorld("w").getEnabledStructures();
-        assertTrue(en.get(StructureType.VILLAGE.id));
-        assertFalse(en.get(StructureType.STRONGHOLD.id));
+        var flags = read.getWorld("w").getDisabledStructures();
+        assertFalse(flags.isStructureSet(StructureType.VILLAGE.id), "village visible");
+        assertTrue(flags.isStructureSet(StructureType.STRONGHOLD.id), "stronghold hidden");
+        assertTrue(flags.isVariantSet(StructureType.VILLAGE.id, 8), "zombie village disabled");
+        assertFalse(flags.isVariantSet(StructureType.VILLAGE.id, 0), "plains village stays visible");
 
         BitSetView dis = read.getWorld("w").getDisabledBiomes();
         for (int id = 0; id < 10; id++)
             assertTrue(dis.get(id));
+    }
+
+    @Test
+    void freshWorldDefaultsToAllVisible() {
+        ConfigData cfg = new ConfigData();
+        var wc = cfg.getOrCreateWorld("w");
+        var flags = wc.getDisabledStructures();
+        for (StructureType t : StructureType.values())
+            assertFalse(flags.isStructureSet(t.id), t.key + " should be visible by default");
+        assertTrue(wc.getStructureTypeSet().get(StructureType.VILLAGE.id));
+    }
+
+    @Test
+    void v0WorldConfigMigratesDefaults() throws IOException {
+        // 旧版 (version 0) WorldConfig: seed + enabledStructures(可空) + disabledBiomes(可空)
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bos)) {
+            out.writeInt(0); // version 0
+            out.writeBoolean(true); // hasSeed
+            out.writeLong(42L);
+            out.writeBoolean(false); // no enabledStructures → 用默认
+            out.writeBoolean(false); // no disabledBiomes
+        }
+        ConfigData main = new ConfigData();
+        WorldConfig wc = WorldConfig.read(main,
+                new DataInputStream(new ByteArrayInputStream(bos.toByteArray())));
+
+        assertEquals(42L, wc.seed());
+        var flags = wc.getDisabledStructures();
+        assertTrue(flags.isStructureSet(StructureType.FEATURE.id), "feature default hidden");
+        assertFalse(flags.isStructureSet(StructureType.VILLAGE.id), "village default visible");
+        assertFalse(flags.isVariantSet(StructureType.IGLOO.id, 1), "variants default visible");
+    }
+
+    @Test
+    void v0EnabledStructuresFlipsToDisabled() throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bos)) {
+            out.writeInt(0);
+            out.writeBoolean(false); // no seed
+            out.writeBoolean(true); // has enabledStructures
+            // 仅 STRONGHOLD 开启 → 迁移后其余类型整类禁用
+            BitSet en = new BitSet();
+            en.set(StructureType.STRONGHOLD.id);
+            byte[] bits = en.toByteArray();
+            out.writeInt(bits.length);
+            out.write(bits);
+            out.writeBoolean(false); // no disabledBiomes
+        }
+        ConfigData main = new ConfigData();
+        WorldConfig wc = WorldConfig.read(main,
+                new DataInputStream(new ByteArrayInputStream(bos.toByteArray())));
+
+        var flags = wc.getDisabledStructures();
+        assertFalse(flags.isStructureSet(StructureType.STRONGHOLD.id), "stronghold visible");
+        assertTrue(flags.isStructureSet(StructureType.VILLAGE.id), "village hidden");
+        assertTrue(flags.isStructureSet(StructureType.IGLOO.id), "igloo hidden");
     }
 
     @Test

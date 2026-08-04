@@ -39,7 +39,6 @@ class StructureTypeTest {
 
     @Test
     void jungleTempleAliasSharesId() {
-        assertEquals(StructureType.JUNGLE_TEMPLE.id, StructureType.JUNGLE_PYRAMID.id);
         assertEquals(StructureType.JUNGLE_PYRAMID, StructureType.byId(2), "later alias wins BY_ID");
     }
 
@@ -70,48 +69,73 @@ class StructureTypeTest {
 
     @Test
     void variantTranslationKeys() {
-        assertNull(StructureType.END_CITY.variantTranslationKey(0));
-        assertEquals("xsm.structure.end_city.variant.ship",
+        assertEquals("xsm.structure.end_city.normal",
+                StructureType.END_CITY.variantTranslationKey(0));
+        assertEquals("xsm.structure.end_city.ship",
                 StructureType.END_CITY.variantTranslationKey(1));
 
-        assertEquals("xsm.structure.village.variant.zombie",
-                StructureType.VILLAGE.variantTranslationKey(8));
-        assertEquals("xsm.structure.village.variant.desert",
+        assertEquals("xsm.structure.village.zombie_snowy",
+                StructureType.VILLAGE.variantTranslationKey(12));
+        assertEquals("xsm.structure.village.desert",
                 StructureType.VILLAGE.variantTranslationKey(1));
-        assertEquals("xsm.structure.village.variant.savanna",
+        assertEquals("xsm.structure.village.savanna",
                 StructureType.VILLAGE.variantTranslationKey(2));
-        assertEquals("xsm.structure.village.variant.taiga",
+        assertEquals("xsm.structure.village.taiga",
                 StructureType.VILLAGE.variantTranslationKey(3));
-        assertEquals("xsm.structure.village.variant.snowy",
+        assertEquals("xsm.structure.village.snowy",
                 StructureType.VILLAGE.variantTranslationKey(4));
-        assertNull(StructureType.VILLAGE.variantTranslationKey(5));
+        assertEquals("xsm.structure.village.zombie_plains",
+                StructureType.VILLAGE.variantTranslationKey(8));
+        assertEquals("xsm.structure.village.zombie_desert",
+                StructureType.VILLAGE.variantTranslationKey(9));
+        assertEquals("xsm.structure.village.zombie_savanna",
+                StructureType.VILLAGE.variantTranslationKey(10));
+        assertEquals("xsm.structure.village.zombie_taiga",
+                StructureType.VILLAGE.variantTranslationKey(11));
 
-        assertEquals("xsm.structure.bastion.variant.hoglin_stable",
+        assertEquals("xsm.structure.bastion.hoglin_stable",
                 StructureType.BASTION.variantTranslationKey(1));
-        assertEquals("xsm.structure.bastion.variant.treasure",
+        assertEquals("xsm.structure.bastion.treasure",
                 StructureType.BASTION.variantTranslationKey(2));
-        assertEquals("xsm.structure.bastion.variant.bridge",
+        assertEquals("xsm.structure.bastion.bridge",
                 StructureType.BASTION.variantTranslationKey(3));
-        assertNull(StructureType.BASTION.variantTranslationKey(0));
 
-        assertEquals("xsm.structure.igloo.variant.basement",
+        assertEquals("xsm.structure.igloo.basement",
                 StructureType.IGLOO.variantTranslationKey(1));
-        assertEquals("xsm.structure.shipwreck.variant.beached",
+        assertEquals("xsm.structure.igloo.normal",
+                StructureType.IGLOO.variantTranslationKey(0));
+        assertEquals("xsm.structure.shipwreck.beached",
                 StructureType.SHIPWRECK.variantTranslationKey(1));
+        assertEquals("xsm.structure.shipwreck.normal",
+                StructureType.SHIPWRECK.variantTranslationKey(0));
 
-        assertEquals("xsm.structure.ruined_portal.variant.giant",
+        assertEquals("xsm.structure.ruined_portal.giant",
                 StructureType.RUINED_PORTAL.variantTranslationKey(1));
-        assertEquals("xsm.structure.ruined_portal.variant.underground",
-                StructureType.RUINED_PORTAL.variantTranslationKey(2));
-        assertEquals("xsm.structure.ruined_portal.variant.airpocket",
-                StructureType.RUINED_PORTAL.variantTranslationKey(4));
+        assertEquals("xsm.structure.ruined_portal.normal",
+                StructureType.RUINED_PORTAL.variantTranslationKey(0));
+        assertEquals("xsm.structure.ruined_portal_nether.giant",
+                StructureType.RUINED_PORTAL_N.variantTranslationKey(1));
+        assertEquals("xsm.structure.ruined_portal_nether.normal",
+                StructureType.RUINED_PORTAL_N.variantTranslationKey(0));
 
-        assertEquals("xsm.structure.geode.variant.cracked",
+        assertEquals("xsm.structure.geode.cracked",
                 StructureType.GEODE.variantTranslationKey(1));
-        assertEquals("xsm.structure.trial_chambers.variant.end",
+        // 未 override 的类型回退到整体 key
+        assertEquals("xsm.structure.trial_chambers",
                 StructureType.TRIAL_CHAMBERS.variantTranslationKey(1));
-        assertEquals("xsm.structure.trial_chambers.variant.corridor",
-                StructureType.TRIAL_CHAMBERS.variantTranslationKey(2));
+        assertEquals("xsm.structure.desert_pyramid",
+                StructureType.DESERT_PYRAMID.variantTranslationKey(0));
+    }
+
+    @Test
+    void variantsCoverProducibleCodes() {
+        assertEquals(java.util.List.of(0, 1), StructureType.IGLOO.getVariants());
+        assertEquals(java.util.List.of(0, 1, 2, 3, 4, 8, 9, 10, 11, 12),
+                StructureType.VILLAGE.getVariants());
+        assertEquals(java.util.List.of(0, 1), StructureType.RUINED_PORTAL.getVariants());
+        assertEquals(java.util.List.of(0, 1), StructureType.RUINED_PORTAL_N.getVariants());
+        assertEquals(java.util.List.of(), StructureType.STRONGHOLD.getVariants());
+        assertEquals(java.util.List.of(), StructureType.DESERT_PYRAMID.getVariants());
     }
 
     @Test

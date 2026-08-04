@@ -9,44 +9,212 @@ import java.util.TreeMap;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.ApiStatus.OverrideOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+import it.unimi.dsi.fastutil.ints.IntArrays;
+import it.unimi.dsi.fastutil.ints.IntImmutableList;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.ints.IntLists;
 import net.minecraft.resources.Identifier;
 
 /**
  * 生成结构枚举表
  */
 public enum StructureType {
-    FEATURE(0, "feature", false, Integer.MAX_VALUE), // 地物
-    DESERT_PYRAMID(1, "desert_pyramid", true, Integer.MAX_VALUE), // 沙漠神殿
-    JUNGLE_TEMPLE(2, "jungle_temple", true, Integer.MAX_VALUE), // 丛林神庙
-    JUNGLE_PYRAMID(2, "jungle_pyramid", true, Integer.MAX_VALUE), // 丛林神庙 (1.13+改名)
-    SWAMP_HUT(3, "swamp_hut", true, Integer.MAX_VALUE), // 沼泽小屋
-    IGLOO(4, "igloo", true, Integer.MAX_VALUE), // 雪屋
-    VILLAGE(5, "village", true, Integer.MAX_VALUE), // 村庄
-    OCEAN_RUIN(6, "ocean_ruin", false, Integer.MAX_VALUE), // 海底废墟
-    SHIPWRECK(7, "shipwreck", true, Integer.MAX_VALUE), // 沉船
-    MONUMENT(8, "monument", true, Integer.MAX_VALUE), // 海底神殿
-    MANSION(9, "mansion", true, Integer.MAX_VALUE), // 林地府邸
-    OUTPOST(10, "outpost", true, Integer.MAX_VALUE), // 掠夺者前哨站
-    RUINED_PORTAL(11, "ruined_portal", false, Integer.MAX_VALUE), // 废弃传送门（主世界）
-    RUINED_PORTAL_N(12, "ruined_portal_nether", false, Integer.MAX_VALUE), // 废弃传送门（下界）
-    ANCIENT_CITY(13, "ancient_city", true, Integer.MAX_VALUE), // 远古城市
-    TREASURE(14, "treasure", false, 2048, 0.01f * 0.0333f), // 埋藏的宝藏
-    MINESHAFT(15, "mineshaft", false, 1024, 0.004f), // 废弃矿井
-    DESERT_WELL(16, "desert_well", false, 2048, 0.001f * 0.0213f), // 沙漠水井
-    GEODE(17, "geode", false, 2048, 1f / 24), // 紫晶洞
-    FORTRESS(18, "fortress", true, Integer.MAX_VALUE), // 下界要塞
-    BASTION(19, "bastion", true, Integer.MAX_VALUE), // 堡垒遗迹
-    END_CITY(20, "end_city", true, Integer.MAX_VALUE), // 末地城
-    END_GATEWAY(21, "end_gateway", false, Integer.MAX_VALUE, 1f / 700 * 0.0883f), // 末地折跃门
-    END_ISLAND(22, "end_island", false, Integer.MAX_VALUE, 1f / 14), // 末地岛屿
-    TRAIL_RUINS(23, "trail_ruins", false, Integer.MAX_VALUE), // 古迹废墟
-    TRIAL_CHAMBERS(24, "trial_chambers", false, Integer.MAX_VALUE), // 试炼密室
-    STRONGHOLD(25, "stronghold", true, Integer.MAX_VALUE); // 要塞
+    /** 地物 */
+    FEATURE(0, "feature", false, Integer.MAX_VALUE),
+    /** 沙漠神殿 */
+    DESERT_PYRAMID(1, "desert_pyramid", true, Integer.MAX_VALUE),
+    /** 丛林神庙 */
+    JUNGLE_PYRAMID(2, "jungle_pyramid", true, Integer.MAX_VALUE),
+    /** 沼泽小屋 */
+    SWAMP_HUT(3, "swamp_hut", true, Integer.MAX_VALUE),
+    /** 雪屋 */
+    IGLOO(4, "igloo", true, Integer.MAX_VALUE) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+
+        @Override
+        public @NotNull String variantTranslationKey(int variant) {
+            if ((variant & 1) != 0)
+                return "xsm.structure.igloo.basement";
+            else
+                return "xsm.structure.igloo.normal";
+        }
+
+    },
+    /** 村庄 */
+    VILLAGE(5, "village", true, Integer.MAX_VALUE) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(
+                new int[] { 0, 1, 2, 3, 4, 8, 9, 10, 11, 12 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+
+        @Override
+        public @NotNull String variantTranslationKey(int variant) {
+            return switch (variant & 15) {
+                default/* 0 */ -> "xsm.structure.village.plains";// 平原
+                case 1 -> "xsm.structure.village.desert";// 沙漠
+                case 2 -> "xsm.structure.village.savanna"; // 热带草原
+                case 3 -> "xsm.structure.village.taiga"; // 针叶林
+                case 4 -> "xsm.structure.village.snowy"; // 雪原
+                case 8 -> "xsm.structure.village.zombie_plains";
+                case 9 -> "xsm.structure.village.zombie_desert";
+                case 10 -> "xsm.structure.village.zombie_savanna";
+                case 11 -> "xsm.structure.village.zombie_taiga";
+                case 12 -> "xsm.structure.village.zombie_snowy";
+            };
+        }
+    },
+    /** 海底废墟 */
+    OCEAN_RUIN(6, "ocean_ruin", false, Integer.MAX_VALUE),
+    /** 沉船 */
+    SHIPWRECK(7, "shipwreck", true, Integer.MAX_VALUE) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+
+        @Override
+        public @NotNull String variantTranslationKey(int variant) {
+            if ((variant & 1) != 0)
+                return "xsm.structure.shipwreck.beached";
+            else
+                return "xsm.structure.shipwreck.normal";
+        }
+    },
+    /** 海底神殿 */
+    MONUMENT(8, "monument", true, Integer.MAX_VALUE),
+    /** 林地府邸 */
+    MANSION(9, "mansion", true, Integer.MAX_VALUE),
+    /** 掠夺者前哨站 */
+    OUTPOST(10, "outpost", true, Integer.MAX_VALUE),
+    /** 废弃传送门（主世界） */
+    RUINED_PORTAL(11, "ruined_portal", false, Integer.MAX_VALUE) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+
+        @Override
+        public @NotNull String variantTranslationKey(int variant) {
+            if ((variant & 1) != 0)
+                return "xsm.structure.ruined_portal.giant";
+            return "xsm.structure.ruined_portal.normal";
+        }
+    },
+    /** 废弃传送门（下界） */
+    RUINED_PORTAL_N(12, "ruined_portal_nether", false, Integer.MAX_VALUE) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+
+        @Override
+        public @NotNull String variantTranslationKey(int variant) {
+            if ((variant & 1) != 0)
+                return "xsm.structure.ruined_portal_nether.giant";
+            return "xsm.structure.ruined_portal_nether.normal";
+        }
+    },
+    /** 远古城市 */
+    ANCIENT_CITY(13, "ancient_city", true, Integer.MAX_VALUE),
+    /** 埋藏的宝藏 */
+    TREASURE(14, "treasure", false, 2048, 0.01f * 0.0333f),
+    /** 废弃矿井 */
+    MINESHAFT(15, "mineshaft", false, 1024, 0.004f),
+    /** 沙漠水井 */
+    DESERT_WELL(16, "desert_well", false, 2048, 0.001f * 0.0213f),
+    /** 紫晶洞 */
+    GEODE(17, "geode", false, 2048, 1f / 24) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+
+        @Override
+        public @NotNull String variantTranslationKey(int variant) {
+            if ((variant & 1) != 0)
+                return "xsm.structure.geode.cracked";
+            else
+                return "xsm.structure.geode.normal";
+        }
+    },
+    /** 下界要塞 */
+    FORTRESS(18, "fortress", true, Integer.MAX_VALUE),
+    /** 堡垒遗迹 */
+    BASTION(19, "bastion", true, Integer.MAX_VALUE) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1, 2, 3 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+
+        @Override
+        public @NotNull String variantTranslationKey(int variant) {
+            return switch (variant & 3) {
+                default -> "xsm.structure.bastion.units"; // 居住区
+                case 1 -> "xsm.structure.bastion.hoglin_stable";// 疣猪兽棚
+                case 2 -> "xsm.structure.bastion.treasure";// 藏宝室
+                case 3 -> "xsm.structure.bastion.bridge";// 桥
+            };
+        }
+    },
+    /** 末地城 */
+    END_CITY(20, "end_city", true, Integer.MAX_VALUE) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+
+        @Override
+        public @NotNull String variantTranslationKey(int variant) {
+            if ((variant & 1) != 0)
+                return "xsm.structure.end_city.ship";
+            else
+                return "xsm.structure.end_city.normal";
+        }
+    },
+    /** 末地折跃门 */
+    END_GATEWAY(21, "end_gateway", false, Integer.MAX_VALUE, 1f / 700 * 0.0883f),
+    /** 末地岛屿 */
+    END_ISLAND(22, "end_island", false, Integer.MAX_VALUE, 1f / 14),
+    /** 古迹废墟 */
+    TRAIL_RUINS(23, "trail_ruins", false, Integer.MAX_VALUE),
+    /** 试炼密室 */
+    TRIAL_CHAMBERS(24, "trial_chambers", false, Integer.MAX_VALUE) {
+        private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1, 2, 3 });
+
+        @OverrideOnly
+        public IntList getVariants() {
+            return VARIANTS;
+        }
+        // TODO: 2bit的 variant暂时没搞清楚对应关系
+    },
+    /** 要塞 */
+    STRONGHOLD(25, "stronghold", true, Integer.MAX_VALUE);
 
     private static final class LoggerHolder {
         private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/StructureType");
@@ -171,58 +339,23 @@ public enum StructureType {
         return arr[0];
     }
 
-    /**
-     * 变种码对应的 tooltip 翻译 key; 无变种/无文案返回 null。
-     * key 语义与 C 端 XSM_VAR_* 位码一致。
+    /** 整体翻译 key */
+    public @NotNull String translationKey() {
+        return "xsm.structure." + key;
+    }
+
+    /** 变种码对应的翻译 key */
+    public @NotNull String variantTranslationKey(int variant) {
+        return "xsm.structure." + key;
+    }
+
+    /** 
+     * 获取当前类型支持的variants码表
+     * <p>
+     * 仅用于UI显示时遍历
      */
-    public @Nullable String variantTranslationKey(int variant) {
-        if (variant <= 0)
-            return null;
-        switch (this) {
-            case END_CITY:
-                return (variant & 1) != 0 ? "xsm.structure.end_city.variant.ship" : null;
-            case VILLAGE: {
-                if ((variant & 8) != 0)
-                    return "xsm.structure.village.variant.zombie";
-                return switch (variant & 7) {
-                    case 1 -> "xsm.structure.village.variant.desert";
-                    case 2 -> "xsm.structure.village.variant.savanna";
-                    case 3 -> "xsm.structure.village.variant.taiga";
-                    case 4 -> "xsm.structure.village.variant.snowy";
-                    default -> null;
-                };
-            }
-            case BASTION: {
-                return switch (variant & 3) {
-                    case 1 -> "xsm.structure.bastion.variant.hoglin_stable";
-                    case 2 -> "xsm.structure.bastion.variant.treasure";
-                    case 3 -> "xsm.structure.bastion.variant.bridge";
-                    default -> null;
-                };
-            }
-            case IGLOO:
-                return (variant & 1) != 0 ? "xsm.structure.igloo.variant.basement" : null;
-            case SHIPWRECK:
-                return (variant & 1) != 0 ? "xsm.structure.shipwreck.variant.beached" : null;
-            case RUINED_PORTAL:
-            case RUINED_PORTAL_N:
-                if ((variant & 1) != 0)
-                    return "xsm.structure.ruined_portal.variant.giant";
-                if ((variant & 2) != 0)
-                    return "xsm.structure.ruined_portal.variant.underground";
-                if ((variant & 4) != 0)
-                    return "xsm.structure.ruined_portal.variant.airpocket";
-                return null;
-            case GEODE:
-                return (variant & 1) != 0 ? "xsm.structure.geode.variant.cracked" : null;
-            case TRIAL_CHAMBERS:
-                if ((variant & 3) == 1)
-                    return "xsm.structure.trial_chambers.variant.end";
-                else
-                    return "xsm.structure.trial_chambers.variant.corridor";
-            default:
-                return null;
-        }
+    public IntList getVariants() {
+        return IntLists.emptyList();
     }
 
     public record Config(int salt, int regionSize, int chunkRange, int dim, float rarity) {
@@ -241,10 +374,6 @@ public enum StructureType {
             }
         }
         return defaultEnabled = new BitSetView(set);
-    }
-
-    public String translationKey() {
-        return "xsm.structure." + key;
     }
 
     /**

@@ -8,11 +8,12 @@ permissions:
   contents: read
 
 jobs:
-  # ── Resolve: expand versions.json into the strategy matrix ──
+  # ── Resolve: expand versions.json into the strategy matrices ──
   resolve:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.emit.outputs.matrix }}
+      matrix-e2e: ${{ steps.emit-e2e.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -21,13 +22,22 @@ jobs:
         run: |
           python3 tools/resolve_versions.py check || \
             echo "::warning::versions.json is stale — run the refresh workflow"
-      - name: Emit matrix JSON
+      - name: Emit matrix JSON (8 combos, 4 MC x oldest/newest Xaero)
         id: emit
         run: |
-          python3 tools/resolve_versions.py matrix > /tmp/matrix.json
+          python3 tools/resolve_versions.py matrix --tag all > /tmp/matrix.json
           {
             echo "matrix<<EOF"
             cat /tmp/matrix.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Emit E2E matrix JSON (newest Xaero only)
+        id: emit-e2e
+        run: |
+          python3 tools/resolve_versions.py matrix --tag newest > /tmp/matrix-e2e.json
+          {
+            echo "matrix<<EOF"
+            cat /tmp/matrix-e2e.json
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -74,16 +84,23 @@ jobs:
   # ── Client E2E gametest（生产运行，headless）──────────────────────────────
   # 对照 Fabric 官方 CI（fabric-api/.github/workflows/build.yml client_test job）：
   # 无显示 ubuntu + xvfb + 上传截图。验证真实启动 MC 客户端后种子地图渲染链路。
+  # 矩阵取 newest Xaero 的 4 个 MC 版本组合（由 resolve 的 matrix-e2e 输出）——
+  # 8 组合编译矩阵只验证编译，mixin 的运行时应用只有真实启动的 E2E 能验证（各版本
+  # fabric-client-gametest API 差异、MC/Xaero 目标方法名差异都会在这里暴露）。
   client-test:
+    needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.matrix-e2e) }}
     steps:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: actions/setup-java@v5
         with:
-          java-version: '25'
+          java-version: ${{ matrix.java }}
           distribution: 'microsoft'
       - uses: gradle/actions/setup-gradle@v4
       - name: Install dependencies (cmake/gcc/xvfb)
@@ -92,24 +109,28 @@ jobs:
         timeout-minutes: 20
         run: |
           chmod +x ./gradlew
-          # 不指定 -P 版本覆盖 → 用 gradle.properties 主版本（26.1.2 / Xaero 1.41.0）。
           # -PskipNativeWindows=true：CI ubuntu 无 MinGW，runProductionClientGameTest
           # 的任务链会带 processClientResources → compileNativeWindows 交叉编译失败。
-          ./gradlew runProductionClientGameTest -PskipNativeWindows=true --stacktrace > gametest.log 2>&1
+          ./gradlew runProductionClientGameTest -PskipNativeWindows=true \
+            -Pminecraft_version=${{ matrix.mc }} \
+            -PxaeroMapLine=${{ matrix.xaeroLine }} \
+            -PxaeroMapVersion=${{ matrix.xaeroVersion }} \
+            -PfabricApiVersion=${{ matrix.fabricApi }} \
+            --stacktrace > gametest.log 2>&1
           # 断言全部通过才算成功；挂起由 timeout-minutes 兜底 kill
           grep -q "seed-map E2E assertions passed" gametest.log || {
-            echo "::error::client gametest assertions did not pass"
+            echo "::error::client gametest assertions did not pass (mc=${{ matrix.mc }}, xaero=${{ matrix.xaeroVersion }})"
             exit 1
           }
       - name: Upload gametest log (diagnose hangs)
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: client-gametest-log
+          name: client-gametest-log-${{ matrix.mc }}
           path: gametest.log
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: client-gametest-screenshots
+          name: client-gametest-screenshots-${{ matrix.mc }}
           path: run/screenshots

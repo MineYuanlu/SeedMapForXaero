@@ -33,8 +33,8 @@ This mod automatically fills in **unexplored** areas on Xaero's World Map with b
 - Terrain elevation rendering + lighting shadows (overworld only)
 - 3-tier exploration detection — explored areas keep real data, only fills unexplored gaps
 - Three color schemes: Native (default), Vanilla, Legacy — switchable from side panel
-- **Structure icons** — 26 structure types, individually toggleable from side panel
-- **Settings panel** — SM button on the right side of the map, per-biome/structure toggle, icon size slider
+- **Structure icons** — 26 structure types, individually toggleable from side panel; variant-bearing structures (e.g. village by plains/desert/zombie) can be toggled per variant
+- **Settings panel** — SM button on the right side of the map, per-biome/structure/variant toggle, icon size slider
 - Seed history (capped at 1000, MRU-ordered)
 - Multiplayer support — each server stores its own seed and settings independently
 - Client-side only, no server installation required
