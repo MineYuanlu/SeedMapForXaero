@@ -17,6 +17,12 @@
   "xsm.value.on": "开",
   "xsm.value.off": "关",
 
+  "xsm.menu.to_waypoint": "转换为路标",
+  "xsm.menu.highlight": "在世界中高亮",
+  "xsm.menu.unhighlight": "取消高亮",
+
+  "xsm.highlight.distance": "%s米",
+
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
   "xsm.cursor.coords_no_y": "X: %d Z: %d",
 

@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 
 import os
-import sys
 import glob
 import zipfile
 import subprocess
-import configparser
 import requests
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FERNFLOWER_JAR = os.path.join(ROOT_DIR, 'refs', 'tools', 'fernflower.jar')
 DST_DIR = os.path.join(ROOT_DIR, 'refs','lib_src')
+CACHE_DIR = os.path.join(DST_DIR, '.cache')
+
+# 26.1.2 线各依赖的最新版本（chocolateminecraft.com/maven 上查询）
+XAERO_MAP_VERSION = '1.44.2'
+XAERO_MINIMAP_VERSION = '26.4.2'
+XAERO_LIB_VERSION = '1.7.1'
+MAVEN_REPO = 'https://chocolateminecraft.com/maven'
 
 def clone_xpple_cubiomes():
     URL="https://github.com/xpple/cubiomes.git"
@@ -24,7 +29,10 @@ def clone_xpple_cubiomes():
 
 def unpack_dep(dep: str, out_dir: str):
     """
-    从 Gradle 缓存中提取依赖的源码，优先使用 -sources.jar，否则反编译。
+    提取依赖的源码，优先使用 -sources.jar，否则反编译。
+
+    优先从 Gradle 缓存中找 JAR；缓存缺失时自动从 chocolateminecraft.com/maven
+    下载到 refs/lib_src/.cache。
 
     Args:
         dep: 依赖坐标，格式 "group:artifact:version"
@@ -53,9 +61,6 @@ def unpack_dep(dep: str, out_dir: str):
     )
     matches = glob.glob(search_pattern)
 
-    if not matches:
-        raise FileNotFoundError(f"在 {cache_root} 中未找到依赖 {dep} 的任何 JAR 文件")
-
     # 3. 优先选择 -sources.jar，否则取第一个普通 JAR（排除 sources）
     sources_jar = None
     normal_jar = None
@@ -67,13 +72,23 @@ def unpack_dep(dep: str, out_dir: str):
             normal_jar = f
     # 如果没找到 sources，就用普通 jar
     target_jar = sources_jar or normal_jar
-    if not target_jar:
-        raise FileNotFoundError(f"找不到有效的 JAR 文件（匹配项: {matches})")
 
-    # 4. 创建输出目录
+    # 4. Gradle 缓存缺失 → 联网下载到本地缓存目录
+    if not target_jar:
+        print(f"Gradle 缓存中未找到 {dep}，尝试从 {MAVEN_REPO} 下载…")
+        cache_group = os.path.join(CACHE_DIR, *group.split('.'), artifact, version)
+        os.makedirs(cache_group, exist_ok=True)
+        base_url = f"{MAVEN_REPO}/{group.replace('.', '/')}/{artifact}/{version}/{artifact}-{version}"
+        sources_jar, normal_jar = download_jar(base_url, cache_group, artifact, version,
+                                               sources_jar, normal_jar)
+        target_jar = sources_jar or normal_jar
+        if not target_jar:
+            raise FileNotFoundError(f"无法下载依赖 {dep}，URL: {base_url}")
+
+    # 5. 创建输出目录
     os.makedirs(out_dir, exist_ok=True)
 
-    # 5. 处理源码
+    # 6. 处理源码
     if sources_jar:
         # 有 -sources.jar → 直接解压
         with zipfile.ZipFile(sources_jar, 'r') as zf:
@@ -107,11 +122,28 @@ def unpack_dep(dep: str, out_dir: str):
 
         print(f"✅ 已反编译 {target_jar} 到 {out_dir}")
 
-def get_gradle_properties():
-    config = configparser.ConfigParser()
-    with open(os.path.join(ROOT_DIR, 'gradle.properties'), 'r') as f:
-        config.read_string('[root]\n' + f.read())
-    return dict(config['root'])
+def download_jar(base_url, cache_group, artifact, version, sources_jar, normal_jar):
+    """从 maven 仓库下载 JAR 到本地缓存目录，返回更新后的 (sources_jar, normal_jar)。"""
+    for suffix, existing in (("-sources.jar", sources_jar), (".jar", normal_jar)):
+        if existing:
+            continue
+        cached_path = os.path.join(cache_group, f"{artifact}-{version}{suffix}")
+        if os.path.isfile(cached_path):
+            (sources_jar, normal_jar) = (cached_path, normal_jar) if suffix == "-sources.jar" else (sources_jar, cached_path)
+            continue
+        try:
+            response = requests.get(f"{base_url}{suffix}", timeout=60)
+            response.raise_for_status()
+        except requests.RequestException:
+            continue
+        with open(cached_path, 'wb') as f:
+            f.write(response.content)
+        if suffix == "-sources.jar":
+            sources_jar = cached_path
+        else:
+            normal_jar = cached_path
+        print(f"✅ 已下载 {artifact}-{version}{suffix}")
+    return sources_jar, normal_jar
 
 def download_fernflower():
     if os.path.isfile(FERNFLOWER_JAR):
@@ -127,12 +159,8 @@ def download_fernflower():
 
 def main():
     clone_xpple_cubiomes()
-    config = get_gradle_properties()
-    xpple_cubiomes_version=config['xpple_cubiomes_version']
-    xaero_map_version=config['xaeroMapVersion']
-    xaero_lib_version=config['xaeroLibVersion']
-    unpack_dep(f"dev.xpple:cubiomes:{xpple_cubiomes_version}",os.path.join(DST_DIR,'cubiomes'))
-    unpack_dep(f"xaero.map:xaeroworldmap-fabric-26.1.2:{xaero_map_version}",os.path.join(DST_DIR,'xaeroworldmap'))
-    unpack_dep(f"xaero.lib:xaerolib-fabric-26.1.2:{xaero_lib_version}",os.path.join(DST_DIR,'xaerolib'))
+    unpack_dep(f"xaero.map:xaeroworldmap-fabric-26.1.2:{XAERO_MAP_VERSION}",os.path.join(DST_DIR,'xaeroworldmap'))
+    unpack_dep(f"xaero.minimap:xaerominimap-fabric-26.1.2:{XAERO_MINIMAP_VERSION}",os.path.join(DST_DIR,'xaerominimap'))
+    unpack_dep(f"xaero.lib:xaerolib-fabric-26.1.2:{XAERO_LIB_VERSION}",os.path.join(DST_DIR,'xaerolib'))
 if __name__ == "__main__":
     main()

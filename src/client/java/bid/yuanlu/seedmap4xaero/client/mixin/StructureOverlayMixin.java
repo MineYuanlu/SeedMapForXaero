@@ -9,11 +9,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
-import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
-import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
-import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlagView;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureIcons;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 import com.mojang.blaze3d.textures.GpuSampler;
@@ -23,7 +21,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.state.gui.BlitRenderState;
-import net.minecraft.client.renderer.state.gui.GuiRenderState;
 import net.minecraft.client.resources.language.I18n;
 
 import xaero.map.MapProcessor;
@@ -108,12 +105,8 @@ public class StructureOverlayMixin {
         if (xsm$enabledTypes() == null)
             return;
 
-        final var wc = ServerConfig.getActiveWorldConfig();
         final float iconScale = ServerConfig.getStructureIconSize();
         final float iconHalf = ICON_SIZE * iconScale * 0.5f;
-
-        // 二级过滤仅作用于渲染, 生成/缓存不变: 结构整体禁用 或 该变种禁用 则不显示
-        final StructureBitFlagView flags = wc.getDisabledStructures();
 
         final Minecraft mc = Minecraft.getInstance();
         final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
@@ -135,32 +128,36 @@ public class StructureOverlayMixin {
         xsm$hoverText = null;
         xsm$bestDist = iconHalf;
 
-        for (var entry : StructureCache.REGIONS.entrySet()) {
-            StructureType type = entry.getKey();
-            final int typeId = type.id;
-            for (StructurePos rp : entry.getValue()) {
-                if (!rp.loaded())
-                    continue;
-                if (flags.isStructureSet(typeId) || flags.isVariantSet(typeId, rp.getVariant()))
-                    continue;
-                xsm$submitIcon(guiRenderState, setup, basePose, type, rp.getVariant(),
-                        rp.blockX(), rp.blockZ(), invScale, iconScale, iconHalf,
-                        guiW, guiH, scaledMouseX, scaledMouseY);
-            }
-        }
+        final StructureIcons.Transform t = new StructureIcons.Transform(
+                cameraX, cameraZ, scale, invScale, guiW, guiH);
+        StructureIcons.forEachVisible((type, variant, blockX, blockZ, guiX, guiZ) -> {
+            if (guiX < -iconHalf || guiX > guiW + iconHalf || guiZ < -iconHalf || guiZ > guiH + iconHalf)
+                return;
 
-        if (!flags.isStructureSet(StructureType.STRONGHOLD.id)) {
-            final var strongholds = StructureCache.strongholds();
-            if (strongholds != null) {
-                for (StrongholdPos sh : strongholds) {
-                    if (sh == null)
-                        continue;
-                    xsm$submitIcon(guiRenderState, setup, basePose, StructureType.STRONGHOLD,
-                            sh.getVariant(), sh.blockX(), sh.blockZ(), invScale, iconScale, iconHalf,
-                            guiW, guiH, scaledMouseX, scaledMouseY);
-                }
+            final double dx = scaledMouseX - guiX;
+            final double dy = scaledMouseY - guiZ;
+            final float dist = (float) Math.max(Math.abs(dx), Math.abs(dy));
+            if (dist < xsm$bestDist) {
+                xsm$bestDist = dist;
+                String hover = I18n.get(type.translationKey());
+                String vk = type.variantTranslationKey(variant);
+                if (vk != null)
+                    hover += " (" + I18n.get(vk) + ")";
+                xsm$hoverText = hover;
             }
-        }
+
+            final int idx = type.getSpriteIndex(variant);
+            final float u0 = (float) (idx * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
+            final float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
+
+            final Matrix3x2f pose = new Matrix3x2f(basePose)
+                    .translate((float) guiX, (float) guiZ)
+                    .scale(iconScale, iconScale);
+            final BlitRenderState blit = new BlitRenderState(RenderPipelines.GUI_TEXTURED, setup, pose,
+                    -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
+                    u0, u1, 0.0F, 1.0F, -1, null, null);
+            guiRenderState.addBlitToCurrentLayer(blit);
+        }, t);
 
         if (xsm$hoverText != null) {
             MapRenderHelper.drawStringWithBackground(guiGraphics,
@@ -170,43 +167,4 @@ public class StructureOverlayMixin {
         }
     }
 
-    /**
-     * 屏幕坐标: 视口剔除 → 悬停判定 → 构造 BlitRenderState 追加到当前 GUI 层。
-     * 坐标语义与原始 blit 一致: 图标 20×20(×iconScale) 居中于结构锚点。
-     */
-    @Unique
-    private void xsm$submitIcon(GuiRenderState guiRenderState, TextureSetup setup, Matrix3x2f basePose,
-            StructureType type, int variant, int blockX, int blockZ,
-            double invScale, float iconScale, float iconHalf,
-            double guiW, double guiH, int scaledMouseX, int scaledMouseY) {
-        final double guiX = (blockX - cameraX) * scale * invScale + guiW / 2.0;
-        final double guiZ = (blockZ - cameraZ) * scale * invScale + guiH / 2.0;
-
-        if (guiX < -iconHalf || guiX > guiW + iconHalf || guiZ < -iconHalf || guiZ > guiH + iconHalf)
-            return;
-
-        final double dx = scaledMouseX - guiX;
-        final double dy = scaledMouseY - guiZ;
-        final float dist = (float) Math.max(Math.abs(dx), Math.abs(dy));
-        if (dist < xsm$bestDist) {
-            xsm$bestDist = dist;
-            String hover = I18n.get(type.translationKey());
-            String vk = type.variantTranslationKey(variant);
-            if (vk != null)
-                hover += " (" + I18n.get(vk) + ")";
-            xsm$hoverText = hover;
-        }
-
-        final int idx = type.getSpriteIndex(variant);
-        final float u0 = (float) (idx * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
-        final float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
-
-        final Matrix3x2f pose = new Matrix3x2f(basePose)
-                .translate((float) guiX, (float) guiZ)
-                .scale(iconScale, iconScale);
-        final BlitRenderState blit = new BlitRenderState(RenderPipelines.GUI_TEXTURED, setup, pose,
-                -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
-                u0, u1, 0.0F, 1.0F, -1, null, null);
-        guiRenderState.addBlitToCurrentLayer(blit);
-    }
 }

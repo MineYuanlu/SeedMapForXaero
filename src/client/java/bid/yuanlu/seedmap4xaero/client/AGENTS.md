@@ -1,6 +1,6 @@
 # client — mixins & render pipeline
 
-## 7 client mixins
+## 9 client mixins
 
 | Mixin                   | Targets                              | Role                                            |
 | ----------------------- | ------------------------------------ | ----------------------------------------------- |
@@ -11,6 +11,8 @@
 | `WorldSwitchMixin`      | `MapProcessor.checkForWorldUpdate`   | Detect world change → reload config             |
 | `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          |
 | `StructureOverlayMixin` | `GuiMap.extractRenderState`          | Structure icon overlay + hover tooltip          |
+| `StructureClickMixin`   | `GuiMap.mouseClicked` + `mapClicked` | Right-click structure icon → combined Xaero menu + appended (waypoint / highlight) |
+| `DropDownWidgetTitleMixin` | `DropDownWidget.drawSlot` (XaeroLib) | Title rows in right-click menu use `selectedBackground` grey via `@ModifyArg` on `fill(IIIII)V` |
 
 `BiomeColorSchemeMixin` was removed — color scheme switching is now handled through the `SeedMapPanel` side panel.
 

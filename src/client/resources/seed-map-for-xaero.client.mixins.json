@@ -10,7 +10,9 @@
     "WorldSwitchMixin",
     "GuiMapSwitchingMixin",
     "GameRendererAccessorMixin",
+    "DropDownWidgetTitleMixin",
     "StructureOverlayMixin",
+    "StructureClickMixin",
     "XsmMainPanelMixin"
   ],
   "injectors": {
