@@ -70,6 +70,11 @@ dependencies {
 	// 显式声明；`[1.1.0,)` 与 Xaero 自身下限一致，各线解析到最新。
 	compileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
 	runtimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	// dev runtime 加 minimap: waypoint 转换 (SupportMods.minimap()) 需要真实 mod。
+	// 仅 runtimeOnly，compileOnly 不引用 (通过 SupportMods 反射式访问)。
+	// 注意: minimap 与 worldmap 都内嵌共享的 xaero.common.* 包, 在扁平测试 JVM
+	// 类路径上会互相覆盖 (ServiceLoader 报 not a subtype), 故从 testRuntimeClasspath 排除。
+	runtimeOnly("xaero.minimap:xaerominimap-fabric-${project.xaeroMapLine}:${project.xaeroMinimapVersion}")
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 
@@ -79,6 +84,13 @@ dependencies {
 	productionRuntimeMods(xaeroMap) { exclude group: 'xaero.pvp' }
 	productionRuntimeMods("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
 	productionRuntimeMods files(gametestModJar)
+}
+
+// minimap 只给 dev runClient 用; 排除出测试类路径 (见上方 runtimeOnly 注释)。
+configurations {
+	testRuntimeClasspath {
+		exclude group: 'xaero.minimap'
+	}
 }
 
 test {

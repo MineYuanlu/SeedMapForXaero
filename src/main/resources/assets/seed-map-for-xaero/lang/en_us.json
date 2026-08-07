@@ -17,6 +17,12 @@
   "xsm.value.on": "ON",
   "xsm.value.off": "OFF",
 
+  "xsm.menu.to_waypoint": "Convert to Waypoint",
+  "xsm.menu.highlight": "Highlight in World",
+  "xsm.menu.unhighlight": "Remove Highlight",
+
+  "xsm.highlight.distance": "%sm",
+
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
   "xsm.cursor.coords_no_y": "X: %d Z: %d",
 
