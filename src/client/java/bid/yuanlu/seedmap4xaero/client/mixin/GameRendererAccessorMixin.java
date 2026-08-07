@@ -4,6 +4,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
+import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.state.GameRenderState;
 
@@ -13,4 +14,8 @@ public abstract class GameRendererAccessorMixin implements GameRendererAccessor 
     @Accessor("gameRenderState")
     @Override
     public abstract GameRenderState xsm$gameRenderState();
+
+    @Accessor("mainCamera")
+    @Override
+    public abstract Camera xsm$mainCamera();
 }

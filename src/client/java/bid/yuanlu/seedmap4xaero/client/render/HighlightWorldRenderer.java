@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.world.phys.Vec3;
 
+import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
 import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
 
 /**
@@ -52,7 +53,7 @@ public final class HighlightWorldRenderer {
             if (highlights.isEmpty())
                 return;
             final var dim = level.dimension();
-            final Vec3 cam = mc.gameRenderer.getMainCamera().position();
+            final Vec3 cam = ((GameRendererAccessor) mc.gameRenderer).xsm$mainCamera().position();
             final var pose = context.poseStack();
             final var collector = context.submitNodeCollector();
             final int y0 = level.getMinY();

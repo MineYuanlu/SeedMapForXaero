@@ -9,10 +9,12 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
+import org.spongepowered.asm.mixin.injection.Surrogate;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.DropDownWidgetTitleAccessor;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.network.chat.Component;
 
 import xaero.lib.client.gui.widget.dropdown.DropDownWidget;
 
@@ -42,6 +44,18 @@ public abstract class DropDownWidgetTitleMixin implements DropDownWidgetTitleAcc
     private int xsm$currentSlot;
 
     @Inject(method = "drawSlot", at = @At("HEAD"))
+    private void xsm$captureSlot(GuiGraphicsExtractor guiGraphics, Component text, int slotIndex, int pos,
+            int mouseX, int mouseY, boolean scrolling, int optionLimit,
+            int xWithOffset, int yWithOffset, CallbackInfo ci) {
+        xsm$currentSlot = slotIndex;
+    }
+
+    /**
+     * 旧版 XaeroLib (如 1.1.x) 的 {@code drawSlot} 第二参数是 {@code String}；
+     * 新版 (1.5.0+) 改为 {@code Component}。主 handler 用 Component（当前解析到的
+     * 版本），此 @Surrogate 让老版目标签名也能匹配，单 jar 跨版本通用。
+     */
+    @Surrogate
     private void xsm$captureSlot(GuiGraphicsExtractor guiGraphics, String text, int slotIndex, int pos,
             int mouseX, int mouseY, boolean scrolling, int optionLimit,
             int xWithOffset, int yWithOffset, CallbackInfo ci) {

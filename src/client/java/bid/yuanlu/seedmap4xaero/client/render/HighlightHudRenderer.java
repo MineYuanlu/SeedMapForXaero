@@ -64,7 +64,7 @@ public final class HighlightHudRenderer {
             return;
 
         final var dim = level.dimension();
-        final var cam = mc.gameRenderer.getMainCamera().position();
+        final var cam = ((GameRendererAccessor) mc.gameRenderer).xsm$mainCamera().position();
         final int guiW = graphics.guiWidth();
         final int guiH = graphics.guiHeight();
 
