@@ -62,7 +62,8 @@ Supported versions verified by the CI matrix (`versions.json`, 4 MC × old/new X
 | Xaero's World Map | 1.40.14+ (26.1) / 1.41.0+ (26.2)   |
 | Java              | **25** (FFM API required)          |
 
-Default build target: Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0 (see `gradle.properties`).
+A single JAR supports all of the above versions (verified by the CI matrix).
+- Default build target: Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0 (see `gradle.properties`).
 
 ---
 
