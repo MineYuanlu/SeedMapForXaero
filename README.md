@@ -6,6 +6,7 @@
 
 [![matrix-test](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml/badge.svg?branch=master)](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml)
 [![release](https://img.shields.io/github/v/release/MineYuanlu/SeedMapForXaero)](https://github.com/MineYuanlu/SeedMapForXaero/releases)
+[![mcmod.cn](https://img.shields.io/badge/mcmod.cn-发布页-blue)](https://www.mcmod.cn/class/29438.html)
 
 在 Xaero's World Map 上显示基于种子的生物群系和结构预览，由 cubiomes 原生库驱动。
 

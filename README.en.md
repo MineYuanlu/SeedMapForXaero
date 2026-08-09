@@ -6,6 +6,7 @@
 
 [![matrix-test](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml/badge.svg?branch=master)](https://github.com/MineYuanlu/SeedMapForXaero/actions/workflows/matrix-test.yml)
 [![release](https://img.shields.io/github/v/release/MineYuanlu/SeedMapForXaero)](https://github.com/MineYuanlu/SeedMapForXaero/releases)
+[![mcmod.cn](https://img.shields.io/badge/mcmod.cn-release_page-blue)](https://www.mcmod.cn/class/29438.html)
 
 Seed-based biome and structure preview on Xaero's World Map, powered by cubiomes native library.
 
