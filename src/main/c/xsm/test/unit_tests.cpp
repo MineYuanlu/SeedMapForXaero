@@ -116,6 +116,52 @@ TEST_CASE("queryRegionStructuresGrid") {
   CHECK(n == 0);
 }
 
+TEST_CASE("queryRegionStructuresGrid dim filter") {
+  setupOrFail();
+
+  // RUINED_PORTAL (主世界) 与 RUINED_PORTAL_N (下界) 同 salt 同 region 大小,
+  // 仅维度不同; 错误维度下必须整类返回 0, 否则坐标重叠显示
+  const int N = 8;
+  std::vector<int8_t> found((size_t)N * N);
+  std::vector<int32_t> bx((size_t)N * N), bz((size_t)N * N), vr((size_t)N * N);
+
+  // 主世界: 只查 Ruined_Portal, Ruined_Portal_N 必须为空
+  setWorld(0, 0);
+  uint32_t n = queryRegionStructuresGrid(Ruined_Portal_N, 0, 0, N, N,
+                                         0, 0, 0, 0, found.data(), bx.data(), bz.data(), vr.data());
+  CHECK(n == 0);
+
+  // 下界: 只查 Ruined_Portal_N, Ruined_Portal 必须为空
+  setWorld(0, -1);
+  n = queryRegionStructuresGrid(Ruined_Portal, 0, 0, N, N,
+                                0, 0, 0, 0, found.data(), bx.data(), bz.data(), vr.data());
+  CHECK(n == 0);
+
+  // 同类: 主世界不出现下界/末地结构; 下界不出现末地结构
+  setWorld(0, 0);
+  n = queryRegionStructuresGrid(Fortress, 0, 0, N, N,
+                                0, 0, 0, 0, found.data(), bx.data(), bz.data(), vr.data());
+  CHECK(n == 0);
+  n = queryRegionStructuresGrid(End_City, 0, 0, N, N,
+                                0, 0, 0, 0, found.data(), bx.data(), bz.data(), vr.data());
+  CHECK(n == 0);
+
+  setWorld(0, -1);
+  n = queryRegionStructuresGrid(End_City, 0, 0, N, N,
+                                0, 0, 0, 0, found.data(), bx.data(), bz.data(), vr.data());
+  CHECK(n == 0);
+
+  // 正确维度必须能找到 (有命中, 而非被误过滤)
+  setWorld(0, 0);
+  n = queryRegionStructuresGrid(Ruined_Portal, 0, 0, N, N,
+                                0, 0, 0, 0, found.data(), bx.data(), bz.data(), vr.data());
+  CHECK_MESSAGE(n > 0, "Ruined_Portal in overworld should be found, got ", n);
+  setWorld(0, -1);
+  n = queryRegionStructuresGrid(Ruined_Portal_N, 0, 0, N, N,
+                                0, 0, 0, 0, found.data(), bx.data(), bz.data(), vr.data());
+  CHECK_MESSAGE(n > 0, "Ruined_Portal_N in nether should be found, got ", n);
+}
+
 TEST_CASE("querySparseStructures") {
   setupOrFail();
 
