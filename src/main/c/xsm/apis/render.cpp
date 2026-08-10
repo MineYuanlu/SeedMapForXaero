@@ -585,6 +585,11 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
                                    int32_t* outBlockX, int32_t* outBlockZ,
                                    int32_t* outVariant) {
   if (!gen_setWorld) return 0;
+  {
+    StructureConfig sconf;
+    if (!getStructureConfig(structureType, tn.g.mc, &sconf)) return 0;
+    if (sconf.dim != tn.g.dim) return 0;
+  }
 
 
   uint32_t index = 0;
