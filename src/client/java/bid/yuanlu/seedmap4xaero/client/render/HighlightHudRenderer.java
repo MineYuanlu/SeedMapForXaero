@@ -100,7 +100,7 @@ public final class HighlightHudRenderer {
             final Matrix3x2f pose = new Matrix3x2f(basePose).translate(sx, sy);
             guiRenderState.addBlitToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED,
                     setup, pose, -half, -half, half, half, uv[0], uv[1], 0.0F, 1.0F,
-                    ICON_ALPHA, null, null));
+                    ICON_ALPHA, null));
 
             // 文字 API 只收 int, 就近取整 (图标平滑, 文字偶尔 1px 漂移可接受)
             final int tx = Math.round(sx);

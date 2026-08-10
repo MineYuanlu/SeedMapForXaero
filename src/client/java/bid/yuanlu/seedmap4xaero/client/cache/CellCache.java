@@ -1,8 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.cache;
 
+import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -10,12 +9,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
 
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import xaero.lib.client.graphics.GpuTextureAndView;
-import xaero.map.region.texture.RegionTexture;
 
 public class CellCache {
 
@@ -102,6 +101,59 @@ public class CellCache {
             cache.clear();
     }
 
+    @FunctionalInterface
+    private interface TextureFactory {
+        GpuTexture create(String name, int uboType, int width, int height, int depth, int levels);
+    }
+
+    /**
+     * 惰性解析 {@code GpuDevice.createTexture} 的 internal format 参数类型。
+     *
+     * <p>
+     * MC 26.2 把 {@code com.mojang.blaze3d.textures.TextureFormat} 重命名/移包为
+     * {@code com.mojang.blaze3d.GpuFormat}（常量 {@code RGBA8}→{@code RGBA8_UNORM}），
+     * Xaero 26.2 线的 {@code RegionTexture.DEFAULT_INTERNAL_FORMAT} 声明类型随之改变。
+     * 编译期直接引用该字段会因 JVM 字段描述符（含类型）不匹配而 NoSuchFieldError，且
+     * universal jar 只能编一个版本，无法直接引用任一版本独有的类型。这里反射读取字段
+     * （名称在所有 Xaero 线稳定）拿到类型无关的格式实例，再按其实参类型匹配
+     * {@code createTexture} 重载。
+     * </p>
+     *
+     * <p>
+     * 惰性解析：渲染线程首次真正创建纹理时才触发 Xaero/MC 类加载，避免
+     * {@code CellKeyTest} 等纯 JVM 单测加载 {@code CellCache} 时被波及。
+     * </p>
+     */
+    private static volatile @Nullable TextureFactory textureFactory;
+
+    private static @NotNull TextureFactory resolveTextureFactory() {
+        TextureFactory f = textureFactory;
+        if (f != null)
+            return f;
+        try {
+            Class<?> rt = Class.forName("xaero.map.region.texture.RegionTexture");
+            var fmtField = rt.getField("DEFAULT_INTERNAL_FORMAT");
+            Object format = fmtField.get(null);
+            Method create = GpuDevice.class.getMethod(
+                    "createTexture", String.class, int.class, fmtField.getType(),
+                    int.class, int.class, int.class, int.class);
+            return textureFactory = (name, uboType, w, h, depth, levels) -> {
+                try {
+                    return (GpuTexture) create.invoke(
+                            RenderSystem.getDevice(), name, uboType, format, w, h, depth, levels);
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException("Failed to create texture", e);
+                }
+            };
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    private static GpuTexture createDefaultTexture(String name, int uboType, int w, int h, int depth, int levels) {
+        return resolveTextureFactory().create(name, uboType, w, h, depth, levels);
+    }
+
     private static volatile @Nullable GpuTextureAndView placeholderTexture;
 
     public static @NotNull GpuTextureAndView getPlaceholderTexture() {
@@ -112,8 +164,7 @@ public class CellCache {
             var dev = RenderSystem.getDevice();
             NativeImage img = new NativeImage(NativeImage.Format.RGBA, 1, 1, false);
             img.setPixelABGR(0, 0, 0xFF808080);
-            GpuTexture gpuTex = dev.createTexture(
-                    "xsm_placeholder", 1, RegionTexture.DEFAULT_INTERNAL_FORMAT, 1, 1, 1, 1);
+            GpuTexture gpuTex = createDefaultTexture("xsm_placeholder", 1, 1, 1, 1, 1);
             var encoder = dev.createCommandEncoder();
             encoder.writeToTexture(gpuTex, img);
             img.close();
@@ -133,12 +184,7 @@ public class CellCache {
         }
         data.pixels = null; // 释放 CPU 像素数据
 
-        GpuTexture gpuTex = RenderSystem.getDevice().createTexture(
-                "xsm",
-                15,
-                RegionTexture.DEFAULT_INTERNAL_FORMAT,
-                TEXTURE_SIDE, TEXTURE_SIDE,
-                1, 1);
+        GpuTexture gpuTex = createDefaultTexture("xsm", 15, TEXTURE_SIDE, TEXTURE_SIDE, 1, 1);
         var encoder = RenderSystem.getDevice().createCommandEncoder();
         encoder.writeToTexture(gpuTex, img);
         img.close();

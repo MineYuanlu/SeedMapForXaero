@@ -155,7 +155,7 @@ public class StructureOverlayMixin {
                     .scale(iconScale, iconScale);
             final BlitRenderState blit = new BlitRenderState(RenderPipelines.GUI_TEXTURED, setup, pose,
                     -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
-                    u0, u1, 0.0F, 1.0F, -1, null, null);
+                    u0, u1, 0.0F, 1.0F, -1, null);
             guiRenderState.addBlitToCurrentLayer(blit);
         }, t);
 
