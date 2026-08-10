@@ -41,7 +41,9 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-  # ── Test: 8 combos (4 MC × oldest/newest Xaero) ──
+  # ── Test: 8 combos (4 MC × oldest/newest Xaero)，源码兼容预警 ──
+  # 目的：确保源码在全部 MC × Xaero 组合下可编译 + JUnit + C 单测通过。
+  # 这里产出的 jar 只是编译载体，不发布；发布产物是 build-universal 的 universal jar。
   test:
     needs: resolve
     runs-on: ubuntu-24.04
@@ -64,7 +66,7 @@ jobs:
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
           cmake --build build-test --target xsmtest
           XSM_TEST_MC_VERSION=${{ matrix.mc }} ./build-test/xsmtest
-      - name: Build JAR + JUnit tests
+      - name: Compile + JUnit tests (source coverage, not published)
         run: |
           chmod +x ./gradlew
           ./gradlew build -x compileNativeWindows \
@@ -81,14 +83,50 @@ jobs:
             build/reports/tests/test
             build/test-results/test
 
-  # ── Client E2E gametest（生产运行，headless）──────────────────────────────
-  # 对照 Fabric 官方 CI（fabric-api/.github/workflows/build.yml client_test job）：
-  # 无显示 ubuntu + xvfb + 上传截图。验证真实启动 MC 客户端后种子地图渲染链路。
-  # 矩阵取 newest Xaero 的 4 个 MC 版本组合（由 resolve 的 matrix-e2e 输出）——
-  # 8 组合编译矩阵只验证编译，mixin 的运行时应用只有真实启动的 E2E 能验证（各版本
-  # fabric-client-gametest API 差异、MC/Xaero 目标方法名差异都会在这里暴露）。
-  client-test:
+  # ── Universal jar: 编一个 jar，供所有版本 E2E 复用 ───────────────────────
+  # 编译目标取全局最老 Xaero (1.40.14, 26.1.2 线)：引用的符号是全部支持版本集合的
+  # 子集，配合 fabric.mod.json 的 "minecraft": ">=26.1"，单个 jar 通用于全部版本。
+  build-universal:
     needs: resolve
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: Build universal jar (oldest Xaero line)
+        run: |
+          chmod +x ./gradlew
+          # CI ubuntu 无 MinGW → -PskipNativeWindows=true；jar 只需内含 Linux .so
+          # 供 universal-e2e 使用（release 流程单独打全平台 native）。
+          ./gradlew build -x compileNativeWindows \
+            -PskipNativeWindows=true \
+            -PxaeroMapLine=26.1.2 \
+            -PxaeroMapVersion=1.40.14
+      - name: Upload universal jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: universal-jar
+          path: build/libs/seed-map-for-xaero-*.jar
+
+  # ── Universal client E2E gametest（生产运行，headless）────────────────────
+  # 对照 Fabric 官方 CI（fabric-api/.github/workflows/build.yml client_test job）：
+  # 无显示 ubuntu + xvfb + 上传截图。与旧 client-test 的区别：mod 本体不再按矩阵
+  # 重新编译，而是复用 build-universal 产出的同一个 jar
+  # （runProductionClientGameTestUniversal + -PuniversalJar）。因此验证的是
+  # "发布的单 jar 在所有 MC × Xaero 上真实可用"，而非"该版本源码编译出的 jar 可用"。
+  # 矩阵取 newest Xaero 的 4 个 MC 版本组合（由 resolve 的 matrix-e2e 输出）——
+  # mixin 的运行时应用、MC/Xaero 目标方法名差异都在真实启动中暴露。
+  universal-e2e:
+    needs:
+      - resolve
+      - build-universal
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -105,13 +143,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install dependencies (cmake/gcc/xvfb)
         run: sudo apt-get update && sudo apt-get install -y cmake gcc xvfb
-      - name: Run client gametest (production, headless via xvfb)
+      - name: Download universal jar
+        uses: actions/download-artifact@v8
+        with:
+          name: universal-jar
+          path: universal
+      - name: Run client gametest (universal jar, production, headless via xvfb)
         timeout-minutes: 20
         run: |
           chmod +x ./gradlew
-          # -PskipNativeWindows=true：CI ubuntu 无 MinGW，runProductionClientGameTest
-          # 的任务链会带 processClientResources → compileNativeWindows 交叉编译失败。
-          ./gradlew runProductionClientGameTest -PskipNativeWindows=true \
+          UJAR=$(find universal -name 'seed-map-for-xaero-*.jar' | head -1)
+          # -PuniversalJar 让 mod 本体用预构建 jar（不重编译）；-PskipNativeWindows=true
+          # 规避 CI 无 MinGW 时 processClientResources → compileNativeWindows 失败。
+          ./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
+            -PuniversalJar="$UJAR" \
             -Pminecraft_version=${{ matrix.mc }} \
             -PxaeroMapLine=${{ matrix.xaeroLine }} \
             -PxaeroMapVersion=${{ matrix.xaeroVersion }} \

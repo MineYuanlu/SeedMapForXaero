@@ -107,6 +107,21 @@ tasks.register("runProductionClientGameTest", net.fabricmc.loom.task.prod.Client
 	useXVFB = (xvfbProp != null) ? (xvfbProp as boolean) : (System.getenv('CI') != null)
 }
 
+// 与 runProductionClientGameTest 相同，但 mod 本体使用预构建的 universal jar
+// （-PuniversalJar=<path>），从而在任意 MC/Xaero 组合上端到端验证同一个发布产物，
+// 而非针对该版本重新编译的 jar。loom 的 AbstractProductionRunTask 构造时把
+// remapJar + productionRuntimeMods 塞进 mods 集合，这里用 setFrom 整体替换掉 remapJar。
+tasks.register("runProductionClientGameTestUniversal", net.fabricmc.loom.task.prod.ClientProductionRunTask) {
+	jvmArgs.add("-Dfabric.client.gametest")
+	jvmArgs.add("-Dfabric.client.gametest.disableNetworkSynchronizer=true")
+	def xvfbProp = project.findProperty('clientGameTestXVFB')
+	useXVFB = (xvfbProp != null) ? (xvfbProp as boolean) : (System.getenv('CI') != null)
+	def ujar = project.findProperty('universalJar')
+	if (ujar) {
+		mods.setFrom(files(ujar), configurations.named("productionRuntimeMods"))
+	}
+}
+
 // ─── Native C build ─────────────────────────────────────────────────────────
 
 def skipNative = project.findProperty('skipNativeBuild') ?: 'false'
@@ -270,13 +285,11 @@ processClientResources {
 
 processResources {
 	inputs.property "version", project.version
-	inputs.property "minecraft_version", project.minecraft_version
 	inputs.property "loader_version", project.loader_version
 	filteringCharset "UTF-8"
 
 	filesMatching("fabric.mod.json") {
 		expand "version": project.version,
-				"minecraft_version": project.minecraft_version,
 				"loader_version": project.loader_version
 	}
 }

@@ -173,7 +173,7 @@ jobs:
             echo 'EOF_M'
           } >> "$GITHUB_ENV"
       - name: Publish to Modrinth
-        run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows
+        run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CHANGELOG: ${{ env.CHANGELOG }}
