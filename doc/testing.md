@@ -32,13 +32,14 @@
 3. **CellCache 生成**：scale 1/4/16 任一有缓存（验证 `tickWorldInfo → Xsm.setWorld → native C 生成` 链路）
 4. **结构缓存**：`StructureCache.REGIONS` 非空（异步 CACHE_WORKER 查询）
 
-断言通过后打印 `seed-map E2E assertions passed` 供 CI grep。测试 mod 的 `fabric.mod.json` 用宽松下限写死版本（`>=26.1` 等），**不 expand**——测试 mod 只需在任意支持版本上跑通，无需跟随矩阵精确版本。
+断言通过后打印 `seed-map E2E assertions passed` 供 CI grep。主 mod 和测试 mod 的 `fabric.mod.json` 都用宽松下限写死版本（`>=26.1`），**不 expand**——单 jar 在任意支持版本上通用，无需跟随矩阵精确版本。
 
-## 版本矩阵
+## 版本矩阵与单 jar 策略
 
 - `versions.json` + `tools/resolve_versions.py`（update/check/matrix 三模式）解析出 **8 组合**：4 个 MC 版本（26.1/26.1.1/26.1.2/26.2）× 每版本 oldest/newest 两个 Xaero 版本。
 - 版本覆盖用 `-P` 属性传入，**key 与 gradle.properties 同名**（见下节）。
 - `refresh-versions.yml` 每周一自动跑 `update` 并仅在有真实变更时提交。
+- **发布产物是单 jar（universal jar）**：`fabric.mod.json` 的 `"minecraft": ">=26.1"` 让 loader 接受全部版本；编译目标取全局最老 Xaero（1.40.14，26.1.2 线），引用的符号是全部支持版本集合的子集，向前兼容所有版本。未来 MC 若有破坏性变更，由 CI 的 universal E2E（矩阵随 versions.json 自动增长）提前暴露。
 
 ## 运行
 
@@ -55,21 +56,26 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 
 # E2E client gametest（需真实显示或用 -PclientGameTestXVFB=true 无头）
 ./gradlew runProductionClientGameTest -PskipNativeWindows=true
+
+# 用预构建 universal jar 跑 E2E（验证发布产物，不在目标版本上重编译 mod）
+./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
+  -PuniversalJar=build/libs/seed-map-for-xaero-0.3.1.jar
 ```
 
 ### CI（`.github/workflows/matrix-test.yml`）
 
 - `resolve`：校验 `versions.json` 新鲜度（过期仅告警不阻塞）+ 输出两套矩阵
   - `matrix`：8 组合（4 MC × oldest/newest Xaero），`test` 用
-  - `matrix-e2e`：4 组合（每 MC × **newest** Xaero），`client-test` 用
-- `test`（8 行）：`cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）—— 只验证**编译**，mixin 运行时是否生效不做保证
-- `client-test`（4 行）：真实启动 MC 的 E2E，`./gradlew runProductionClientGameTest -PskipNativeWindows=true` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
+  - `matrix-e2e`：4 组合（每 MC × **newest** Xaero），`universal-e2e` 用
+- `test`（8 行，**源码兼容预警**）：`cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）。保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；产物是编译载体，不发布
+- `build-universal`（1 行）：编一个 universal jar（最老 Xaero 线 1.40.14），上传 artifact
+- `universal-e2e`（4 行，依赖 `build-universal`）：真实启动 MC 的 E2E，**复用同一个 universal jar**，`./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true -PuniversalJar=<artifact>` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
 
-> **运行时 vs 编译**：`test` 的 8 组合矩阵保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；但 mixin 的运行时应用（目标方法/字段在对应版本真实存在、注入点命中）只能由 `client-test` 的真实客户端启动验证。两个 job 互补，缺一不可。
+> **运行时 vs 编译**：`test` 的 8 组合矩阵保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；`universal-e2e` 用发布产物（单个 universal jar）在全部 MC × newest Xaero 上真实启动，验证 mixin 的运行时应用（目标方法/字段在对应版本真实存在、注入点命中）与渲染链路。两个 job 互补，缺一不可。
 
 ### 失败诊断
 
-- client-test 失败先看上传的 `gametest.log`：无客户端日志 = 构建阶段挂（如 MinGW），有日志无断言 = 渲染/死锁问题。
+- universal-e2e 失败先看上传的 `gametest.log`：无客户端日志 = 构建阶段挂（如 MinGW），有日志无断言 = 渲染/死锁问题。
 - 截图 artifact 为空 = 从未到截图阶段（构建失败或打开地图前就挂）。
 
 ## 已知限制与踩坑记录
@@ -84,4 +90,4 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 ## 参数命名约定
 
 - `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMapVersion`、`minecraft_version`、`loader_version`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
-- 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PjextractPath`、`-PclientGameTestXVFB`。
+- 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PjextractPath`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）。

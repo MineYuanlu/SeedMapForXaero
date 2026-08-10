@@ -25,7 +25,11 @@ Local overrides via `gradle.local.properties` (gitignored, same key format).
 cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
 cmake --build build-test --target xsmtest && ./build-test/xsmtest   # C 单测
 ./gradlew runProductionClientGameTest -PskipNativeWindows=true      # E2E（真实启动 MC）
+./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
+  -PuniversalJar=build/libs/seed-map-for-xaero-*.jar                # E2E（复用预构建 universal jar）
 ```
+
+**Single universal jar**: `fabric.mod.json` hardcodes `"minecraft": ">=26.1"` (not templated). The published jar is compiled against the oldest Xaero line (1.40.14) so referenced symbols are a subset of all supported versions. CI (`matrix-test.yml`): `test` = 8-combo compile+JUnit (source-compat early warning, not published), `build-universal` = build the one jar, `universal-e2e` = run that same jar on all 4 MC × newest Xaero. Future breaking MC versions are caught by universal-e2e as `versions.json` grows.
 
 版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`）。
 CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。

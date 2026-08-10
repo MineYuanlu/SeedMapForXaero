@@ -63,8 +63,8 @@ CI 矩阵验证的支持版本（`versions.json`，4 个 MC × 新旧 Xaero 各�
 | Xaero's World Map | 1.40.14+（26.1）/ 1.41.0+（26.2）       |
 | Java              | **25**（FFM API 必需）                  |
 
-单jar支持以上全部版本（由CI矩阵测试保证）
-- 默认构建目标：Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0（见 `gradle.properties`）。
+单jar支持以上全部版本：`fabric.mod.json` 的 `"minecraft": ">=26.1"` 放行所有版本，发布产物编译在最老 Xaero 线上（符号为全部版本子集），由 CI 的 universal E2E 用同一个 jar 在全部版本上真实启动验证（见 `doc/testing.md`）。
+- 默认构建目标：Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0（见 `gradle.properties`）；发布时以最老 Xaero 线 1.40.14 编译。
 
 ---
 
