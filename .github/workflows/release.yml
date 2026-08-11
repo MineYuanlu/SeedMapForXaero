@@ -50,8 +50,9 @@ jobs:
           git push origin "v${NEW_VERSION}"
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
 
+  # 产物按 src/main/c/build/<target>/ 分目录，release 汇总进 JAR 的 /native/<os>/<arch>/。
   compile-native-linux:
-    name: Compile native .so
+    name: Compile native .so (x86_64)
     needs: bump
     runs-on: ubuntu-24.04
     steps:
@@ -64,12 +65,122 @@ jobs:
       - name: Build native library
         working-directory: src/main/c
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/linux-x86_64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/linux-x86_64
           cmake --build build --target xsmcore
       - uses: actions/upload-artifact@v7
         with:
-          name: native-linux
-          path: src/main/c/build/libxsmcore.so
+          name: native-linux-x86_64
+          path: src/main/c/build/linux-x86_64/libxsmcore.so
+
+  compile-native-linux-arm:
+    name: Compile native .so (aarch64)
+    needs: bump
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v${{ needs.bump.outputs.version }}
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: C unit tests (native aarch64)
+        working-directory: src/main/c
+        run: |
+          cmake -S . -B build-test -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-test --target xsmtest
+          ./build-test/xsmtest
+      - name: Build native library
+        working-directory: src/main/c
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/linux-aarch64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/linux-aarch64
+          cmake --build build --target xsmcore
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-linux-aarch64
+          path: src/main/c/build/linux-aarch64/libxsmcore.so
+
+  compile-native-android:
+    name: Compile native .so (Android bionic)
+    needs: bump
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v${{ needs.bump.outputs.version }}
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake unzip
+      - name: Download Android NDK
+        run: |
+          curl -sL -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          unzip -q /tmp/ndk.zip -d /tmp
+          echo "ANDROID_NDK=/tmp/android-ndk-r27c" >> "$GITHUB_ENV"
+      - name: Build arm64-v8a (bionic)
+        working-directory: src/main/c
+        run: |
+          cmake -S . -B build-android-arm64 -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/android-arm64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/android-arm64
+          cmake --build build-android-arm64 --target xsmcore
+      - name: Build x86_64 (bionic)
+        working-directory: src/main/c
+        run: |
+          cmake -S . -B build-android-x86_64 -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/android-x86_64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/android-x86_64
+          cmake --build build-android-x86_64 --target xsmcore
+      - name: Verify ELF (bionic, no versioned SONAME)
+        run: |
+          for f in src/main/c/build/android-arm64/libxsmcore.so src/main/c/build/android-x86_64/libxsmcore.so; do
+            echo "== $f =="
+            file "$f"
+            if readelf -d "$f" | grep NEEDED | grep -qE '\.so\.[0-9]+'; then
+              echo "::error::glibc-style versioned SONAME found in $f"
+              exit 1
+            fi
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-android-arm64
+          path: src/main/c/build/android-arm64/libxsmcore.so
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-android-x86_64
+          path: src/main/c/build/android-x86_64/libxsmcore.so
+
+  compile-native-macos:
+    name: Compile native .dylib (universal)
+    needs: bump
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v${{ needs.bump.outputs.version }}
+          submodules: recursive
+      - name: Install cmake
+        run: brew install cmake
+      - name: Build native library (universal dylib)
+        working-directory: src/main/c
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/macos \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/macos
+          cmake --build build --target xsmcore
+      - name: Verify universal dylib
+        run: lipo -info src/main/c/build/macos/libxsmcore.dylib
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-macos
+          path: src/main/c/build/macos/libxsmcore.dylib
 
   compile-native-windows:
     name: Compile native .dll
@@ -92,41 +203,24 @@ jobs:
         shell: msys2 {0}
         working-directory: src/main/c
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build-mingw/x86_64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build-mingw/x86_64
           cmake --build build --target xsmcore --config Release
       - uses: actions/upload-artifact@v7
         with:
           name: native-windows
-          path: src/main/c/build/xsmcore.dll
-
-  compile-native-macos:
-    name: Compile native .dylib
-    needs: bump
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: v${{ needs.bump.outputs.version }}
-          submodules: recursive
-      - name: Install cmake
-        run: brew install cmake
-      - name: Build native library
-        working-directory: src/main/c
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target xsmcore
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-macos
-          path: src/main/c/build/libxsmcore.dylib
+          path: src/main/c/build-mingw/x86_64/xsmcore.dll
 
   release:
     name: Build, Release & Publish
     needs:
       - bump
       - compile-native-linux
-      - compile-native-windows
+      - compile-native-linux-arm
+      - compile-native-android
       - compile-native-macos
+      - compile-native-windows
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -143,14 +237,18 @@ jobs:
       - name: Download native libs
         uses: actions/download-artifact@v8
         with:
-          merge-multiple: true
           path: prebuilt/
       - name: Place native libs
         run: |
-          mkdir -p src/main/c/build src/main/c/build-mingw
-          [ -f prebuilt/libxsmcore.so ]   && cp prebuilt/libxsmcore.so   src/main/c/build/
-          [ -f prebuilt/libxsmcore.dylib ] && cp prebuilt/libxsmcore.dylib src/main/c/build/
-          [ -f prebuilt/xsmcore.dll ]      && cp prebuilt/xsmcore.dll      src/main/c/build-mingw/
+          mkdir -p src/main/c/build/linux-x86_64 src/main/c/build/linux-aarch64 \
+                   src/main/c/build/android-arm64 src/main/c/build/android-x86_64 \
+                   src/main/c/build/macos src/main/c/build-mingw/x86_64
+          cp prebuilt/native-linux-x86_64/libxsmcore.so  src/main/c/build/linux-x86_64/
+          cp prebuilt/native-linux-aarch64/libxsmcore.so src/main/c/build/linux-aarch64/
+          cp prebuilt/native-android-arm64/libxsmcore.so src/main/c/build/android-arm64/
+          cp prebuilt/native-android-x86_64/libxsmcore.so src/main/c/build/android-x86_64/
+          cp prebuilt/native-macos/libxsmcore.dylib src/main/c/build/macos/
+          cp prebuilt/native-windows/xsmcore.dll src/main/c/build-mingw/x86_64/
       - name: Run C unit tests
         run: |
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
