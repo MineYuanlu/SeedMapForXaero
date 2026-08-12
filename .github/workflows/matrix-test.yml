@@ -1,7 +1,10 @@
 name: matrix-test
 
+# 版本矩阵测试（8 组合编译 + JUnit + C 单测 + 4 路 E2E 真实启动）。
+# 触发：develop / master 推送（全面门禁）+ 手动。feature 分支只跑 pr-check 快速检查。
 on:
   push:
+    branches: [master, develop]
   workflow_dispatch:
 
 permissions:

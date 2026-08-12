@@ -1,0 +1,179 @@
+name: reusable-native-build
+
+# 可复用 workflow：编译全平台 native 库并上传 artifact。
+# 被 build.yml / release.yml / build-test-jar.yml 调用（三处原本各自复制一份，已收敛到此处）。
+# 产物按 src/main/c/build/<target>/ 分目录放置，由 reusable-package 汇总进 JAR 的 /native/<os>/<arch>/。
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (branch / tag / SHA) to check out. Empty = caller ref.'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  # Linux x86_64 (glibc)：桌面/服务器。
+  compile-native-linux:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/main/c
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: Build native library (x86_64, glibc)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/linux-x86_64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/linux-x86_64
+          cmake --build build --target xsmcore
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-linux-x86_64
+          path: src/main/c/build/linux-x86_64/libxsmcore.so
+
+  # Linux aarch64 (glibc)：原生 arm64 runner 构建 + 原生跑 C 单测。
+  compile-native-linux-arm:
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: src/main/c
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: C unit tests (native aarch64)
+        run: |
+          cmake -S . -B build-test -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-test --target xsmtest
+          ./build-test/xsmtest
+      - name: Build native library (aarch64, glibc)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/linux-aarch64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/linux-aarch64
+          cmake --build build --target xsmcore
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-linux-aarch64
+          path: src/main/c/build/linux-aarch64/libxsmcore.so
+
+  # Android (bionic)：NDK 交叉编译 arm64-v8a + x86_64，供 FCL/Pojav 使用。
+  compile-native-android:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/main/c
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake unzip
+      - name: Download Android NDK
+        run: |
+          curl -sL -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          unzip -q /tmp/ndk.zip -d /tmp
+          echo "ANDROID_NDK=/tmp/android-ndk-r27c" >> "$GITHUB_ENV"
+      - name: Build arm64-v8a (bionic)
+        run: |
+          cmake -S . -B build-android-arm64 -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/android-arm64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/android-arm64
+          cmake --build build-android-arm64 --target xsmcore
+      - name: Build x86_64 (bionic)
+        run: |
+          cmake -S . -B build-android-x86_64 -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/android-x86_64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/android-x86_64
+          cmake --build build-android-x86_64 --target xsmcore
+      # 等价复刻 FCL checkElfIsAndroid：DT_NEEDED 不得含版本化 SONAME (libc.so.6 等)。
+      - name: Verify ELF (bionic, correct ABI, no versioned SONAME)
+        run: |
+          for f in build/android-arm64/libxsmcore.so build/android-x86_64/libxsmcore.so; do
+            echo "== $f =="
+            file "$f"
+            if readelf -d "$f" | grep NEEDED | grep -qE '\.so\.[0-9]+'; then
+              echo "::error::glibc-style versioned SONAME found in $f (FCL cannot load it)"
+              readelf -d "$f" | grep NEEDED
+              exit 1
+            fi
+            readelf -d "$f" | grep NEEDED
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-android-arm64
+          path: src/main/c/build/android-arm64/libxsmcore.so
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-android-x86_64
+          path: src/main/c/build/android-x86_64/libxsmcore.so
+
+  # macOS：universal dylib（arm64 + x86_64 一个文件，Intel 与 Apple Silicon 通用）。
+  compile-native-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: src/main/c
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          submodules: recursive
+      - name: Install cmake
+        run: brew install cmake
+      - name: Build native library (universal dylib)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/macos \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/macos
+          cmake --build build --target xsmcore
+      - name: Verify universal dylib
+        run: lipo -info build/macos/libxsmcore.dylib
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-macos
+          path: src/main/c/build/macos/libxsmcore.dylib
+
+  # Windows x86_64 (MinGW)。
+  compile-native-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          submodules: recursive
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >
+            base-devel
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+      - name: Build native library
+        shell: msys2 {0}
+        working-directory: src/main/c
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build-mingw/x86_64 \
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build-mingw/x86_64
+          cmake --build build --target xsmcore --config Release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-windows
+          path: src/main/c/build-mingw/x86_64/xsmcore.dll
