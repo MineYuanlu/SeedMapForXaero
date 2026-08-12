@@ -1,69 +1,39 @@
-name: 🚀 Publish Release
+name: Build Test JAR
 
+# 手动触发，不 bump 版本、不打 tag、不发布到 Modrinth / GitHub Release。
+# 只在线上产出 universal JAR（含全平台 native）供人工测试，等同 release 产物。
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version bump type'
-        required: true
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+      ref:
+        description: 'Branch / tag / SHA to build (default: master)'
+        required: false
+        default: 'master'
+      runTests:
+        description: 'Run C unit tests in package job'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  bump:
-    name: Bump version & tag
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.bump.outputs.version }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          submodules: recursive
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Bump version in gradle.properties
-        id: bump
-        run: |
-          CURRENT=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-          case "${{ github.event.inputs.version }}" in
-            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-            patch) PATCH=$((PATCH + 1)) ;;
-          esac
-          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          sed -i "s/^mod_version=.*/mod_version=${NEW_VERSION}/" gradle.properties
-          git add gradle.properties
-          git commit -m "chore(release): v${NEW_VERSION}"
-          git tag "v${NEW_VERSION}"
-          git push origin master
-          git push origin "v${NEW_VERSION}"
-          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-
-  # 产物按 src/main/c/build/<target>/ 分目录，release 汇总进 JAR 的 /native/<os>/<arch>/。
+  # ── Native compilation matrix (same targets as build.yml master path) ──
+  # 产物按 src/main/c/build/<target>/ 分目录，package 汇总进 JAR 的 /native/<os>/<arch>/。
   compile-native-linux:
-    name: Compile native .so (x86_64)
-    needs: bump
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/main/c
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: v${{ needs.bump.outputs.version }}
+          ref: ${{ inputs.ref }}
           submodules: recursive
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
-      - name: Build native library
-        working-directory: src/main/c
+      - name: Build native library (x86_64, glibc)
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/linux-x86_64 \
@@ -75,24 +45,23 @@ jobs:
           path: src/main/c/build/linux-x86_64/libxsmcore.so
 
   compile-native-linux-arm:
-    name: Compile native .so (aarch64)
-    needs: bump
     runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: src/main/c
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: v${{ needs.bump.outputs.version }}
+          ref: ${{ inputs.ref }}
           submodules: recursive
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
       - name: C unit tests (native aarch64)
-        working-directory: src/main/c
         run: |
           cmake -S . -B build-test -DCMAKE_BUILD_TYPE=Release
           cmake --build build-test --target xsmtest
           ./build-test/xsmtest
-      - name: Build native library
-        working-directory: src/main/c
+      - name: Build native library (aarch64, glibc)
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/linux-aarch64 \
@@ -104,13 +73,14 @@ jobs:
           path: src/main/c/build/linux-aarch64/libxsmcore.so
 
   compile-native-android:
-    name: Compile native .so (Android bionic)
-    needs: bump
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/main/c
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: v${{ needs.bump.outputs.version }}
+          ref: ${{ inputs.ref }}
           submodules: recursive
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake unzip
@@ -120,7 +90,6 @@ jobs:
           unzip -q /tmp/ndk.zip -d /tmp
           echo "ANDROID_NDK=/tmp/android-ndk-r27c" >> "$GITHUB_ENV"
       - name: Build arm64-v8a (bionic)
-        working-directory: src/main/c
         run: |
           cmake -S . -B build-android-arm64 -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
@@ -129,7 +98,6 @@ jobs:
             -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/android-arm64
           cmake --build build-android-arm64 --target xsmcore
       - name: Build x86_64 (bionic)
-        working-directory: src/main/c
         run: |
           cmake -S . -B build-android-x86_64 -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
@@ -137,15 +105,17 @@ jobs:
             -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/android-x86_64 \
             -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/android-x86_64
           cmake --build build-android-x86_64 --target xsmcore
-      - name: Verify ELF (bionic, no versioned SONAME)
+      - name: Verify ELF (bionic, correct ABI, no versioned SONAME)
         run: |
-          for f in src/main/c/build/android-arm64/libxsmcore.so src/main/c/build/android-x86_64/libxsmcore.so; do
+          for f in build/android-arm64/libxsmcore.so build/android-x86_64/libxsmcore.so; do
             echo "== $f =="
             file "$f"
             if readelf -d "$f" | grep NEEDED | grep -qE '\.so\.[0-9]+'; then
-              echo "::error::glibc-style versioned SONAME found in $f"
+              echo "::error::glibc-style versioned SONAME found in $f (FCL cannot load it)"
+              readelf -d "$f" | grep NEEDED
               exit 1
             fi
+            readelf -d "$f" | grep NEEDED
           done
       - uses: actions/upload-artifact@v7
         with:
@@ -157,18 +127,18 @@ jobs:
           path: src/main/c/build/android-x86_64/libxsmcore.so
 
   compile-native-macos:
-    name: Compile native .dylib (universal)
-    needs: bump
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: src/main/c
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: v${{ needs.bump.outputs.version }}
+          ref: ${{ inputs.ref }}
           submodules: recursive
       - name: Install cmake
         run: brew install cmake
       - name: Build native library (universal dylib)
-        working-directory: src/main/c
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
@@ -176,20 +146,18 @@ jobs:
             -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/macos
           cmake --build build --target xsmcore
       - name: Verify universal dylib
-        run: lipo -info src/main/c/build/macos/libxsmcore.dylib
+        run: lipo -info build/macos/libxsmcore.dylib
       - uses: actions/upload-artifact@v7
         with:
           name: native-macos
           path: src/main/c/build/macos/libxsmcore.dylib
 
   compile-native-windows:
-    name: Compile native .dll
-    needs: bump
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: v${{ needs.bump.outputs.version }}
+          ref: ${{ inputs.ref }}
           submodules: recursive
       - uses: msys2/setup-msys2@v2
         with:
@@ -212,10 +180,9 @@ jobs:
           name: native-windows
           path: src/main/c/build-mingw/x86_64/xsmcore.dll
 
-  release:
-    name: Build, Release & Publish
+  # ── Package: 汇总全平台 native 进一个 universal JAR ──
+  package:
     needs:
-      - bump
       - compile-native-linux
       - compile-native-linux-arm
       - compile-native-android
@@ -225,7 +192,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: v${{ needs.bump.outputs.version }}
+          ref: ${{ inputs.ref }}
           submodules: recursive
       - uses: gradle/actions/wrapper-validation@v6
       - uses: actions/setup-java@v5
@@ -249,38 +216,34 @@ jobs:
           cp prebuilt/native-android-x86_64/libxsmcore.so src/main/c/build/android-x86_64/
           cp prebuilt/native-macos/libxsmcore.dylib src/main/c/build/macos/
           cp prebuilt/native-windows/xsmcore.dll src/main/c/build-mingw/x86_64/
+          ls -laR src/main/c/build/ src/main/c/build-mingw/ || true
       - name: Run C unit tests
+        if: inputs.runTests
         run: |
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
           cmake --build build-test --target xsmtest
           ./build-test/xsmtest
-      - name: Generate changelog
+      - name: Build JAR (skip native, use prebuilt libs)
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV_TAG" ]; then
-            LOG=$(git log --oneline --no-decorate "${PREV_TAG}..HEAD")
-          else
-            LOG=$(git log --oneline --no-decorate -10)
-          fi
-          {
-            echo 'CHANGELOG<<EOF_M'
-            echo "## What's Changed"
-            echo "$LOG"
-            echo ""
-            echo "**Full Changelog**: https://github.com/MineYuanlu/SeedMapForXaero/commits/v${{ needs.bump.outputs.version }}"
-            echo 'EOF_M'
-          } >> "$GITHUB_ENV"
-      - name: Publish to Modrinth
-        run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
-        env:
-          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
-          CHANGELOG: ${{ env.CHANGELOG }}
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+          chmod +x ./gradlew
+          ./gradlew build -PskipNativeBuild -x compileNative -x compileNativeWindows
+      - name: Verify JAR bundles all platform natives
+        run: |
+          JAR=$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)
+          for lib in \
+            native/linux/x86_64/libxsmcore.so \
+            native/linux/aarch64/libxsmcore.so \
+            native/android/arm64/libxsmcore.so \
+            native/android/x86_64/libxsmcore.so \
+            native/macos/universal/libxsmcore.dylib \
+            native/windows/x86_64/xsmcore.dll; do
+            unzip -l "$JAR" | grep -q "$lib" || {
+              echo "::error::missing $lib in $JAR"
+              exit 1
+            }
+          done
+          echo "JAR bundles all platforms: $JAR"
+      - uses: actions/upload-artifact@v7
         with:
-          tag_name: v${{ needs.bump.outputs.version }}
-          name: v${{ needs.bump.outputs.version }}
-          generate_release_notes: true
-          files: build/libs/*.jar
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: seed-map-for-xaero-test
+          path: build/libs/

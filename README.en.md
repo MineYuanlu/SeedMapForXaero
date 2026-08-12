@@ -142,10 +142,11 @@ Four workflows in `.github/workflows/`:
 
 | Workflow               | Trigger           | Action                                                              |
 | ---------------------- | ----------------- | ------------------------------------------------------------------- |
-| `build.yml`            | Push / PR         | Non-master: Linux build; master/tag: 3-platform native + package    |
+| `build.yml`            | Push / PR         | Non-master: Linux build; master/tag: all-platform native + package |
+| `build-test-jar.yml`   | workflow_dispatch | Manual universal JAR build (all-platform native + built-in checks), no bump/release |
 | `matrix-test.yml`      | Push / manual     | 8-combo version matrix (4 MC × old/new Xaero) + client E2E GameTest |
 | `refresh-versions.yml` | Weekly + manual   | Refresh `versions.json` matrix (commits only on real changes)       |
-| `release.yml`          | workflow_dispatch | Version bump + 3-platform build + Modrinth + Release                |
+| `release.yml`          | workflow_dispatch | Version bump + all-platform build + Modrinth + Release              |
 
 Modrinth project ID: `UoJSF4vW`
 

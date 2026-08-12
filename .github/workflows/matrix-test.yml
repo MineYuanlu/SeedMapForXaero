@@ -113,7 +113,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: universal-jar
-          path: build/libs/seed-map-for-xaero-*.jar
+          # 只传生产 jar：排除 -sources.jar，其 fabric.mod.json 是未展开的
+          # ${version}/${loader_version} 模板，被 E2E 误载会导致 Loader 解析失败。
+          path: |
+            build/libs/seed-map-for-xaero-*.jar
+            !build/libs/*-sources.jar
 
   # ── Universal client E2E gametest（生产运行，headless）────────────────────
   # 对照 Fabric 官方 CI（fabric-api/.github/workflows/build.yml client_test job）：
@@ -152,7 +156,17 @@ jobs:
         timeout-minutes: 20
         run: |
           chmod +x ./gradlew
-          UJAR=$(find universal -name 'seed-map-for-xaero-*.jar' | head -1)
+          # 只选生产 jar，排除 -sources.jar（其 fabric.mod.json 为未展开的 ${version} 模板），
+          # 并断言所选 jar 内模板已展开，防止任何错误 jar 被误载。
+          UJAR=$(find universal -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)
+          test -n "$UJAR" || {
+            echo "::error::no production universal jar found (mc=${{ matrix.mc }})"
+            exit 1
+          }
+          unzip -p "$UJAR" fabric.mod.json | grep -qF '${' && {
+            echo "::error::universal jar still carries unexpanded template: $UJAR (mc=${{ matrix.mc }})"
+            exit 1
+          }
           # -PuniversalJar 让 mod 本体用预构建 jar（不重编译）；-PskipNativeWindows=true
           # 规避 CI 无 MinGW 时 processClientResources → compileNativeWindows 失败。
           ./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \

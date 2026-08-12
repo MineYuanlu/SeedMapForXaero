@@ -187,26 +187,104 @@ def defaultCCompiler() {
 	}
 }
 
+// 产物按 src/main/c/build/<target>/ 分目录放置，processClientResources 再映射进 JAR 的
+// /native/<os>/<arch>/ 路径（见 Xsm.loadNativeLibrary）。
+def nativeOutDir(def cdir, String rel) {
+	return "${cdir.absolutePath}/${rel}"
+}
+
+def hostNativeOutputDir(def cdir) {
+	if (Os.isFamily(Os.FAMILY_MAC)) {
+		return nativeOutDir(cdir, 'build/macos')
+	}
+	if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+		return nativeOutDir(cdir, 'build-mingw/x86_64')
+	}
+	def arch = System.getProperty('os.arch', '').toLowerCase()
+	def sub = (arch.contains('aarch64') || arch.contains('arm64')) ? 'linux-aarch64' : 'linux-x86_64'
+	return nativeOutDir(cdir, "build/${sub}")
+}
+
+def androidNdk() {
+	def ndk = project.findProperty('ndkPath')
+	if (ndk) {
+		return file(ndk.toString()).absolutePath
+	}
+	def env = System.getenv('ANDROID_NDK') ?: System.getenv('ANDROID_NDK_HOME')
+	if (env) {
+		return env
+	}
+	throw new RuntimeException(
+		'Android NDK not found: pass -PndkPath=<ndk-dir> or set ANDROID_NDK_HOME')
+}
+
+def runCmake(def cdir, String bdir, List<String> args) {
+	// Gradle 插桩了 ProcessBuilder：显式转成 String[]（并强制 GString→String），
+	// 否则 Object[]→String[] 的 arraycopy 会在内插元素上抛 ArrayStoreException。
+	def cfg = new ProcessBuilder(args as String[])
+		.directory(cdir).inheritIO().start()
+	if (cfg.waitFor() != 0) {
+		throw new RuntimeException("cmake configure failed: ${args}")
+	}
+	def bld = new ProcessBuilder(
+		'cmake', '--build', bdir, '--config', 'Release',
+		'--target', 'xsmcore')
+		.directory(cdir).inheritIO().start()
+	if (bld.waitFor() != 0) {
+		throw new RuntimeException('cmake build failed')
+	}
+}
+
 task compileNative {
-	description 'Compile the native shared library via CMake.'
+	description 'Compile the native shared library via CMake (host platform).'
 	onlyIf { skipNative != 'true' }
 	doLast {
 		def cc = System.getenv('CC') ?: defaultCCompiler()
 		def cdir = file('src/main/c')
-		def cfg = new ProcessBuilder(
-			'cmake', '-S', '.', '-B', 'build',
+		def outDir = hostNativeOutputDir(cdir)
+		def args = ['cmake', '-S', '.', '-B', 'build',
 			'-DCMAKE_BUILD_TYPE=Release',
-			"-DCMAKE_C_COMPILER=${cc}")
-			.directory(cdir).inheritIO().start()
-		if (cfg.waitFor() != 0) {
-			throw new RuntimeException('cmake configure failed')
+			"-DCMAKE_C_COMPILER=${cc}",
+			"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${outDir}",
+			"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${outDir}"]
+		if (Os.isFamily(Os.FAMILY_MAC)) {
+			// macOS 用 universal dylib：arm64 + x86_64 两个 slice 一个文件。
+			args.add('-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64')
 		}
-		def bld = new ProcessBuilder(
-			'cmake', '--build', 'build', '--config', 'Release',
-			'--target', 'xsmcore')
-			.directory(cdir).inheritIO().start()
-		if (bld.waitFor() != 0) {
-			throw new RuntimeException('cmake build failed')
+		runCmake(cdir, 'build', args)
+	}
+}
+
+task compileNativeLinuxArm {
+	description 'Cross-compile libxsmcore.so for Linux aarch64 (glibc) via aarch64-linux-gnu-gcc.'
+	onlyIf { skipNative != 'true' }
+	doLast {
+		def cdir = file('src/main/c')
+		runCmake(cdir, 'build-linux-arm', ['cmake', '-S', '.', '-B', 'build-linux-arm',
+			'-DCMAKE_BUILD_TYPE=Release',
+			'-DCMAKE_TOOLCHAIN_FILE=linux-arm-toolchain.cmake',
+			"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${nativeOutDir(cdir, 'build/linux-aarch64')}",
+			"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${nativeOutDir(cdir, 'build/linux-aarch64')}"])
+	}
+}
+
+task compileNativeAndroid {
+	description 'Cross-compile libxsmcore.so for Android (bionic) via the NDK: arm64-v8a + x86_64.'
+	onlyIf { skipNative != 'true' }
+	doLast {
+		def cdir = file('src/main/c')
+		def toolchain = "${androidNdk()}/build/cmake/android.toolchain.cmake"
+		[['arm64-v8a', 'build-android-arm64', 'build/android-arm64'],
+		 ['x86_64', 'build-android-x86_64', 'build/android-x86_64']].each { abi, bdir, rel ->
+			def outDir = nativeOutDir(cdir, rel)
+			runCmake(cdir, bdir, ['cmake', '-S', '.', '-B', bdir,
+				'-DCMAKE_BUILD_TYPE=Release',
+				"-DCMAKE_TOOLCHAIN_FILE=${toolchain}",
+				"-DANDROID_ABI=${abi}",
+				'-DANDROID_PLATFORM=android-24',
+				'-DANDROID_STL=c++_static',
+				"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${outDir}",
+				"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${outDir}"])
 		}
 	}
 }
@@ -247,21 +325,12 @@ task compileNativeWindows {
 	onlyIf { skipNative != 'true' && skipNativeWindows != 'true' }
 	doLast {
 		def cdir = file('src/main/c')
-		def cfg = new ProcessBuilder(
-			'cmake', '-S', '.', '-B', 'build-mingw',
+		def outDir = nativeOutDir(cdir, 'build-mingw/x86_64')
+		runCmake(cdir, 'build-mingw', ['cmake', '-S', '.', '-B', 'build-mingw',
 			'-DCMAKE_BUILD_TYPE=Release',
-			'-DCMAKE_TOOLCHAIN_FILE=mingw-toolchain.cmake')
-			.directory(cdir).inheritIO().start()
-		if (cfg.waitFor() != 0) {
-			throw new RuntimeException('cmake MinGW configure failed')
-		}
-		def bld = new ProcessBuilder(
-			'cmake', '--build', 'build-mingw', '--config', 'Release',
-			'--target', 'xsmcore')
-			.directory(cdir).inheritIO().start()
-		if (bld.waitFor() != 0) {
-			throw new RuntimeException('cmake MinGW build failed')
-		}
+			'-DCMAKE_TOOLCHAIN_FILE=mingw-toolchain.cmake',
+			"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${outDir}",
+			"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${outDir}"])
 	}
 }
 
@@ -272,14 +341,18 @@ processClientResources {
 			dependsOn compileNativeWindows
 		}
 	}
-	from('src/main/c/build') {
-		include 'libxsmcore.so'
-		include 'libxsmcore.dylib'
-	}
+	// JAR 内 /native/<os>/<arch>/ 布局，与 Xsm.loadNativeLibrary 对应：
+	//   linux/    → libxsmcore.so (glibc, x86_64 / aarch64)
+	//   android/  → libxsmcore.so (bionic/NDK, arm64 / x86_64)  —— FCL/Pojav 用
+	//   macos/    → libxsmcore.dylib (universal, arm64+x86_64)
+	//   windows/  → xsmcore.dll (x86_64)
+	from('src/main/c/build/linux-x86_64') { into 'native/linux/x86_64' }
+	from('src/main/c/build/linux-aarch64') { into 'native/linux/aarch64' }
+	from('src/main/c/build/android-arm64') { into 'native/android/arm64' }
+	from('src/main/c/build/android-x86_64') { into 'native/android/x86_64' }
+	from('src/main/c/build/macos') { into 'native/macos/universal' }
 	if (skipNativeWindows != 'true') {
-		from('src/main/c/build-mingw') {
-			include 'xsmcore.dll'
-		}
+		from('src/main/c/build-mingw/x86_64') { into 'native/windows/x86_64' }
 	}
 }
 
@@ -301,6 +374,9 @@ clean {
 	}
 	delete 'src/main/c/build'
 	delete 'src/main/c/build-mingw'
+	delete 'src/main/c/build-linux-arm'
+	delete 'src/main/c/build-android-arm64'
+	delete 'src/main/c/build-android-x86_64'
 }
 
 def targetJavaVersion = 25
@@ -317,6 +393,12 @@ java {
 		toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
 	}
 	withSourcesJar()
+}
+
+// sources jar 从 allSource 取原始资源，fabric.mod.json 是未展开的 ${version} 模板；
+// 排除它，防止 sources jar 被当成 mod 加载导致 Loader 解析失败。
+tasks.named('sourcesJar') {
+	exclude 'fabric.mod.json'
 }
 
 jar {

@@ -1,12 +1,15 @@
 package bid.yuanlu.seedmap4xaero.client.nativeapi;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
+import java.util.Locale;
 
 import net.minecraft.SharedConstants;
 
@@ -27,20 +30,87 @@ public final class Xsm {
     private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/Xsm");
 
     static {
+        loadNativeLibrary();
+    }
+
+    /**
+     * 按运行平台（os × arch × Android）从 JAR 内 {@code /native/<os>/<arch>/} 子目录
+     * 解压并加载 {@code libxsmcore}。macOS 是 universal dylib，两架构共用一份。
+     * Android (FCL/Pojav) 的 JVM 链接 bionic，native 产物必须单独用 NDK 编译。
+     */
+    private static void loadNativeLibrary() {
+        String libName = System.mapLibraryName("xsmcore");
+        String resourcePath = nativeResourcePath(libName);
         try {
-            var libName = System.mapLibraryName("xsmcore");
-            var tmp = Files.createTempFile(libName, "");
-            try (var in = Xsm.class.getResourceAsStream("/" + libName)) {
+            Path tmp = Files.createTempFile(libName, "");
+            try (InputStream in = Xsm.class.getResourceAsStream(resourcePath)) {
                 if (in == null) {
                     throw new RuntimeException(
-                            "Native library not found in JAR: /" + libName);
+                            "Native library not found in JAR: " + resourcePath
+                                    + " (os=" + osName() + ", arch=" + archName()
+                                    + ", android=" + isAndroid() + ")");
                 }
                 Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
             }
             tmp.toFile().deleteOnExit();
             System.load(tmp.toAbsolutePath().toString());
         } catch (IOException e) {
-            throw new RuntimeException("Failed to load native library libxsmcore", e);
+            throw new RuntimeException(
+                    "Failed to load native library libxsmcore from " + resourcePath, e);
+        }
+    }
+
+    private static String nativeResourcePath(String libName) {
+        String os = osName();
+        if ("macos".equals(os)) {
+            // universal dylib 同时含 arm64 + x86_64 两个 slice
+            return "/native/macos/universal/" + libName;
+        }
+        String arch = archName();
+        if ("android".equals(os) && "aarch64".equals(arch)) {
+            arch = "arm64";
+        }
+        return "/native/" + os + "/" + arch + "/" + libName;
+    }
+
+    private static String osName() {
+        if (isAndroid()) {
+            return "android";
+        }
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (os.contains("win")) {
+            return "windows";
+        }
+        if (os.contains("mac") || os.contains("darwin")) {
+            return "macos";
+        }
+        return "linux";
+    }
+
+    private static String archName() {
+        String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
+        switch (arch) {
+            case "amd64":
+            case "x86_64":
+            case "x86-64":
+            case "x64":
+                return "x86_64";
+            case "aarch64":
+            case "arm64":
+            case "armv8":
+            case "armv8l":
+                return "aarch64";
+            default:
+                return arch;
+        }
+    }
+
+    private static boolean isAndroid() {
+        try {
+            Class.forName("android.os.Build");
+            return true;
+        } catch (ClassNotFoundException | LinkageError e) {
+            return false;
         }
     }
 

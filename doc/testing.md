@@ -58,11 +58,12 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 ./gradlew runProductionClientGameTest -PskipNativeWindows=true
 
 # 用预构建 universal jar 跑 E2E（验证发布产物，不在目标版本上重编译 mod）
+# 排除 -sources.jar：其 fabric.mod.json 是未展开的 ${version} 模板，误载会解析失败
 ./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
-  -PuniversalJar=build/libs/seed-map-for-xaero-0.3.1.jar
+  -PuniversalJar="$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
 ```
 
-### CI（`.github/workflows/matrix-test.yml`）
+### CI（`.github/workflows/matrix-test.yml` + `build.yml` / `release.yml` native 矩阵）
 
 - `resolve`：校验 `versions.json` 新鲜度（过期仅告警不阻塞）+ 输出两套矩阵
   - `matrix`：8 组合（4 MC × oldest/newest Xaero），`test` 用
@@ -70,6 +71,32 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 - `test`（8 行，**源码兼容预警**）：`cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）。保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；产物是编译载体，不发布
 - `build-universal`（1 行）：编一个 universal jar（最老 Xaero 线 1.40.14），上传 artifact
 - `universal-e2e`（4 行，依赖 `build-universal`）：真实启动 MC 的 E2E，**复用同一个 universal jar**，`./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true -PuniversalJar=<artifact>` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
+
+**native 架构矩阵**（`build.yml`/`release.yml`，master/tag 才全量跑）：
+
+| Job | Runner | 产物 | 验证 |
+| --- | ------ | ---- | ---- |
+| `compile-native-linux` | `ubuntu-24.04` | `linux/x86_64/libxsmcore.so` | —（package 阶段跑 C 单测） |
+| `compile-native-linux-arm` | `ubuntu-24.04-arm`（原生） | `linux/aarch64/libxsmcore.so` | 该 job 内原生跑 `xsmtest` |
+| `compile-native-android` | `ubuntu-24.04` + NDK r27c | `android/arm64` + `android/x86_64`（bionic） | ELF 校验：`file` 确认 ABI + `readelf -d` DT_NEEDED 无版本化 SONAME（等价 FCL `checkElfIsAndroid`） |
+| `compile-native-macos` | `macos-latest` | `macos/universal/libxsmcore.dylib` | `lipo -info` 确认双架构 |
+| `compile-native-windows` | `windows-latest` (msys2) | `windows/x86_64/xsmcore.dll` | — |
+| `package` / `release` | `ubuntu-24.04` | 汇总全部进 JAR | C 单测 + JUnit |
+
+> Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器 runner），用 ELF 校验 + 真机/模拟器 FCL 手动 E2E 兜底。
+
+**native 矩阵**（`.github/workflows/build.yml` / `release.yml`，master/tag 才全量跑）：
+
+| job | runner | 产物 | 验证 |
+| --- | ------ | ---- | ---- |
+| `compile-native-linux` | `ubuntu-24.04` | `linux/x86_64/libxsmcore.so` | C 单测（package 阶段） |
+| `compile-native-linux-arm` | `ubuntu-24.04-arm`（原生） | `linux/aarch64/libxsmcore.so` | 该 job 内原生跑 `xsmtest` |
+| `compile-native-android` | `ubuntu-24.04` + NDK r27c | `android/arm64` + `android/x86_64`（bionic） | ELF 校验：`file` ABI + DT_NEEDED 无版本化 SONAME（等价 FCL `checkElfIsAndroid`） |
+| `compile-native-macos` | `macos-latest` | `macos/universal/libxsmcore.dylib` | `lipo -info` 确认双架构 |
+| `compile-native-windows` | `windows-latest` (msys2) | `windows/x86_64/xsmcore.dll` | — |
+| `package`/`release` | `ubuntu-24.04` | 汇总全部进 JAR | C 单测 + JUnit |
+
+Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 ELF 校验 + 真机/模拟器上的 FCL 手动 E2E 兜底。
 
 > **运行时 vs 编译**：`test` 的 8 组合矩阵保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；`universal-e2e` 用发布产物（单个 universal jar）在全部 MC × newest Xaero 上真实启动，验证 mixin 的运行时应用（目标方法/字段在对应版本真实存在、注入点命中）与渲染链路。两个 job 互补，缺一不可。
 
@@ -82,12 +109,13 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 
 1. **服务端 `runGameTest` 被禁用**（`build.gradle` `enableGameTests = false`）：XaeroLib 的 `serverStarting` 只对 `DedicatedServer` 调 `freeze()`，game test server 下 registry 永不冻结会崩。我们只要客户端 E2E。
 2. **CI 无 MinGW**：`compileNativeWindows`（交叉编译 Windows dll）只在有 MinGW 的主机构建；CI 一律 `-PskipNativeWindows=true` 或 `-x compileNativeWindows`。
-3. **E2E 退出死锁（MC 26）**：`IntegratedServer.halt` 先 `executeBlocking` 等 server 线程，而 fabric client gametest 的 phaser 让 server 卡在 `postRunTasks` → 三线死锁。绕开：断言后 `runOnServer(server -> server.halt(false))`（server 线程内不阻塞）。
-4. **fabric-client-gametest 跨版本 API**：5.1.x（26.1）`getClientLevel().waitForChunksRender()`；6.0.0（26.2）改用 `getConnection().waitForChunksRender()`——测试用反射兼容。同理 `Minecraft.setScreen` 在 26.2 移除，改 `setScreenAndShow`。
-5. **网络同步器 bug**：production run task 加 `-Dfabric.client.gametest.disableNetworkSynchronizer=true`（fabric-docs warning）。
-6. **Java 25 必需**；native 缺失时 native 集成测试自动跳过，但 CI 矩阵行总是完整执行。
+3. **Android/FCL 产物不可在 CI 跑**：`compile-native-android` 用 NDK 编 bionic `.so`（arm64+x86_64），无法在 ubuntu runner 上 dlopen 验证，改用 ELF 校验（`file` + `readelf -d` DT_NEEDED 无 `libc.so.6`）等价复刻 FCL 的 `checkElfIsAndroid()`；真机/模拟器 FCL 手动 E2E 兜底。
+4. **E2E 退出死锁（MC 26）**：`IntegratedServer.halt` 先 `executeBlocking` 等 server 线程，而 fabric client gametest 的 phaser 让 server 卡在 `postRunTasks` → 三线死锁。绕开：断言后 `runOnServer(server -> server.halt(false))`（server 线程内不阻塞）。
+5. **fabric-client-gametest 跨版本 API**：5.1.x（26.1）`getClientLevel().waitForChunksRender()`；6.0.0（26.2）改用 `getConnection().waitForChunksRender()`——测试用反射兼容。同理 `Minecraft.setScreen` 在 26.2 移除，改 `setScreenAndShow`。
+6. **网络同步器 bug**：production run task 加 `-Dfabric.client.gametest.disableNetworkSynchronizer=true`（fabric-docs warning）。
+7. **Java 25 必需**；native 缺失时 native 集成测试自动跳过，但 CI 矩阵行总是完整执行。
 
 ## 参数命名约定
 
 - `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMapVersion`、`minecraft_version`、`loader_version`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
-- 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PjextractPath`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）。
+- 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PjextractPath`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）、`-PndkPath`（`compileNativeAndroid` 用，或环境变量 `ANDROID_NDK_HOME`）。

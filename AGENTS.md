@@ -26,7 +26,8 @@ cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
 cmake --build build-test --target xsmtest && ./build-test/xsmtest   # C 单测
 ./gradlew runProductionClientGameTest -PskipNativeWindows=true      # E2E（真实启动 MC）
 ./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
-  -PuniversalJar=build/libs/seed-map-for-xaero-*.jar                # E2E（复用预构建 universal jar）
+  -PuniversalJar="$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)" \
+  # E2E（复用预构建 universal jar；排除 -sources.jar，其 fabric.mod.json 是未展开的 ${version} 模板）
 ```
 
 **Single universal jar**: `fabric.mod.json` hardcodes `"minecraft": ">=26.1"` (not templated). The published jar is compiled against the oldest Xaero line (1.40.14) so referenced symbols are a subset of all supported versions. CI (`matrix-test.yml`): `test` = 8-combo compile+JUnit (source-compat early warning, not published), `build-universal` = build the one jar, `universal-e2e` = run that same jar on all 4 MC × newest Xaero. Future breaking MC versions are caught by universal-e2e as `versions.json` grows.
@@ -36,14 +37,30 @@ CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 
 ## Native build pipeline
 
-`compileNative` (CMake) → `libxsmcore.so` → bundled in JAR.  
-`generateNativeBindings` (jextract) → `all.h` → `XsmNative.java` (FFM, gitignored).  
-`clean` deletes generated bindings + `src/main/c/build*`.  
-Windows cross-compile: `compileNativeWindows` via MinGW (`mingw-toolchain.cmake`).
+Single **universal JAR** bundles all native libs under `/native/<os>/<arch>/`; `Xsm.loadNativeLibrary` picks by `os.name` × `os.arch` × Android:
+
+```
+native/linux/x86_64/libxsmcore.so    glibc（桌面/服务器，Linux x64）
+native/linux/aarch64/libxsmcore.so   glibc（树莓派/ARM 云等）
+native/android/arm64/libxsmcore.so   bionic/NDK —— FCL/Pojav 真机（★关键）
+native/android/x86_64/libxsmcore.so  bionic/NDK（FCL 模拟器/罕见 x86 Android）
+native/macos/universal/libxsmcore.dylib   universal，arm64+x86_64 一个文件
+native/windows/x86_64/xsmcore.dll
+```
+
+- **Android ≠ Linux-aarch64**：FCL/Pojav 的 JVM 链接 bionic（无版本化 SONAME），glibc 交叉编译的 `.so` 加载不了。必须用 Android NDK（`compileNativeAndroid`，需 `-PndkPath=<ndk>` 或 `ANDROID_NDK_HOME`）。FCL 用 `checkElfIsAndroid()`（DT_NEEDED 无 `libc.so.6`）判断。
+- macOS universal：`compileNative` 在 mac 上自动加 `-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64`，一个 dylib 覆盖 Intel + Apple Silicon。
+- Linux aarch64：CI 用原生 arm64 runner 构建；本地可用 `compileNativeLinuxArm`（`aarch64-linux-gnu-gcc` 交叉，glibc，见 `linux-arm-toolchain.cmake`）。
+- `generateNativeBindings` (jextract) → `all.h` → `XsmNative.java` (FFM, gitignored)。绑定硬编码 LP64，跨架构复用一份。
+- `clean` deletes generated bindings + `src/main/c/build*`.
+- Windows cross-compile: `compileNativeWindows` via MinGW (`mingw-toolchain.cmake`).
+- CI 编译 job 各自产出 `src/main/c/build/<target>/`，`package`/`release` 汇总进 JAR。矩阵定义在 `build.yml` / `release.yml` / `build-test-jar.yml`。
 
 ## Release
 
 `workflow_dispatch` in `.github/workflows/release.yml` with patch/minor/major choice. Auto-bumps `gradle.properties`, commits, tags (vX.Y.Z), builds native matrix, creates GitHub Release, publishes to Modrinth (projectId `UoJSF4vW`).
+
+`build-test-jar.yml`（workflow_dispatch）：手动产一个 universal JAR 供人工测试，无 bump/tag/发布。`ref` input 指定分支/tag/SHA（默认 `master`），`runTests` 开关 package 里的 C 单测。产物含内置校验：`processClientResources` 打包后逐项断言 JAR 内含全平台 6 个 native 文件。
 
 ## Architecture
 
