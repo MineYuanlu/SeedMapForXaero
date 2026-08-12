@@ -1,7 +1,8 @@
-name: Build Test JAR
+name: build-test-jar
 
 # 手动触发，不 bump 版本、不打 tag、不发布到 Modrinth / GitHub Release。
-# 只在线上产出 universal JAR（含全平台 native）供人工测试，等同 release 产物。
+# 编译全平台 native（reusable-native-build）+ 汇总 universal JAR（reusable-package）供人工测试，
+# 产物等同 release 产物。ref 指定构建的分支/tag/SHA；runTests 开关打包时的 C 单测。
 on:
   workflow_dispatch:
     inputs:
@@ -19,231 +20,18 @@ permissions:
   contents: read
 
 jobs:
-  # ── Native compilation matrix (same targets as build.yml master path) ──
-  # 产物按 src/main/c/build/<target>/ 分目录，package 汇总进 JAR 的 /native/<os>/<arch>/。
-  compile-native-linux:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: src/main/c
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-          submodules: recursive
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake gcc
-      - name: Build native library (x86_64, glibc)
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/linux-x86_64 \
-            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/linux-x86_64
-          cmake --build build --target xsmcore
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-linux-x86_64
-          path: src/main/c/build/linux-x86_64/libxsmcore.so
+  natives:
+    uses: ./.github/workflows/reusable-native-build.yml
+    with:
+      ref: ${{ inputs.ref }}
+    secrets: inherit
 
-  compile-native-linux-arm:
-    runs-on: ubuntu-24.04-arm
-    defaults:
-      run:
-        working-directory: src/main/c
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-          submodules: recursive
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake gcc
-      - name: C unit tests (native aarch64)
-        run: |
-          cmake -S . -B build-test -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-test --target xsmtest
-          ./build-test/xsmtest
-      - name: Build native library (aarch64, glibc)
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/linux-aarch64 \
-            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/linux-aarch64
-          cmake --build build --target xsmcore
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-linux-aarch64
-          path: src/main/c/build/linux-aarch64/libxsmcore.so
-
-  compile-native-android:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: src/main/c
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-          submodules: recursive
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake unzip
-      - name: Download Android NDK
-        run: |
-          curl -sL -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
-          unzip -q /tmp/ndk.zip -d /tmp
-          echo "ANDROID_NDK=/tmp/android-ndk-r27c" >> "$GITHUB_ENV"
-      - name: Build arm64-v8a (bionic)
-        run: |
-          cmake -S . -B build-android-arm64 -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
-            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/android-arm64 \
-            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/android-arm64
-          cmake --build build-android-arm64 --target xsmcore
-      - name: Build x86_64 (bionic)
-        run: |
-          cmake -S . -B build-android-x86_64 -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
-            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/android-x86_64 \
-            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/android-x86_64
-          cmake --build build-android-x86_64 --target xsmcore
-      - name: Verify ELF (bionic, correct ABI, no versioned SONAME)
-        run: |
-          for f in build/android-arm64/libxsmcore.so build/android-x86_64/libxsmcore.so; do
-            echo "== $f =="
-            file "$f"
-            if readelf -d "$f" | grep NEEDED | grep -qE '\.so\.[0-9]+'; then
-              echo "::error::glibc-style versioned SONAME found in $f (FCL cannot load it)"
-              readelf -d "$f" | grep NEEDED
-              exit 1
-            fi
-            readelf -d "$f" | grep NEEDED
-          done
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-android-arm64
-          path: src/main/c/build/android-arm64/libxsmcore.so
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-android-x86_64
-          path: src/main/c/build/android-x86_64/libxsmcore.so
-
-  compile-native-macos:
-    runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: src/main/c
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-          submodules: recursive
-      - name: Install cmake
-        run: brew install cmake
-      - name: Build native library (universal dylib)
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build/macos \
-            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build/macos
-          cmake --build build --target xsmcore
-      - name: Verify universal dylib
-        run: lipo -info build/macos/libxsmcore.dylib
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-macos
-          path: src/main/c/build/macos/libxsmcore.dylib
-
-  compile-native-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-          submodules: recursive
-      - uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >
-            base-devel
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-      - name: Build native library
-        shell: msys2 {0}
-        working-directory: src/main/c
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$PWD/build-mingw/x86_64 \
-            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$PWD/build-mingw/x86_64
-          cmake --build build --target xsmcore --config Release
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-windows
-          path: src/main/c/build-mingw/x86_64/xsmcore.dll
-
-  # ── Package: 汇总全平台 native 进一个 universal JAR ──
   package:
-    needs:
-      - compile-native-linux
-      - compile-native-linux-arm
-      - compile-native-android
-      - compile-native-macos
-      - compile-native-windows
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-          submodules: recursive
-      - uses: gradle/actions/wrapper-validation@v6
-      - uses: actions/setup-java@v5
-        with:
-          java-version: '25'
-          distribution: 'microsoft'
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake gcc
-      - name: Download native libs
-        uses: actions/download-artifact@v8
-        with:
-          path: prebuilt/
-      - name: Place native libs
-        run: |
-          mkdir -p src/main/c/build/linux-x86_64 src/main/c/build/linux-aarch64 \
-                   src/main/c/build/android-arm64 src/main/c/build/android-x86_64 \
-                   src/main/c/build/macos src/main/c/build-mingw/x86_64
-          cp prebuilt/native-linux-x86_64/libxsmcore.so  src/main/c/build/linux-x86_64/
-          cp prebuilt/native-linux-aarch64/libxsmcore.so src/main/c/build/linux-aarch64/
-          cp prebuilt/native-android-arm64/libxsmcore.so src/main/c/build/android-arm64/
-          cp prebuilt/native-android-x86_64/libxsmcore.so src/main/c/build/android-x86_64/
-          cp prebuilt/native-macos/libxsmcore.dylib src/main/c/build/macos/
-          cp prebuilt/native-windows/xsmcore.dll src/main/c/build-mingw/x86_64/
-          ls -laR src/main/c/build/ src/main/c/build-mingw/ || true
-      - name: Run C unit tests
-        if: inputs.runTests
-        run: |
-          cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-test --target xsmtest
-          ./build-test/xsmtest
-      - name: Build JAR (skip native, use prebuilt libs)
-        run: |
-          chmod +x ./gradlew
-          ./gradlew build -PskipNativeBuild -x compileNative -x compileNativeWindows
-      - name: Verify JAR bundles all platform natives
-        run: |
-          JAR=$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)
-          for lib in \
-            native/linux/x86_64/libxsmcore.so \
-            native/linux/aarch64/libxsmcore.so \
-            native/android/arm64/libxsmcore.so \
-            native/android/x86_64/libxsmcore.so \
-            native/macos/universal/libxsmcore.dylib \
-            native/windows/x86_64/xsmcore.dll; do
-            unzip -l "$JAR" | grep -q "$lib" || {
-              echo "::error::missing $lib in $JAR"
-              exit 1
-            }
-          done
-          echo "JAR bundles all platforms: $JAR"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: seed-map-for-xaero-test
-          path: build/libs/
+    needs: natives
+    uses: ./.github/workflows/reusable-package.yml
+    with:
+      ref: ${{ inputs.ref }}
+      artifact-name: seed-map-for-xaero-test
+      run-ctests: ${{ inputs.runTests }}
+      verify-natives: true
+    secrets: inherit

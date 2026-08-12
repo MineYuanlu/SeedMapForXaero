@@ -1,0 +1,42 @@
+name: pr-check
+
+# feature 分支（dev/xxx、fix/xxx）推送与 PR 的快速检查：Linux 上跑 C 单测 + JUnit + 编译 JAR（仅含 Linux native）。
+# develop / master 走全面门禁：matrix-test（版本矩阵 + E2E）+ build.yml（全平台 native + 打包）。
+# 产物仅供人工取用，不等同 release 产物。
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - master
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: Run C unit tests
+        run: |
+          cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-test --target xsmtest
+          ./build-test/xsmtest
+      - name: Build JAR
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build -x compileNativeWindows
+      - uses: actions/upload-artifact@v7
+        with:
+          name: seed-map-for-xaero-linux
+          path: build/libs/

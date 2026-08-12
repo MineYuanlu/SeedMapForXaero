@@ -35,6 +35,19 @@ cmake --build build-test --target xsmtest && ./build-test/xsmtest   # C 单测
 版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`）。
 CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 
+### CI 触发矩阵（单人开发流程）
+
+开发流程：feature 分支只跑快速检查；**develop 是合入 master 前的完整门禁**（版本矩阵 + E2E + 全平台 native + 打包全绿才合）；master 再次全量确认；tag 触发的 build 供发版引用。
+
+| 触发 | `pr-check.yml` | `matrix-test.yml` | `build.yml` |
+| ---- | -------------- | ----------------- | ----------- |
+| `dev/xxx`、`fix/xxx` 推送 | ✅ 快速检查（C 单测 + JUnit + JAR） | — | — |
+| develop 推送 | — | ✅ 版本矩阵 + E2E | ✅ 全平台 native + 打包 |
+| master 推送 | — | ✅ 版本矩阵 + E2E | ✅ 全平台 native + 打包 |
+| tag `v*` 推送 | — | — | ✅ 全平台 native + 打包 |
+| pull_request | ✅ 快速检查 | — | — |
+| 手动 | — | ✅ | build-test-jar / release |
+
 ## Native build pipeline
 
 Single **universal JAR** bundles all native libs under `/native/<os>/<arch>/`; `Xsm.loadNativeLibrary` picks by `os.name` × `os.arch` × Android:
@@ -54,13 +67,13 @@ native/windows/x86_64/xsmcore.dll
 - `generateNativeBindings` (jextract) → `all.h` → `XsmNative.java` (FFM, gitignored)。绑定硬编码 LP64，跨架构复用一份。
 - `clean` deletes generated bindings + `src/main/c/build*`.
 - Windows cross-compile: `compileNativeWindows` via MinGW (`mingw-toolchain.cmake`).
-- CI 编译 job 各自产出 `src/main/c/build/<target>/`，`package`/`release` 汇总进 JAR。矩阵定义在 `build.yml` / `release.yml` / `build-test-jar.yml`。
+- CI 编译 job 各自产出 `src/main/c/build/<target>/`，汇总进 JAR。全平台 native 矩阵（5 个 compile job）统一在 `reusable-native-build.yml`；下载 natives + 打包 universal JAR 统一在 `reusable-package.yml`（含 JAR 内置校验）。`build.yml`（develop/master/tag push）、`release.yml`、`build-test-jar.yml` 均通过 `uses:` 调用这两个可复用 workflow；feature 分支/PR 的快速检查在 `pr-check.yml`。
 
 ## Release
 
 `workflow_dispatch` in `.github/workflows/release.yml` with patch/minor/major choice. Auto-bumps `gradle.properties`, commits, tags (vX.Y.Z), builds native matrix, creates GitHub Release, publishes to Modrinth (projectId `UoJSF4vW`).
 
-`build-test-jar.yml`（workflow_dispatch）：手动产一个 universal JAR 供人工测试，无 bump/tag/发布。`ref` input 指定分支/tag/SHA（默认 `master`），`runTests` 开关 package 里的 C 单测。产物含内置校验：`processClientResources` 打包后逐项断言 JAR 内含全平台 6 个 native 文件。
+`build-test-jar.yml`（workflow_dispatch）：手动产一个 universal JAR 供人工测试，无 bump/tag/发布（调用 `reusable-native-build` + `reusable-package`）。`ref` input 指定分支/tag/SHA（默认 `master`），`runTests` 开关打包时的 C 单测。产物含内置校验：打包后逐项断言 JAR 内含全平台 6 个 native 文件。
 
 ## Architecture
 

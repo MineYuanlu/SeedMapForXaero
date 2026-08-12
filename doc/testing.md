@@ -63,7 +63,9 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
   -PuniversalJar="$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
 ```
 
-### CI（`.github/workflows/matrix-test.yml` + `build.yml` / `release.yml` native 矩阵）
+### CI（`.github/workflows/matrix-test.yml` + native 矩阵）
+
+单人开发流程：`dev/xxx`、`fix/xxx` 只跑 `pr-check.yml` 快速检查；**develop / master 是全面门禁**（`matrix-test.yml` 版本矩阵 + E2E 与 `build.yml` 全平台 native + 打包都触发）。
 
 - `resolve`：校验 `versions.json` 新鲜度（过期仅告警不阻塞）+ 输出两套矩阵
   - `matrix`：8 组合（4 MC × oldest/newest Xaero），`test` 用
@@ -72,7 +74,7 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 - `build-universal`（1 行）：编一个 universal jar（最老 Xaero 线 1.40.14），上传 artifact
 - `universal-e2e`（4 行，依赖 `build-universal`）：真实启动 MC 的 E2E，**复用同一个 universal jar**，`./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true -PuniversalJar=<artifact>` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
 
-**native 架构矩阵**（`build.yml`/`release.yml`，master/tag 才全量跑）：
+**native 架构矩阵**：定义在 `reusable-native-build.yml`（5 个 compile job），被 `build.yml`（develop/master/tag push）、`release.yml`、`build-test-jar.yml` 通过 `uses:` 调用；汇总打包统一在 `reusable-package.yml`（下载 natives → universal JAR，含内置校验）。feature 分支/PR 的快速检查在 `pr-check.yml`。
 
 | Job | Runner | 产物 | 验证 |
 | --- | ------ | ---- | ---- |
@@ -81,20 +83,7 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 | `compile-native-android` | `ubuntu-24.04` + NDK r27c | `android/arm64` + `android/x86_64`（bionic） | ELF 校验：`file` 确认 ABI + `readelf -d` DT_NEEDED 无版本化 SONAME（等价 FCL `checkElfIsAndroid`） |
 | `compile-native-macos` | `macos-latest` | `macos/universal/libxsmcore.dylib` | `lipo -info` 确认双架构 |
 | `compile-native-windows` | `windows-latest` (msys2) | `windows/x86_64/xsmcore.dll` | — |
-| `package` / `release` | `ubuntu-24.04` | 汇总全部进 JAR | C 单测 + JUnit |
-
-> Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器 runner），用 ELF 校验 + 真机/模拟器 FCL 手动 E2E 兜底。
-
-**native 矩阵**（`.github/workflows/build.yml` / `release.yml`，master/tag 才全量跑）：
-
-| job | runner | 产物 | 验证 |
-| --- | ------ | ---- | ---- |
-| `compile-native-linux` | `ubuntu-24.04` | `linux/x86_64/libxsmcore.so` | C 单测（package 阶段） |
-| `compile-native-linux-arm` | `ubuntu-24.04-arm`（原生） | `linux/aarch64/libxsmcore.so` | 该 job 内原生跑 `xsmtest` |
-| `compile-native-android` | `ubuntu-24.04` + NDK r27c | `android/arm64` + `android/x86_64`（bionic） | ELF 校验：`file` ABI + DT_NEEDED 无版本化 SONAME（等价 FCL `checkElfIsAndroid`） |
-| `compile-native-macos` | `macos-latest` | `macos/universal/libxsmcore.dylib` | `lipo -info` 确认双架构 |
-| `compile-native-windows` | `windows-latest` (msys2) | `windows/x86_64/xsmcore.dll` | — |
-| `package`/`release` | `ubuntu-24.04` | 汇总全部进 JAR | C 单测 + JUnit |
+| `package` | `ubuntu-24.04`（reusable-package） | 汇总全部进 JAR | C 单测 + JUnit + 逐项断言 6 个 native 文件 |
 
 Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 ELF 校验 + 真机/模拟器上的 FCL 手动 E2E 兜底。
 
