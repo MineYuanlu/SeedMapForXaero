@@ -142,10 +142,11 @@ cmake --build build-test --target xsmtest
 
 | 工作流                 | 触发方式          | 行为                                                        |
 | ---------------------- | ----------------- | ----------------------------------------------------------- |
-| `build.yml`            | 推送 / PR         | 非 master：Linux 构建；master/tag：三平台原生编译 + 打包    |
+| `build.yml`            | 推送 / PR         | 非 master：Linux 构建；master/tag：全平台原生编译 + 打包    |
+| `build-test-jar.yml`   | workflow_dispatch | 手动构建 universal JAR（全平台 native + 内置校验），不 bump/不发版 |
 | `matrix-test.yml`      | 推送 / 手动       | 8 组合版本矩阵（4 个 MC × 新旧 Xaero）+ 客户端 E2E GameTest |
 | `refresh-versions.yml` | 每周一 + 手动     | 刷新 `versions.json` 版本矩阵（有变更才提交）               |
-| `release.yml`          | workflow_dispatch | 版本提升 + 三平台编译 + Modrinth + Release                  |
+| `release.yml`          | workflow_dispatch | 版本提升 + 全平台编译 + Modrinth + Release                  |
 
 Modrinth project ID: `UoJSF4vW`
 

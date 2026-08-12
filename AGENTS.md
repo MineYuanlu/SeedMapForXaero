@@ -54,11 +54,13 @@ native/windows/x86_64/xsmcore.dll
 - `generateNativeBindings` (jextract) → `all.h` → `XsmNative.java` (FFM, gitignored)。绑定硬编码 LP64，跨架构复用一份。
 - `clean` deletes generated bindings + `src/main/c/build*`.
 - Windows cross-compile: `compileNativeWindows` via MinGW (`mingw-toolchain.cmake`).
-- CI 编译 job 各自产出 `src/main/c/build/<target>/`，`package`/`release` 汇总进 JAR。矩阵定义在 `build.yml` / `release.yml`。
+- CI 编译 job 各自产出 `src/main/c/build/<target>/`，`package`/`release` 汇总进 JAR。矩阵定义在 `build.yml` / `release.yml` / `build-test-jar.yml`。
 
 ## Release
 
 `workflow_dispatch` in `.github/workflows/release.yml` with patch/minor/major choice. Auto-bumps `gradle.properties`, commits, tags (vX.Y.Z), builds native matrix, creates GitHub Release, publishes to Modrinth (projectId `UoJSF4vW`).
+
+`build-test-jar.yml`（workflow_dispatch）：手动产一个 universal JAR 供人工测试，无 bump/tag/发布。`ref` input 指定分支/tag/SHA（默认 `master`），`runTests` 开关 package 里的 C 单测。产物含内置校验：`processClientResources` 打包后逐项断言 JAR 内含全平台 6 个 native 文件。
 
 ## Architecture
 
