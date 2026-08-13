@@ -150,8 +150,6 @@ public class ChestLootWidget {
      */
     private boolean renderContainer(GuiGraphicsExtractor g, int mouseX, int mouseY, Font font,
             ChestLoot chestData, int index, int boxX, int boxY) {
-        // 确保地图/图标不透过箱子贴图的透明像素透出来
-        g.fill(boxX, boxY, boxX + CONTAINER_WIDTH, boxY + CONTAINER_HEIGHT, 0xFF000000);
         g.blit(RenderPipelines.GUI_TEXTURED, CHEST_CONTAINER,
                 boxX, boxY, 0, 0, CONTAINER_WIDTH, CONTAINER_HEIGHT,
                 CONTAINER_WIDTH, CONTAINER_HEIGHT);
