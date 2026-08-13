@@ -13,6 +13,11 @@
   "xsm.gui.panel.color_scheme": "C",
   "xsm.gui.panel.color_table": "Color Table: %s",
   "xsm.gui.panel.icon_size": "Icon Size",
+  "xsm.gui.panel.loot_preview": "Loot Preview",
+  "xsm.gui.panel.loot_mode.quick_peek": "Quick Peek",
+  "xsm.gui.panel.loot_mode.detail": "Detail",
+  "xsm.gui.panel.loot_mode.tiled_peek": "Tiled Peek",
+  "xsm.gui.panel.loot_mode.tiled_detail": "Tiled Detail",
 
   "xsm.value.on": "ON",
   "xsm.value.off": "OFF",
@@ -90,5 +95,12 @@
   "xsm.structure.bastion.treasure": "Treasure Room",
   "xsm.structure.bastion.bridge": "Bridge",
 
-  "xsm.biome.unknown": "Unknown Biome (%d)"
+  "xsm.biome.unknown": "Unknown Biome (%d)",
+
+  "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
+  "xsm.chestLoot.extraInfo.pieceName": "Piece: %s",
+  "xsm.chestLoot.extraInfo.chestPos": "Position: %s",
+  "xsm.chestLoot.extraInfo.lootTable": "Loot Table: %s",
+  "xsm.chestLoot.extraInfo.lootSeed": "Loot Seed: %s",
+  "xsm.chestLoot.stewEffect": "Stew Effect: %s (lvl %s)"
 }

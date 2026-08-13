@@ -11,6 +11,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.structure.ChestLootWidget;
+import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureIcons;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
@@ -57,6 +59,15 @@ public class StructureOverlayMixin {
 
     @Unique
     private float xsm$bestDist;
+
+    @Unique
+    private StructureType xsm$hoverType;
+
+    @Unique
+    private int xsm$hoverBlockX, xsm$hoverBlockZ;
+
+    @Unique
+    private double xsm$hoverGuiX, xsm$hoverGuiZ;
 
     /** 结构功能开关 + 活跃世界配置的合并守卫; null = 本次不绘制/不更新 */
     @Unique
@@ -127,6 +138,7 @@ public class StructureOverlayMixin {
 
         xsm$hoverText = null;
         xsm$bestDist = iconHalf;
+        xsm$hoverType = null;
 
         final StructureIcons.Transform t = new StructureIcons.Transform(
                 cameraX, cameraZ, scale, invScale, guiW, guiH);
@@ -139,6 +151,11 @@ public class StructureOverlayMixin {
             final float dist = (float) Math.max(Math.abs(dx), Math.abs(dy));
             if (dist < xsm$bestDist) {
                 xsm$bestDist = dist;
+                xsm$hoverType = type;
+                xsm$hoverBlockX = blockX;
+                xsm$hoverBlockZ = blockZ;
+                xsm$hoverGuiX = guiX;
+                xsm$hoverGuiZ = guiZ;
                 String hover = I18n.get(type.translationKey());
                 String vk = type.variantTranslationKey(variant);
                 if (vk != null)
@@ -164,6 +181,44 @@ public class StructureOverlayMixin {
                     mc.font, xsm$hoverText,
                     scaledMouseX + 12, scaledMouseY - 4,
                     -1, 0.0F, 0.0F, 0.0F, 0.6F);
+        }
+
+        xsm$renderLootWidget(guiGraphics, scaledMouseX, scaledMouseY, guiW, guiH);
+    }
+
+    @Unique
+    private void xsm$renderLootWidget(GuiGraphicsExtractor guiGraphics,
+            int scaledMouseX, int scaledMouseY, double guiW, double guiH) {
+        if (!ServerConfig.isLootPreviewEnabled())
+            return;
+
+        // 悬浮快速查看: 命中战利品结构图标 → 建立 widget
+        if (xsm$hoverType != null && LootPreviewState.isLootSupported(xsm$hoverType)) {
+            LootPreviewState.onHover(xsm$hoverType, xsm$hoverBlockX, xsm$hoverBlockZ,
+                    xsm$hoverGuiX, xsm$hoverGuiZ, guiW, guiH);
+        } else {
+            LootPreviewState.onHoverEnd();
+        }
+
+        // 固定态滑出容器+缓冲 → 解除固定
+        LootPreviewState.onUnpinIfOutside(scaledMouseX, scaledMouseY);
+
+        ChestLootWidget widget = LootPreviewState.widget();
+        if (widget == null)
+            return;
+
+        final Minecraft mc = Minecraft.getInstance();
+        widget.extractRenderState(guiGraphics, scaledMouseX, scaledMouseY, mc.font);
+
+        // 物品 tooltip 渲染到新 stratum (与 SeedMapper 一致)
+        var tooltip = widget.getPendingItemTooltip();
+        if (tooltip != null) {
+            final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
+            guiRenderState.nextStratum();
+            guiGraphics.tooltip(mc.font, tooltip,
+                    widget.getPendingTooltipX(), widget.getPendingTooltipY(),
+                    net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE,
+                    null);
         }
     }
 

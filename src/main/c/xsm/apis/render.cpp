@@ -21,6 +21,12 @@
 #include "../../cubiomes/finders.h"
 #include "../../cubiomes/biomenoise.h"
 #include "../../cubiomes/features/end_city.h"
+extern "C" {
+#include "../../cubiomes/loot/items.h"
+#include "../../cubiomes/loot/loot_table_context.h"
+#include "../../cubiomes/loot/loot_tables.h"
+#include "../../cubiomes/loot/loot_functions.h"
+}
 
 namespace {
 static const std::unordered_map<std::string, MCVersion> mcVersionMap = {
@@ -715,5 +721,152 @@ bool xsmBiome2str(int32_t biomeId, char* out, uint32_t outLen) {
   const char* const name = biome2str(tn.g.mc, biomeId);
   if (!name) return false;
   strncpy(out, name, outLen - 1);
+  return true;
+}
+
+// ===== 结构战利品 (复刻 SeedMapper showLoot 管线) =====
+
+/// 战利品支持的 cubiomes 结构类型集合 (与 SeedMapper LOOT_SUPPORTED_STRUCTURES 一致)
+static bool xsmLootSupported(int32_t structureType) {
+  switch (structureType) {
+    case Treasure:
+    case Desert_Pyramid:
+    case End_City:
+    case Igloo:
+    case Jungle_Pyramid:
+    case Ruined_Portal:
+    case Ruined_Portal_N:
+    case Fortress:
+    case Bastion:
+    case Outpost:
+    case Shipwreck:
+    case Stronghold:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/// 写入一个 int32; 越界返回 false
+static bool xsmPushInt(std::vector<int32_t>& out, int32_t cap, int32_t v) {
+  if ((int32_t)out.size() >= cap) return false;
+  out.push_back(v);
+  return true;
+}
+
+int32_t xsmQueryStructureLoot(int32_t structureType, int32_t blockX, int32_t blockZ,
+                              int32_t outCap, int32_t* outData,
+                              int32_t* outWritten, int32_t* outChestCount,
+                              char* outPieceNames, char* outLootTables) {
+  if (outWritten) *outWritten = 0;
+  if (outChestCount) *outChestCount = 0;
+  if (!gen_setGameVersion || !gen_setWorld) return -1;
+  if (!outData || !outWritten || !outChestCount) return -3;
+  if (!xsmLootSupported(structureType)) return -2;
+
+  static const int NAME_SLOT = 64;
+
+  const int mc = tn.g.mc;
+  const uint64_t seed = tn.g.seed;
+
+  // 结构生成点所在群系 (用于 getVariant/getStructureSaltConfig 的变体与盐配置)
+  int biome = getBiomeAt(&tn.g, 4, blockX >> 2, 80, blockZ >> 2);
+
+  StructureVariant sv;
+  getVariant(&sv, structureType, mc, seed, blockX, blockZ, biome);
+  if (sv.biome != -1) biome = sv.biome;
+
+  StructureSaltConfig ssconf;
+  if (getStructureSaltConfig(structureType, mc, biome, &ssconf) == 0) return -2;
+
+  // 结构 piece 缓冲区: 要塞/末地城可能超过 421 个 piece
+  static const int MAX_PIECES = 1024;
+  std::vector<Piece> pieces(MAX_PIECES);
+  const int numPieces =
+      getStructurePieces(pieces.data(), MAX_PIECES, structureType, ssconf, &sv,
+                         mc, seed, blockX, blockZ);
+  if (numPieces <= 0) return -2;
+
+  std::vector<int32_t> out;
+  out.reserve(outCap);
+  int chestCount = 0;
+
+  for (int pieceIdx = 0; pieceIdx < numPieces; pieceIdx++) {
+    const Piece& piece = pieces[pieceIdx];
+    if (piece.chestCount <= 0) continue;
+
+    for (int chestIdx = 0; chestIdx < piece.chestCount; chestIdx++) {
+      const char* lootTable = piece.lootTables[chestIdx];
+      if (lootTable == NULL) continue;
+
+      LootTableContext* context = NULL;
+      if (!init_loot_table_name(&context, lootTable, mc)) continue;
+
+      set_loot_seed(context, piece.lootSeeds[chestIdx]);
+      generate_loot(context);
+
+      const Pos chestPos = piece.chestPoses[chestIdx];
+      const int itemCount = context->generated_item_count;
+      // 布局: [chestX, chestZ, lootSeedLo, lootSeedHi, itemCount]
+      // 然后 itemCount 个物品: [globalItemId, count, enchantmentCount, (id, level)×ench]
+      if (!xsmPushInt(out, outCap, chestPos.x) ||
+          !xsmPushInt(out, outCap, chestPos.z) ||
+          !xsmPushInt(out, outCap, (int32_t)(piece.lootSeeds[chestIdx] & 0xFFFFFFFFULL)) ||
+          !xsmPushInt(out, outCap, (int32_t)(piece.lootSeeds[chestIdx] >> 32)) ||
+          !xsmPushInt(out, outCap, itemCount)) {
+        return -3;
+      }
+
+      for (int i = 0; i < itemCount; i++) {
+        const ItemStack& item = context->generated_items[i];
+        const int globalId = get_global_item_id(context, item.item);
+        if (globalId == ITEM_UNKNOWN) continue;
+        if (!xsmPushInt(out, outCap, globalId) ||
+            !xsmPushInt(out, outCap, item.count) ||
+            !xsmPushInt(out, outCap, item.enchantment_count)) {
+          return -3;
+        }
+        for (int e = 0; e < item.enchantment_count; e++) {
+          const EnchantInstance& ench = item.enchantments[e];
+          if (!xsmPushInt(out, outCap, ench.enchantment) ||
+              !xsmPushInt(out, outCap, ench.level)) {
+            return -3;
+          }
+        }
+      }
+
+      // piece/loot-table 名称写入独立字符串槽位 (每箱固定 64 字节)
+      if (outPieceNames && outLootTables) {
+        strncpy(outPieceNames + (size_t)chestCount * NAME_SLOT,
+                piece.name ? piece.name : "", NAME_SLOT - 1);
+        strncpy(outLootTables + (size_t)chestCount * NAME_SLOT,
+                lootTable, NAME_SLOT - 1);
+      }
+
+      chestCount++;
+    }
+  }
+
+  *outWritten = (int32_t)out.size();
+  *outChestCount = chestCount;
+  memcpy(outData, out.data(), (size_t)out.size() * sizeof(int32_t));
+  return 0;
+}
+
+bool xsmItemName(int32_t globalItemId, char* out, uint32_t outLen) {
+  if (!gen_setGameVersion || !out || outLen == 0) return false;
+  const char* const name = global_id2item_name(globalItemId, tn.g.mc);
+  if (name == NULL) return false;
+  strncpy(out, name, outLen - 1);
+  out[outLen - 1] = '\0';
+  return true;
+}
+
+bool xsmEnchantmentName(int32_t enchantmentId, char* out, uint32_t outLen) {
+  if (enchantmentId < 0 || !out || outLen == 0) return false;
+  const char* const name = get_enchantment_name((Enchantment)enchantmentId);
+  if (name == NULL) return false;
+  strncpy(out, name, outLen - 1);
+  out[outLen - 1] = '\0';
   return true;
 }

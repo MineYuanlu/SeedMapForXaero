@@ -203,6 +203,33 @@ XSM_API uint32_t querySparseStructures(
 /// @brief 查询当前版本下, biomeId 对应的生物群系名称(key)
 XSM_API bool xsmBiome2str(int32_t biomeId, char* out, uint32_t outLen);
 
+/// @brief 查询结构位置的箱子战利品 (复刻 SeedMapper showLoot 管线)
+/// @details 输出为扁平 int32 缓冲区, 布局 (每口箱子):
+///   [chestX, chestZ, lootSeedLo, lootSeedHi, itemCount]
+///   然后 itemCount 个物品, 每个物品:
+///   [globalItemId, count, enchantmentCount, (enchantmentId, level) × enchantmentCount]
+/// @param structureType 结构类型 (cubiomes StructureType 枚举值)
+/// @param blockX, blockZ 结构生成点方块坐标 (getStructurePos 返回值)
+/// @param outCap 缓冲区容量 (int32 元素个数)
+/// @param outData 输出缓冲区
+/// @param outWritten 输出实际写入的 int32 元素个数
+/// @param outChestCount 输出箱子数量
+/// @param outPieceNames 输出 piece 名称字符串 (每箱固定 64 字节)
+/// @param outLootTables 输出战利品表名称字符串 (每箱固定 64 字节)
+/// @return 0=成功; -1=世界未设置; -2=结构不支持/无战利品; -3=缓冲区不足
+XSM_API int32_t xsmQueryStructureLoot(
+    int32_t structureType,
+    int32_t blockX, int32_t blockZ,
+    int32_t outCap, int32_t* outData,
+    int32_t* outWritten, int32_t* outChestCount,
+    char* outPieceNames, char* outLootTables);
+
+/// @brief 查询 global item id 对应的物品名称 (如 "minecraft:apple")
+XSM_API bool xsmItemName(int32_t globalItemId, char* out, uint32_t outLen);
+
+/// @brief 查询附魔 id 对应的附魔名称 (如 "sharpness", 无 minecraft: 前缀)
+XSM_API bool xsmEnchantmentName(int32_t enchantmentId, char* out, uint32_t outLen);
+
 #if DEBUG_TIMINGS
 /// @brief 获取 gen 内部 4 段时间的累计纳秒数 (0=校验, 1=缓存分配,
 /// 2=生物群系生成, 3=图像转换)

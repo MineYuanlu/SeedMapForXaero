@@ -13,6 +13,11 @@
   "xsm.gui.panel.color_scheme": "C",
   "xsm.gui.panel.color_table": "颜色表: %s",
   "xsm.gui.panel.icon_size": "图标大小",
+  "xsm.gui.panel.loot_preview": "战利品预览",
+  "xsm.gui.panel.loot_mode.quick_peek": "速览",
+  "xsm.gui.panel.loot_mode.detail": "详情",
+  "xsm.gui.panel.loot_mode.tiled_peek": "平铺速览",
+  "xsm.gui.panel.loot_mode.tiled_detail": "平铺详情",
 
   "xsm.value.on": "开",
   "xsm.value.off": "关",
@@ -90,5 +95,12 @@
   "xsm.structure.bastion.treasure": "藏宝室",
   "xsm.structure.bastion.bridge": "桥",
 
-  "xsm.biome.unknown": "未知生物群系 (%d)"
+  "xsm.biome.unknown": "未知生物群系 (%d)",
+
+  "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
+  "xsm.chestLoot.extraInfo.pieceName": "构件: %s",
+  "xsm.chestLoot.extraInfo.chestPos": "位置: %s",
+  "xsm.chestLoot.extraInfo.lootTable": "战利品表: %s",
+  "xsm.chestLoot.extraInfo.lootSeed": "战利品种子: %s",
+  "xsm.chestLoot.stewEffect": "药水效果: %s (等级 %s)"
 }
