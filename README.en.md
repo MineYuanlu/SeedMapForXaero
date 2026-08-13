@@ -35,7 +35,8 @@ This mod automatically fills in **unexplored** areas on Xaero's World Map with b
 - 3-tier exploration detection — explored areas keep real data, only fills unexplored gaps
 - Three color schemes: Native (default), Vanilla, Legacy — switchable from side panel
 - **Structure icons** — 26 structure types, individually toggleable from side panel; variant-bearing structures (e.g. village by plains/desert/zombie) can be toggled per variant
-- **Settings panel** — SM button on the right side of the map, per-biome/structure/variant toggle, icon size slider
+- **Loot preview** — hover a loot-bearing structure icon to preview chest contents (counts and enchantments shown, 12 structure types); 4 display modes (Quick Peek / Detail × single / tiled), left-click to pin then browse and page through multiple chests
+- **Settings panel** — SM button on the right side of the map, per-biome/structure/variant toggle, icon size slider, loot preview toggle and display mode cycling
 - Seed history (capped at 1000, MRU-ordered)
 - Multiplayer support — each server stores its own seed and settings independently
 - Client-side only, no server installation required
@@ -50,6 +51,7 @@ This mod automatically fills in **unexplored** areas on Xaero's World Map with b
    - Toggle individual biome types (show/hide specific biomes)
    - Toggle individual structure types (show/hide specific structures)
    - Adjust structure icon size (0.05~2.0x)
+   - Toggle loot preview and switch display mode (Quick Peek / Detail × single / tiled)
 
 ### Dependencies
 
