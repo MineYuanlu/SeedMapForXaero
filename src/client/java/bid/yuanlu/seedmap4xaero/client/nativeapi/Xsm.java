@@ -40,23 +40,43 @@ public final class Xsm {
      */
     private static void loadNativeLibrary() {
         String libName = System.mapLibraryName("xsmcore");
+        LOGGER.info("[native-load] libName={} os.name={} os.arch={} os.version={}",
+                libName,
+                System.getProperty("os.name"), System.getProperty("os.arch"),
+                System.getProperty("os.version"));
+        boolean android = isAndroid();
+        String os = osName();
+        String arch = archName();
         String resourcePath = nativeResourcePath(libName);
+        LOGGER.info("[native-load] android={} os={} arch={} resourcePath={}",
+                android, os, arch, resourcePath);
+        Path tmp;
         try {
-            Path tmp = Files.createTempFile(libName, "");
-            try (InputStream in = Xsm.class.getResourceAsStream(resourcePath)) {
-                if (in == null) {
-                    throw new RuntimeException(
-                            "Native library not found in JAR: " + resourcePath
-                                    + " (os=" + osName() + ", arch=" + archName()
-                                    + ", android=" + isAndroid() + ")");
-                }
-                Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+            tmp = Files.createTempFile(libName, "");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create temp file for native library " + libName, e);
+        }
+        try (InputStream in = Xsm.class.getResourceAsStream(resourcePath)) {
+            if (in == null) {
+                throw new RuntimeException(
+                        "Native library not found in JAR: " + resourcePath
+                                + " (os=" + os + ", arch=" + arch + ", android=" + android + ")");
             }
-            tmp.toFile().deleteOnExit();
-            System.load(tmp.toAbsolutePath().toString());
+            Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(
-                    "Failed to load native library libxsmcore from " + resourcePath, e);
+                    "Failed to extract native library libxsmcore from " + resourcePath
+                            + " to " + tmp.toAbsolutePath(), e);
+        }
+        tmp.toFile().deleteOnExit();
+        LOGGER.info("[native-load] extracted {} -> {}", resourcePath, tmp.toAbsolutePath());
+        try {
+            System.load(tmp.toAbsolutePath().toString());
+            LOGGER.info("[native-load] loaded {} successfully", tmp.toAbsolutePath());
+        } catch (UnsatisfiedLinkError e) {
+            LOGGER.error("[native-load] FAILED to load {} (os={}, arch={}, android={})",
+                    tmp.toAbsolutePath(), os, arch, android, e);
+            throw e;
         }
     }
 
