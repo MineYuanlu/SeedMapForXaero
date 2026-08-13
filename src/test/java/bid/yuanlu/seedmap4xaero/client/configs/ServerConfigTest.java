@@ -264,4 +264,105 @@ class ServerConfigTest {
         ConfigData old = ConfigData.read(tmp.resolve("srvD/server_config.sm4x.old"));
         assertEquals(1L, old.getWorld("w").seed());
     }
+
+    @Test
+    void lootPreviewRoundTrip() throws IOException {
+        ConfigData cfg = new ConfigData();
+        cfg.setLootPreview(true);
+        Path file = tmp.resolve("loot.sm4x");
+        cfg.write(file);
+        ConfigData read = ConfigData.read(file);
+        assertTrue(read.isLootPreview());
+    }
+
+    @Test
+    void lootPreviewDefaultOff() {
+        assertFalse(new ConfigData().isLootPreview());
+    }
+
+    @Test
+    void oldV0FileWithoutLootPreviewLoads() throws IOException {
+        // 模拟旧版 (v0) 文件: seeds 后直接跟结尾 MAGIC_WORD, 无 lootPreview/mode 字节
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bos)) {
+            out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8));
+            out.writeInt(0); // version 0
+            out.writeInt(0); // worlds 为空
+            out.writeBoolean(false); // no theme
+            out.writeBoolean(false); // invisibleBiomes
+            out.writeBoolean(false); // invisibleStructures
+            out.writeFloat(1.0f); // structureIconSize
+            out.writeInt(0); // seeds 为空
+            out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8)); // 结尾 MAGIC, 无 lootPreview
+        }
+        Path file = tmp.resolve("oldv0.sm4x");
+        Files.write(file, bos.toByteArray());
+
+        ConfigData read = ConfigData.read(file);
+        assertFalse(read.isLootPreview(), "old v0 file without lootPreview byte defaults false");
+        assertEquals(LootDisplayMode.QUICK_PEEK, read.getLootDisplayMode());
+    }
+
+    @Test
+    void v1FileLoadsLootPreviewAndMode() throws IOException {
+        // 显式构造 v1 文件: seeds 后是 lootPreview(1字节) + mode(1字节), 再结尾 MAGIC
+        for (LootDisplayMode mode : LootDisplayMode.values()) {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            try (DataOutputStream out = new DataOutputStream(bos)) {
+                out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8));
+                out.writeInt(1); // version 1
+                out.writeInt(0); // worlds 为空
+                out.writeBoolean(false); // no theme
+                out.writeBoolean(false); // invisibleBiomes
+                out.writeBoolean(false); // invisibleStructures
+                out.writeFloat(1.0f); // structureIconSize
+                out.writeInt(0); // seeds 为空
+                out.writeBoolean(true); // lootPreview = true
+                out.writeByte(mode.ordinal()); // mode
+                out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8)); // 结尾 MAGIC
+            }
+            Path file = tmp.resolve("v1_mode_" + mode.ordinal() + ".sm4x");
+            Files.write(file, bos.toByteArray());
+
+            ConfigData read = ConfigData.read(file);
+            assertEquals(mode, read.getLootDisplayMode(), "v1 file should restore mode");
+            assertTrue(read.isLootPreview(), "v1 file should restore lootPreview");
+        }
+    }
+
+    @Test
+    void v1WriteProducedByConfig() throws IOException {
+        // cfg.write() 应产出 version 1 文件, 且首字节探测不到任何旧格式歧义
+        ConfigData cfg = new ConfigData();
+        cfg.setLootPreview(true);
+        cfg.setLootDisplayMode(LootDisplayMode.TILED_DETAIL);
+        Path file = tmp.resolve("v1write.sm4x");
+        cfg.write(file);
+
+        byte[] bytes = Files.readAllBytes(file);
+        String header = new String(bytes, StandardCharsets.UTF_8);
+        assertTrue(header.startsWith("SEEDMAP4XAERO"), "magic word header");
+        // 版本号 4 字节紧跟 MAGIC (13 字节)
+        int version = ((bytes[13] & 0xFF) << 24) | ((bytes[14] & 0xFF) << 16)
+                | ((bytes[15] & 0xFF) << 8) | (bytes[16] & 0xFF);
+        assertEquals(1, version, "cfg.write should emit version 1");
+
+        ConfigData read = ConfigData.read(file);
+        assertEquals(LootDisplayMode.TILED_DETAIL, read.getLootDisplayMode());
+        assertTrue(read.isLootPreview());
+    }
+
+    @Test
+    void lootDisplayModeRoundTrip() throws IOException {
+        for (LootDisplayMode mode : LootDisplayMode.values()) {
+            ConfigData cfg = new ConfigData();
+            cfg.setLootPreview(true);
+            cfg.setLootDisplayMode(mode);
+            Path file = tmp.resolve("mode_" + mode.ordinal() + ".sm4x");
+            cfg.write(file);
+            ConfigData read = ConfigData.read(file);
+            assertEquals(mode, read.getLootDisplayMode());
+            assertTrue(read.isLootPreview(), "lootPreview should survive round trip");
+        }
+    }
 }

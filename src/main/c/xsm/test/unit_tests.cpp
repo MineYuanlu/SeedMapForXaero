@@ -518,3 +518,73 @@ TEST_CASE("structure variants") {
     }
   }
 }
+
+TEST_CASE("xsmQueryStructureLoot: desert pyramid deterministic loot") {
+  setupOrFail();
+  setWorld(0, 0);
+
+  // 找一个沙漠神殿生成点 (64×64 region 网格)
+  static const uint32_t GRID = 64 * 64;
+  std::vector<int8_t> found(GRID);
+  std::vector<int32_t> bx(GRID), bz(GRID);
+  uint32_t n = queryRegionStructuresGrid(Desert_Pyramid, 0, 0, 64, 64,
+                                         0, 0, 0, 0, found.data(), bx.data(), bz.data(), nullptr);
+  REQUIRE_MESSAGE(n > 0, "no desert pyramid found in region range");
+
+  int32_t px = -1, pz = -1;
+  for (uint32_t i = 0; i < GRID; i++) {
+    if (found[i]) {
+      px = bx[i];
+      pz = bz[i];
+      break;
+    }
+  }
+  REQUIRE_MESSAGE(px != -1, "no desert pyramid hit");
+
+  std::vector<int32_t> a, b;
+  int32_t writtenA = 0, chestA = 0, writtenB = 0, chestB = 0;
+  int32_t cap = 4096;
+  std::vector<char> names(64 * 16), tables(64 * 16);
+
+  a.resize(cap);
+  int32_t rc = xsmQueryStructureLoot(Desert_Pyramid, px, pz, cap, a.data(),
+                                     &writtenA, &chestA, names.data(), tables.data());
+  REQUIRE_MESSAGE(rc == 0, "xsmQueryStructureLoot rc = ", rc);
+  CHECK_MESSAGE(chestA == 4, "desert pyramid should have 4 chests, got ", chestA);
+  CHECK_MESSAGE(writtenA > 0, "loot buffer empty");
+  CHECK_MESSAGE(names[0] != '\0', "piece name should be written");
+  CHECK_MESSAGE(tables[0] != '\0', "loot table should be written");
+  CHECK_MESSAGE(strcmp(tables.data(), "desert_pyramid") == 0,
+                "loot table should be desert_pyramid, got ", tables.data());
+
+  b.resize(cap);
+  rc = xsmQueryStructureLoot(Desert_Pyramid, px, pz, cap, b.data(),
+                             &writtenB, &chestB, names.data(), tables.data());
+  REQUIRE(rc == 0);
+  CHECK(chestB == chestA);
+  CHECK(writtenB == writtenA);
+  CHECK(a == b);  // 确定性
+
+  // 解析第一口箱子: 头部 [x, z, seedLo, seedHi, itemCount]
+  CHECK(writtenA >= 5);
+  CHECK(a[4] >= 0);
+  if (a[4] > 0) {
+    // 第一件物品: [globalItemId, count, enchantmentCount, ...]
+    CHECK(a[5] > 0);
+  }
+
+  // 无效结构返回 -2
+  int32_t writtenX = 0, chestX = 0;
+  rc = xsmQueryStructureLoot(Swamp_Hut, px, pz, cap, a.data(), &writtenX, &chestX,
+                             names.data(), tables.data());
+  CHECK_MESSAGE(rc == -2, "unsupported structure should return -2, got ", rc);
+}
+
+TEST_CASE("xsmItemName/xsmEnchantmentName") {
+  setupOrFail();
+  char buf[64];
+  CHECK_MESSAGE(xsmItemName(0, buf, sizeof(buf)), "xsmItemName(0) failed");
+  INFO("item 0 = ", buf);
+  CHECK_MESSAGE(xsmEnchantmentName(1, buf, sizeof(buf)), "xsmEnchantmentName(1) failed");
+  INFO("enchant 1 = ", buf);
+}

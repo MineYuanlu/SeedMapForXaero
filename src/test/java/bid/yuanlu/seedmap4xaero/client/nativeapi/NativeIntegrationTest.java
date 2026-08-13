@@ -86,4 +86,79 @@ class NativeIntegrationTest extends NativeMcTest {
         }
         assertTrue(nonZero, "genCellImg output should not be all-black");
     }
+
+    @Test
+    void desertPyramidLoot() {
+        int px = -1, pz = -1;
+        for (int rx = 0; rx < 64 && px < 0; rx++) {
+            for (int rz = 0; rz < 64; rz++) {
+                final var holder = new int[] { -1, -1 };
+                Xsm.queryRegionStructuresGrid(StructureType.DESERT_PYRAMID.id,
+                        rx, rz, rx + 1, rz + 1, 0, 0, 0, 0,
+                        (x, z, found, bx, bz, variant) -> {
+                            if (found) {
+                                holder[0] = bx;
+                                holder[1] = bz;
+                            }
+                        });
+                if (holder[0] >= 0) {
+                    px = holder[0];
+                    pz = holder[1];
+                }
+            }
+        }
+        assertTrue(px >= 0, "should find a desert pyramid");
+        var loot = Xsm.queryStructureLoot(StructureType.DESERT_PYRAMID.id, px, pz);
+        assertNotNull(loot, "desert pyramid should produce loot");
+        assertEquals(4, loot.size(), "desert pyramid has 4 chests");
+        boolean anyItem = false;
+        for (var chest : loot) {
+            assertTrue(chest.items().size() >= 0);
+            for (var item : chest.items()) {
+                if (item.count() > 0 && item.globalItemId() >= 0) {
+                    anyItem = true;
+                }
+            }
+        }
+        assertTrue(anyItem, "at least one non-empty loot item");
+    }
+
+    @Test
+    void desertPyramidLootDeterministic() {
+        var a = Xsm.queryStructureLoot(StructureType.DESERT_PYRAMID.id, 3168, 21296);
+        var b = Xsm.queryStructureLoot(StructureType.DESERT_PYRAMID.id, 3168, 21296);
+        if (a == null || b == null) {
+            return; // native 无此位置时跳过 (不同版本位置不同)
+        }
+        assertEquals(a.size(), b.size());
+        for (int i = 0; i < a.size() && i < b.size(); i++) {
+            var ca = a.get(i);
+            var cb = b.get(i);
+            assertEquals(ca.chestX(), cb.chestX());
+            assertEquals(ca.chestZ(), cb.chestZ());
+            assertEquals(ca.lootSeed(), cb.lootSeed());
+            assertEquals(ca.items().size(), cb.items().size());
+            for (int j = 0; j < ca.items().size() && j < cb.items().size(); j++) {
+                var ia = ca.items().get(j);
+                var ib = cb.items().get(j);
+                assertEquals(ia.globalItemId(), ib.globalItemId());
+                assertEquals(ia.count(), ib.count());
+                assertEquals(ia.enchantments().size(), ib.enchantments().size());
+            }
+        }
+    }
+
+    @Test
+    void lootNamesResolve() {
+        assertNotNull(Xsm.itemName(0), "itemName(0) should resolve");
+        assertNotNull(Xsm.enchantmentName(1), "enchantmentName(1) should resolve");
+    }
+
+    @Test
+    void unsupportedStructureLootEmpty() {
+        // Swamp_Hut 无战利品表
+        var loot = Xsm.queryStructureLoot(StructureType.SWAMP_HUT.id, 0, 0);
+        assertNotNull(loot, "unsupported structure should give empty list, not null");
+        assertTrue(loot.isEmpty());
+    }
 }

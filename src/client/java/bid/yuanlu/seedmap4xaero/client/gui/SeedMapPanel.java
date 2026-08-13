@@ -7,10 +7,11 @@ import org.jetbrains.annotations.Nullable;
 
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
+import bid.yuanlu.seedmap4xaero.client.configs.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
-import bid.yuanlu.seedmap4xaero.client.configs.WorldConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
+import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlag;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlagView;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
@@ -386,7 +387,31 @@ public class SeedMapPanel {
 
         g.text(font, sizeTxt, sliderEnd + 5, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
 
-        return y + thumbH;
+        // loot preview checkbox
+        y += thumbH + 5;
+        boolean lootOn = ServerConfig.isLootPreviewEnabled();
+        boolean hoverLoot = mx >= PADDING && mx <= PANEL_WIDTH - PADDING
+                && my >= y && my <= y + ITEM_H;
+        renderCheckbox(g, PADDING, y + (ITEM_H - 9) / 2, lootOn, hoverLoot);
+        g.text(font, I18n.get("xsm.gui.panel.loot_preview"), PADDING + 12,
+                y + (ITEM_H - font.lineHeight) / 2,
+                lootOn ? 0xFFFFFFFF : 0xFF888888);
+
+        // loot display mode button (right side of same row)
+        String modeName = I18n.get(ServerConfig.getLootDisplayMode().translationKey());
+        int modeBtnW = font.width(modeName) + 10;
+        int modeBtnX = PANEL_WIDTH - PADDING - modeBtnW;
+        int modeBtnH = ITEM_H;
+        boolean hoverMode = mx >= modeBtnX && mx <= modeBtnX + modeBtnW
+                && my >= y && my <= y + modeBtnH;
+        g.fill(modeBtnX, y, modeBtnX + modeBtnW, y + modeBtnH,
+                hoverMode ? 0xFF666666 : 0xFF333333);
+        if (lootOn && hoverMode)
+            g.fill(modeBtnX, y, modeBtnX + modeBtnW, y + 1, 0xFFFFFFFF);
+        g.text(font, modeName, modeBtnX + 5, y + (modeBtnH - font.lineHeight) / 2,
+                lootOn ? 0xFFFFFFFF : 0xFF888888);
+
+        return y + ITEM_H;
     }
 
     private void renderCheckbox(GuiGraphicsExtractor g, int x, int y, boolean checked, boolean hovered) {
@@ -546,6 +571,26 @@ public class SeedMapPanel {
             if (mx >= sliderStart && mx <= sliderEnd && my >= y && my <= y + thumbH) {
                 sliderDragging = true;
                 updateSlider(mx);
+                return true;
+            }
+
+            // loot preview checkbox
+            y += thumbH + 5;
+            if (mx >= PADDING && mx <= PADDING + 9 && my >= y && my <= y + ITEM_H) {
+                boolean next = !ServerConfig.isLootPreviewEnabled();
+                ServerConfig.setLootPreviewEnabled(next);
+                if (!next)
+                    LootPreviewState.close();
+                return true;
+            }
+            // loot display mode button (cycle)
+            String modeName = I18n.get(ServerConfig.getLootDisplayMode().translationKey());
+            int modeBtnW = font.width(modeName) + 10;
+            int modeBtnX = PANEL_WIDTH - PADDING - modeBtnW;
+            if (mx >= modeBtnX && mx <= modeBtnX + modeBtnW && my >= y && my <= y + ITEM_H) {
+                var next = ServerConfig.getLootDisplayMode().ordinal() + 1;
+                ServerConfig.setLootDisplayMode(LootDisplayMode.values()[next % LootDisplayMode.values().length]);
+                LootPreviewState.close();
                 return true;
             }
         }
