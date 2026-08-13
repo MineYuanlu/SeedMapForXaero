@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.DropDownWidgetTitleAccessor;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureIcons;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureRightClick;
 import net.minecraft.client.Minecraft;
@@ -57,12 +58,34 @@ public class StructureClickMixin {
     private void xsm$onMouseClicked(MouseButtonEvent event, boolean doubleClick,
             CallbackInfoReturnable<Boolean> cir) {
         xsm$rightClickTarget = null;
-        if (event.button() != 1 || mapProcessor == null || !StructureIcons.enabled())
+        if (mapProcessor == null)
             return;
+
         final Minecraft mc = Minecraft.getInstance();
         final double winX = Misc.getMouseX(mc, SupportMods.vivecraft);
         final double winY = Misc.getMouseY(mc, SupportMods.vivecraft);
-        xsm$rightClickTarget = xsm$hitTest(winX / screenScale, winY / screenScale);
+        final double scaledMouseX = winX / screenScale;
+        final double scaledMouseY = winY / screenScale;
+
+        // 战利品悬浮框: 优先消费翻页按钮点击
+        if (ServerConfig.isLootPreviewEnabled()
+                && LootPreviewState.mouseClicked(event, doubleClick)) {
+            cir.setReturnValue(true);
+            return;
+        }
+
+        // 左键点击悬浮的战利品结构图标 → 固定悬浮框
+        if (event.button() == 0 && ServerConfig.isLootPreviewEnabled()
+                && LootPreviewState.isPinned() == false
+                && LootPreviewState.tryPin() && LootPreviewState.hasWidget()) {
+            cir.setReturnValue(true);
+            return;
+        }
+
+        // 右键命中 → 合成菜单
+        if (event.button() != 1 || !StructureIcons.enabled())
+            return;
+        xsm$rightClickTarget = xsm$hitTest(scaledMouseX, scaledMouseY);
     }
 
     @Inject(method = "mapClicked", at = @At("HEAD"), cancellable = true)

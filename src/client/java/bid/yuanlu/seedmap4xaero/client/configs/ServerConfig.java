@@ -139,6 +139,28 @@ public final class ServerConfig {
             cfg.setStructureIconSize(size);
     }
 
+    public static boolean isLootPreviewEnabled() {
+        var cfg = activeConfig;
+        return cfg != null && cfg.isLootPreview();
+    }
+
+    public static void setLootPreviewEnabled(boolean enabled) {
+        var cfg = activeConfig;
+        if (cfg != null)
+            cfg.setLootPreview(enabled);
+    }
+
+    public static LootDisplayMode getLootDisplayMode() {
+        var cfg = activeConfig;
+        return cfg != null ? cfg.getLootDisplayMode() : LootDisplayMode.QUICK_PEEK;
+    }
+
+    public static void setLootDisplayMode(LootDisplayMode mode) {
+        var cfg = activeConfig;
+        if (cfg != null)
+            cfg.setLootDisplayMode(mode);
+    }
+
     /** 获取当前世界配置。 */
     public static @Nullable WorldConfig getActiveWorldConfig() {
         var cfg = activeConfig;

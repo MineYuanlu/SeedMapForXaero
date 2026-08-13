@@ -45,6 +45,8 @@ public class ConfigData {
     boolean invisibleBiomes = false;
     boolean invisibleStructures = false;
     float structureIconSize = 1.0f;
+    boolean lootPreview = false;
+    LootDisplayMode lootDisplayMode = LootDisplayMode.QUICK_PEEK;
 
     AtomicBoolean dirty = new AtomicBoolean(false);
 
@@ -81,6 +83,14 @@ public class ConfigData {
         return structureIconSize;
     }
 
+    public boolean isLootPreview() {
+        return lootPreview;
+    }
+
+    public LootDisplayMode getLootDisplayMode() {
+        return lootDisplayMode;
+    }
+
     public synchronized void setTheme(@Nullable String theme) {
         if (Objects.equals(this.theme, theme))
             return;
@@ -107,6 +117,20 @@ public class ConfigData {
         if (this.structureIconSize == size)
             return;
         this.structureIconSize = size;
+        makeDirty();
+    }
+
+    public synchronized void setLootPreview(boolean lootPreview) {
+        if (this.lootPreview == lootPreview)
+            return;
+        this.lootPreview = lootPreview;
+        makeDirty();
+    }
+
+    public synchronized void setLootDisplayMode(LootDisplayMode mode) {
+        if (this.lootDisplayMode == mode)
+            return;
+        this.lootDisplayMode = mode;
         makeDirty();
     }
 
@@ -137,7 +161,7 @@ public class ConfigData {
     /** 写入到 DataOutput。 */
     synchronized void write(DataOutputStream out) throws IOException {
         out.write(MAGIC_WORD);
-        out.writeInt(0); // version
+        out.writeInt(1); // version
         out.writeInt(worlds.size());
         for (final var worldEntry : worlds.entrySet()) {
             out.writeUTF(worldEntry.getKey());
@@ -158,6 +182,8 @@ public class ConfigData {
                 seedEntry.write(out);
             }
         }
+        out.writeBoolean(lootPreview);
+        out.writeByte(lootDisplayMode.ordinal());
         out.write(MAGIC_WORD);
     }
 
@@ -169,7 +195,7 @@ public class ConfigData {
             throw new IOException("Invalid magic word at start");
         final var config = new ConfigData();
         final var version = in.readInt();
-        if (version == 0) {
+        if (version == 0 || version == 1) {
             final var dimSize = in.readInt();
             for (int i = 0; i < dimSize; i++) {
                 final var mwId = in.readUTF();
@@ -184,6 +210,11 @@ public class ConfigData {
             final var seedSize = in.readInt();
             for (int i = 0; i < seedSize; i++) {
                 config.allSeeds.add(SeedEntry.read(in));
+            }
+            
+            if (version == 1){
+                config.lootPreview = in.readBoolean();
+                config.lootDisplayMode = LootDisplayMode.values()[in.readByte()];
             }
 
         } else {
