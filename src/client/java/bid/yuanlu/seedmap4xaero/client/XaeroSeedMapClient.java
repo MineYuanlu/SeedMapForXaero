@@ -33,5 +33,6 @@ public class XaeroSeedMapClient implements ClientModInitializer {
             HighlightedStructures.clear();
             ServerConfig.deactivate();
         });
+        LOGGER.info("[seedmap4xaero] client init complete");
     }
 }

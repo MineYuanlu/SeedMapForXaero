@@ -84,9 +84,15 @@ public final class Xsm {
         try {
             System.load(tmp.toAbsolutePath().toString());
             LOGGER.info("[native-load] loaded {} successfully", tmp.toAbsolutePath());
+            int features = XsmNative.xsmGetStructFEATURE_NUM();
+            LOGGER.info("[native-load] smoke call ok: xsmGetStructFEATURE_NUM()={}", features);
         } catch (UnsatisfiedLinkError e) {
             LOGGER.error("[native-load] FAILED to load {} (os={}, arch={}, android={})",
                     tmp.toAbsolutePath(), os, arch, android, e);
+            throw e;
+        } catch (Throwable e) {
+            LOGGER.error("[native-load] loaded but smoke call FAILED (os={}, arch={}, android={})",
+                    os, arch, android, e);
             throw e;
         }
     }
