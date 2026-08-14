@@ -126,12 +126,27 @@ public final class Xsm {
     }
 
     private static boolean isAndroid() {
+        // FCL/Pojav 用桌面版 OpenJDK 起 MC 进程，android.os.Build 不在 classpath，
+        // 必须叠加系统属性/环境变量/路径等信号判定。
         try {
             Class.forName("android.os.Build");
             return true;
-        } catch (ClassNotFoundException | LinkageError e) {
-            return false;
+        } catch (ClassNotFoundException | LinkageError ignored) {
+            // fall through
         }
+        String osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String osVersion = System.getProperty("os.version", "").toLowerCase(Locale.ROOT);
+        if (osName.contains("android") || osVersion.startsWith("android")) {
+            return true;
+        }
+        for (String key : new String[]{"POJAV_RENDERER", "POJAV_NATIVEDIR",
+                "FCL_NATIVEDIR", "POJAVEXEC_EGL"}) {
+            if (System.getenv().containsKey(key)) {
+                return true;
+            }
+        }
+        String tmp = System.getProperty("java.io.tmpdir", "");
+        return tmp.contains("/storage/emulated/") || tmp.contains("/data/user/0/");
     }
 
     private static long lastSeed = Long.MIN_VALUE;
