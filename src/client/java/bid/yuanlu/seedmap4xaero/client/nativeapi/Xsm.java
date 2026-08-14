@@ -44,12 +44,22 @@ public final class Xsm {
                 libName,
                 System.getProperty("os.name"), System.getProperty("os.arch"),
                 System.getProperty("os.version"));
+        LOGGER.info("[native-load] jvm={} {} ({}) launcher={} {}",
+                System.getProperty("java.vm.name"), System.getProperty("java.vm.vendor"),
+                System.getProperty("java.runtime.version"),
+                System.getProperty("minecraft.launcher.brand"),
+                System.getProperty("minecraft.launcher.version"));
+        LOGGER.info("[native-load] user.home={} java.io.tmpdir={}",
+                System.getProperty("user.home"), System.getProperty("java.io.tmpdir"));
+        LOGGER.info("[native-load] env POJAV_RENDERER={} POJAV_NATIVEDIR={} FCL_NATIVEDIR={} POJAVEXEC_EGL={}",
+                System.getenv("POJAV_RENDERER"), System.getenv("POJAV_NATIVEDIR"),
+                System.getenv("FCL_NATIVEDIR"), System.getenv("POJAVEXEC_EGL"));
         boolean android = isAndroid();
         String os = osName();
         String arch = archName();
         String resourcePath = nativeResourcePath(libName);
-        LOGGER.info("[native-load] android={} os={} arch={} resourcePath={}",
-                android, os, arch, resourcePath);
+        LOGGER.info("[native-load] android={} (signal={}) os={} arch={} resourcePath={}",
+                android, androidSignal(), os, arch, resourcePath);
         Path tmp;
         try {
             tmp = Files.createTempFile(libName, "");
@@ -69,7 +79,8 @@ public final class Xsm {
                             + " to " + tmp.toAbsolutePath(), e);
         }
         tmp.toFile().deleteOnExit();
-        LOGGER.info("[native-load] extracted {} -> {}", resourcePath, tmp.toAbsolutePath());
+        LOGGER.info("[native-load] extracted {} ({} bytes) -> {}",
+                resourcePath, tmp.toFile().length(), tmp.toAbsolutePath());
         try {
             System.load(tmp.toAbsolutePath().toString());
             LOGGER.info("[native-load] loaded {} successfully", tmp.toAbsolutePath());
@@ -126,27 +137,38 @@ public final class Xsm {
     }
 
     private static boolean isAndroid() {
+        return androidSignal() != null;
+    }
+
+    /** 返回 Android 检测命中的信号描述；非 Android 返回 null。 */
+    private static @Nullable String androidSignal() {
         // FCL/Pojav 用桌面版 OpenJDK 起 MC 进程，android.os.Build 不在 classpath，
         // 必须叠加系统属性/环境变量/路径等信号判定。
         try {
             Class.forName("android.os.Build");
-            return true;
+            return "class:android.os.Build";
         } catch (ClassNotFoundException | LinkageError ignored) {
             // fall through
         }
         String osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         String osVersion = System.getProperty("os.version", "").toLowerCase(Locale.ROOT);
-        if (osName.contains("android") || osVersion.startsWith("android")) {
-            return true;
+        if (osName.contains("android")) {
+            return "os.name=" + System.getProperty("os.name");
+        }
+        if (osVersion.startsWith("android")) {
+            return "os.version=" + System.getProperty("os.version");
         }
         for (String key : new String[]{"POJAV_RENDERER", "POJAV_NATIVEDIR",
                 "FCL_NATIVEDIR", "POJAVEXEC_EGL"}) {
             if (System.getenv().containsKey(key)) {
-                return true;
+                return "env:" + key;
             }
         }
         String tmp = System.getProperty("java.io.tmpdir", "");
-        return tmp.contains("/storage/emulated/") || tmp.contains("/data/user/0/");
+        if (tmp.contains("/storage/emulated/") || tmp.contains("/data/user/0/")) {
+            return "tmpdir=" + tmp;
+        }
+        return null;
     }
 
     private static long lastSeed = Long.MIN_VALUE;
