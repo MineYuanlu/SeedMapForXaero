@@ -41,6 +41,9 @@ public final class HighlightHudRenderer {
 
     private static boolean registered;
 
+    /** 上一帧实际绘制的高亮图标数 (E2E gametest 断言背后隐藏逻辑用)。 */
+    public static volatile int lastFrameHighlightBlits;
+
     private HighlightHudRenderer() {
     }
 
@@ -55,6 +58,7 @@ public final class HighlightHudRenderer {
 
     /** 每帧在 HUD 末尾绘制全部可见高亮图标 + 距离文字。 */
     private static void render(GuiGraphicsExtractor graphics) {
+        lastFrameHighlightBlits = 0;
         final Minecraft mc = Minecraft.getInstance();
         final var level = mc.level;
         if (level == null || mc.gameRenderer == null)
@@ -100,6 +104,7 @@ public final class HighlightHudRenderer {
             guiRenderState.addBlitToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED,
                     setup, pose, -half, -half, half, half, uv[0], uv[1], 0.0F, 1.0F,
                     ICON_ALPHA, null));
+            lastFrameHighlightBlits++;
 
             // 文字 API 只收 int, 就近取整 (图标平滑, 文字偶尔 1px 漂移可接受)
             final int tx = Math.round(sx);

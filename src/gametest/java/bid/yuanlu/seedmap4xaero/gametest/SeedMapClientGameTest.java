@@ -11,11 +11,16 @@ import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.mixin.SeedMapMixin;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
+import bid.yuanlu.seedmap4xaero.client.render.HighlightHudRenderer;
+import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.Minecraft;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
+import net.minecraft.world.phys.Vec3;
 
 import xaero.map.MapProcessor;
 import xaero.map.WorldMapSession;
@@ -33,6 +38,8 @@ import xaero.map.gui.GuiMap;
  * <li>{@link SeedMapMixin#tickWorldInfo} → {@code Xsm.setWorld} + {@link CellCache} 触发
  *     native C 生成（mapProcessor 可用 + hasScaleCache 有数据）</li>
  * <li>{@link StructureCache#REGIONS} 有异步结构查询结果</li>
+ * <li>HUD 高亮图标背后隐藏：真实结构正对时绘制 ({@code lastFrameHighlightBlits==1})、
+ *     转向水平镜像点后隐藏 ({@code ==0})——回归 26.2 线性深度下 NDC.z&lt;0 漏过 z&gt;1 检查的镜像 bug</li>
  * </ol>
  * </p>
  */
@@ -65,6 +72,9 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             assertStructureCachePopulated(context);
 
             context.takeScreenshot("seed-map-final");
+
+            assertHighlightHudHiddenWhenBehind(context, singleplayer);
+
             LOGGER.info("seed-map E2E assertions passed");
 
             // 绕开 close() 死锁：MC 26 的 IntegratedServer.halt 先 executeBlocking 等 server 处理停止
@@ -165,5 +175,86 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     private static void assertStructureCachePopulated(ClientGameTestContext context) {
         context.waitFor(client -> !StructureCache.REGIONS.isEmpty(), 200);
         LOGGER.info("StructureCache types = {}", StructureCache.REGIONS.keySet());
+    }
+
+    /** 要高亮的真实结构位置。 */
+    private record StructureTarget(int blockX, int blockZ, StructureType type, int variant) {
+    }
+
+    /**
+     * 回归: 26.2 线性深度约定下背后结构 NDC.z&lt;0 曾漏过旧的 z&gt;1 隐藏检查 (镜像图标)。
+     * 真实高亮一个结构 → 正视必绘制 (blits==1), 转向水平镜像点 (结构恰好正背后) 必隐藏 (blits==0)。
+     */
+    private static void assertHighlightHudHiddenWhenBehind(ClientGameTestContext context,
+            TestSingleplayerContext singleplayer) {
+        StructureTarget target = context.computeOnClient(client -> nearestStructure(client));
+        if (target == null) {
+            throw new AssertionError("no loaded structure in StructureCache.REGIONS to highlight");
+        }
+        LOGGER.info("highlight target = {} at ({},{})", target.type(), target.blockX(), target.blockZ());
+
+        if (context.computeOnClient(client -> Math.hypot(
+                client.player.getX() - (target.blockX() + 0.5),
+                client.player.getZ() - (target.blockZ() + 0.5)) > 400.0)) {
+            teleportNear(context, singleplayer, target.blockX() + 32, target.blockZ() + 32);
+        }
+
+        context.runOnClient(client -> client.setScreenAndShow(null));
+        context.waitTick();
+
+        context.runOnClient(client -> HighlightedStructures.toggle(
+                client.level.dimension(), target.blockX(), target.blockZ(), target.type(), target.variant()));
+        context.waitTick();
+
+        context.runOnClient(client -> client.player.lookAt(EntityAnchorArgument.Anchor.EYES,
+                new Vec3(target.blockX() + 0.5, client.player.getEyeY(), target.blockZ() + 0.5)));
+        context.waitFor(client -> HighlightHudRenderer.lastFrameHighlightBlits == 1, 100);
+        context.takeScreenshot("highlight-hud-facing");
+
+        context.runOnClient(client -> client.player.lookAt(EntityAnchorArgument.Anchor.EYES,
+                new Vec3(2.0 * client.player.getX() - (target.blockX() + 0.5),
+                        client.player.getEyeY(),
+                        2.0 * client.player.getZ() - (target.blockZ() + 0.5))));
+        context.waitFor(client -> HighlightHudRenderer.lastFrameHighlightBlits == 0, 100);
+        context.takeScreenshot("highlight-hud-behind");
+
+        context.runOnClient(client -> HighlightedStructures.clear());
+        LOGGER.info("highlight-hud E2E assertions passed");
+    }
+
+    /** REGIONS 中离玩家最近且已加载的结构。 */
+    private static StructureTarget nearestStructure(Minecraft client) {
+        double px = client.player.getX();
+        double pz = client.player.getZ();
+        StructureTarget nearest = null;
+        double best = Double.MAX_VALUE;
+        for (var entry : StructureCache.REGIONS.entrySet()) {
+            for (var pos : entry.getValue()) {
+                if (!pos.loaded())
+                    continue;
+                double d = Math.hypot(pos.blockX() + 0.5 - px, pos.blockZ() + 0.5 - pz);
+                if (d < best) {
+                    best = d;
+                    nearest = new StructureTarget(pos.blockX(), pos.blockZ(), entry.getKey(), pos.getVariant());
+                }
+            }
+        }
+        return nearest;
+    }
+
+    /** 把玩家传送到 (blockX, blockZ) 附近并等落地。 */
+    private static void teleportNear(ClientGameTestContext context, TestSingleplayerContext singleplayer,
+            int blockX, int blockZ) {
+        singleplayer.getServer().runOnServer(server -> {
+            var players = server.getPlayerList().getPlayers();
+            if (players.isEmpty()) {
+                throw new AssertionError("no player on server");
+            }
+            players.get(0).teleportTo(blockX + 0.5, 200.0, blockZ + 0.5);
+        });
+        waitForChunksRender(singleplayer);
+        context.waitFor(client -> client.player.distanceToSqr(blockX + 0.5, client.player.getY(), blockZ + 0.5) < 4.0, 200);
+        context.waitFor(client -> client.player.getDeltaMovement().lengthSqr() < 0.05, 300);
+        context.waitTicks(5);
     }
 }

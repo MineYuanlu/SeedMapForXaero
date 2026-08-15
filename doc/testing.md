@@ -25,12 +25,13 @@
 
 ### 3. E2E 客户端 GameTest — `src/gametest/java`（fabric-client-gametest）
 
-`SeedMapClientGameTest`：真实启动 MC 客户端 → 创建单机世界（`KNOWN_SEED=123456789`）→ 打开 Xaero `GuiMap` → 4 个断言 + 截图：
+`SeedMapClientGameTest`：真实启动 MC 客户端 → 创建单机世界（`KNOWN_SEED=123456789`）→ 打开 Xaero `GuiMap` → 5 个断言 + 截图：
 
 1. **种子解析**：`ServerConfig.resolveSeed()` 返回已知种子且与服务器实际种子一致
 2. **地图激活**：打开 `GuiMap` 后 `ServerConfig.activeMainId() != null`
 3. **CellCache 生成**：scale 1/4/16 任一有缓存（验证 `tickWorldInfo → Xsm.setWorld → native C 生成` 链路）
 4. **结构缓存**：`StructureCache.REGIONS` 非空（异步 CACHE_WORKER 查询）
+5. **HUD 高亮背后隐藏**：从 REGIONS 高亮最近的真实结构，正视断言 `HighlightHudRenderer.lastFrameHighlightBlits == 1`、转向水平镜像点（结构恰好正背后）断言 `== 0`——回归 26.2 线性深度约定下背后点 `NDC.z<0` 漏过旧 `z>1` 检查导致的镜像图标 bug（版本相关深度约定的回归只能靠真实投影的 E2E 抓）。结构超 400 格时先服务端传送玩家到附近并等落地。
 
 断言通过后打印 `seed-map E2E assertions passed` 供 CI grep。主 mod 和测试 mod 的 `fabric.mod.json` 都用宽松下限写死版本（`>=26.1`），**不 expand**——单 jar 在任意支持版本上通用，无需跟随矩阵精确版本。
 
