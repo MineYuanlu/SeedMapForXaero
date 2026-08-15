@@ -25,7 +25,7 @@ import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
  * <p>
  * 与世界光柱 ({@link HighlightWorldRenderer}) 并存互不干扰: 光柱贯穿建筑高度标明
  * "结构在哪", 图标让玩家不看向光柱方向时也能察觉高亮存在。只画水平距离 (结构无 Y),
- * 目标在相机背后 (ndc.z&gt;1) 或超 {@link #MAX_RENDER_DISTANCE} 时隐藏; 打开地图时
+ * 目标在相机背后 (NDC z 越出 [0,1]) 或超 {@link #MAX_RENDER_DISTANCE} 时隐藏; 打开地图时
  * GuiMap.shouldSkipWorldRender 世界不渲染但 HUD 仍触发, 地图覆盖其上, 无冲突。
  */
 public final class HighlightHudRenderer {
@@ -41,6 +41,9 @@ public final class HighlightHudRenderer {
 
     private static boolean registered;
 
+    /** 上一帧实际绘制的高亮图标数 (E2E gametest 断言背后隐藏逻辑用)。 */
+    public static volatile int lastFrameHighlightBlits;
+
     private HighlightHudRenderer() {
     }
 
@@ -55,6 +58,7 @@ public final class HighlightHudRenderer {
 
     /** 每帧在 HUD 末尾绘制全部可见高亮图标 + 距离文字。 */
     private static void render(GuiGraphicsExtractor graphics) {
+        lastFrameHighlightBlits = 0;
         final Minecraft mc = Minecraft.getInstance();
         final var level = mc.level;
         if (level == null || mc.gameRenderer == null)
@@ -87,9 +91,8 @@ public final class HighlightHudRenderer {
             final double dist = Math.hypot(bx - cam.x, bz - cam.z);
             if (dist > MAX_RENDER_DISTANCE)
                 continue;
-            final float[] s = ndcToScreen(
-                    mc.gameRenderer.projectPointToScreen(new Vec3(bx, cam.y, bz)),
-                    guiW, guiH);
+            final Vec3 ndc = mc.gameRenderer.projectPointToScreen(new Vec3(bx, cam.y, bz));
+            final float[] s = ndcToScreen(ndc, guiW, guiH);
             if (s == null)
                 continue;
             final float sx = s[0];
@@ -101,6 +104,7 @@ public final class HighlightHudRenderer {
             guiRenderState.addBlitToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED,
                     setup, pose, -half, -half, half, half, uv[0], uv[1], 0.0F, 1.0F,
                     ICON_ALPHA, null));
+            lastFrameHighlightBlits++;
 
             // 文字 API 只收 int, 就近取整 (图标平滑, 文字偶尔 1px 漂移可接受)
             final int tx = Math.round(sx);
@@ -112,10 +116,12 @@ public final class HighlightHudRenderer {
     }
 
     /**
-     * NDC (相机前方的点 z∈[0,1]) → 屏幕坐标 (亚像素浮点); 目标在相机背后返回 null。
+     * NDC (相机前方的点 z∈[0,1]) → 屏幕坐标 (亚像素浮点); 目标在相机背后或越出
+     * 可见深度区间 (NDC z 越出 [0,1]) 返回 null。背后点在不同 MC 版本深度约定下
+     * 映射为 z&gt;1 (非线性深度) 或 z&lt;0 (线性深度), 故两侧都需排除。
      */
     static float[] ndcToScreen(Vec3 ndc, int guiW, int guiH) {
-        if (ndc.z > 1.0)
+        if (ndc.z < 0.0 || ndc.z > 1.0)
             return null;
         float sx = (float) ((ndc.x + 1.0) * 0.5 * guiW);
         float sy = (float) ((1.0 - ndc.y) * 0.5 * guiH);
