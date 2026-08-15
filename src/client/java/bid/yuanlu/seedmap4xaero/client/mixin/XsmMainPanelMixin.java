@@ -39,6 +39,11 @@ public abstract class XsmMainPanelMixin {
     @Unique
     private int xsm$topRightBtnY = Integer.MAX_VALUE;
 
+    @Inject(method = "removed", at = @At("HEAD"))
+    private void xsm$onRemoved(CallbackInfo ci) {
+        SeedMapPanel.panelOpen = false;
+    }
+
     @Inject(method = "init", at = @At("HEAD"))
     private void xsm$onInitHead(CallbackInfo ci) {
         var window = Minecraft.getInstance().getWindow();
