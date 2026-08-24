@@ -45,6 +45,7 @@ class ServerConfigTest {
         assertEquals(expect.seed(), actual.seed());
         assertEquals(expect.getDisabledStructures(), actual.getDisabledStructures());
         assertEquals(expect.getDisabledBiomes(), actual.getDisabledBiomes());
+        assertEquals(expect.mcVersion(), actual.mcVersion());
     }
 
     @Test
@@ -246,6 +247,52 @@ class ServerConfigTest {
         assertFalse(cfg.dirty.get());
         cfg.useSeed(1L);
         assertTrue(cfg.dirty.get());
+    }
+
+    @Test
+    void mcVersionDefaultsToNull() {
+        assertNull(new ConfigData().getOrCreateWorld("w").mcVersion(), "default follows client version");
+    }
+
+    @Test
+    void mcVersionRoundTrip() throws IOException {
+        ConfigData cfg = new ConfigData();
+        cfg.getOrCreateWorld("w").mcVersion("1.21.9");
+        Path file = tmp.resolve("mcv.sm4x");
+        cfg.write(file);
+        assertEquals("1.21.9", ConfigData.read(file).getWorld("w").mcVersion());
+
+        // null（跟随客户端）也要能往返
+        ConfigData auto = new ConfigData();
+        auto.getOrCreateWorld("w").mcVersion(null);
+        Path file2 = tmp.resolve("mcv_auto.sm4x");
+        auto.write(file2);
+        assertNull(ConfigData.read(file2).getWorld("w").mcVersion());
+    }
+
+    @Test
+    void v1WorldConfigWithoutMcVersionLoads() throws IOException {
+        // WorldConfig record version 2 与 1 前缀兼容: 尾部仅多一个 mcVersion 字段
+        // (null 时恰为 1 字节 false)。去掉该字节即得合法的 v1 记录。
+        ConfigData main = new ConfigData();
+        var wc = main.getOrCreateWorld("w");
+        wc.seed(9L);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bos)) {
+            wc.write(out);
+        }
+        byte[] all = bos.toByteArray();
+        // 头部 int 改回 1 + 去掉尾部 mcVersion 字节 → 合法的 v1 记录
+        byte[] v1Bytes = java.util.Arrays.copyOf(all, all.length - 1);
+        v1Bytes[0] = 0;
+        v1Bytes[1] = 0;
+        v1Bytes[2] = 0;
+        v1Bytes[3] = 1;
+
+        WorldConfig read = WorldConfig.read(main,
+                new DataInputStream(new ByteArrayInputStream(v1Bytes)));
+        assertEquals(9L, read.seed());
+        assertNull(read.mcVersion(), "v1 record has no mcVersion → follow client");
     }
 
     @Test

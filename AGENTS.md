@@ -87,7 +87,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 │   ├── configs/       # AGENTS.md: config persistence & multiplayer
 │   ├── nativeapi/     # Xsm.java (System.load + FFM wrappers), XsmNative.java (generated)
 │   ├── cache/         # AGENTS.md: caches, sparse structures, strongholds, tile coords
-│   ├── mixin/         # 7 mixins — table in client/AGENTS.md
+│   ├── mixin/         # mixins — table in client/AGENTS.md
 │   ├── render/        # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
 │   ├── structure/     # StructureType enum (26 types, config from C, 稀疏类型自带 prob)
 │   ├── biome/         # BiomeType (sprite index, loaded from biomes.ini)

@@ -155,8 +155,17 @@ public class SeedMapMixin {
             return;
         }
 
-        Xsm.setWorld(seed, dim);
+        // 世界生成 MC 版本：单机固定客户端版本；多人按 per-world 配置（null=跟随客户端）
         var wc = ServerConfig.getActiveWorldConfig();
+        final String version = (Minecraft.getInstance().getSingleplayerServer() != null || wc == null)
+                ? null
+                : wc.mcVersion();
+        if (!Xsm.applyGameVersion(version)) {
+            // 拒绝详情由 Xsm 首次拒绝时记录；此处静默回退客户端版本
+            Xsm.applyGameVersion(null);
+        }
+
+        Xsm.setWorld(seed, dim);
         if (wc != null) {
             Xsm.setBiomeDisabled(wc.getDisabledBiomes());
         }

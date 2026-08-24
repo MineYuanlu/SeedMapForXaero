@@ -5,6 +5,8 @@
   "xsm.gui.switching.seed": "Seed",
   "xsm.gui.switching.confirm": "Confirm",
   "xsm.gui.switching.current_seed": "Current World Seed:",
+  "xsm.gui.switching.version": "World Version",
+  "xsm.gui.switching.version.auto": "Follow client (%s)",
 
   "xsm.gui.panel.search_biomes": "Filter Biomes",
   "xsm.gui.panel.search_structures": "Filter Structures",
