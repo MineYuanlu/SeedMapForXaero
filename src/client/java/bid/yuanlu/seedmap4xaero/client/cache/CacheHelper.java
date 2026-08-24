@@ -21,6 +21,17 @@ public final class CacheHelper {
             return;
         lastSeed = seed;
         lastDim = dim;
+        clearAllCaches();
+    }
+
+    /** 强制清空全部查询缓存并重置去重哨兵（如 MC 版本切换后）。 */
+    public static void invalidateAll() {
+        lastSeed = Long.MIN_VALUE;
+        lastDim = Integer.MIN_VALUE;
+        clearAllCaches();
+    }
+
+    private static void clearAllCaches() {
         CellCache.clear();
         QueryPointCache.clear();
         StructureCache.clear();

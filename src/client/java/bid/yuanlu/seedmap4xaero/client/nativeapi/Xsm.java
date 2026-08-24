@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import net.minecraft.SharedConstants;
 
@@ -20,6 +21,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.QueryPointCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorProvider;
@@ -118,6 +120,17 @@ public final class Xsm {
 
     private static long lastSeed = Long.MIN_VALUE;
     private static int lastDim = Integer.MIN_VALUE;
+    private static String lastAppliedVersion = null;
+    private static String lastRejectedVersion = null;
+
+    /**
+     * 版本选择器展示的 MC 版本（倒序，仅 26.1+；ViaVersion 跨版本场景）。
+     * <p>
+     * C 侧 {@code mcVersionMap} 支持更多旧版本（配置中已有的值仍可生效），
+     * 但 UI 仅提供 26.1+ 选项；新 MC 版本发布时在此追加。
+     */
+    public static final List<String> SUPPORTED_VERSIONS = List.of(
+            "26.2", "26.1");
 
     public static void setGameVersion() {
         final var version = SharedConstants.getCurrentVersion().name();
@@ -129,6 +142,38 @@ public final class Xsm {
                 throw new IllegalStateException("Unsupported game version: " + version);
             }
         }
+    }
+
+    /**
+     * 应用世界生成 MC 版本（已去重）。null 表示跟随当前客户端版本。
+     *
+     * @return false 表示版本字符串不被 C 侧支持（保持原版本不变）
+     */
+    public static boolean applyGameVersion(@Nullable String version) {
+        final String target = version != null ? version : SharedConstants.getCurrentVersion().name();
+        if (Objects.equals(target, lastAppliedVersion))
+            return true;
+        if (Objects.equals(target, lastRejectedVersion))
+            return false;
+        try (Arena arena = Arena.ofConfined()) {
+            boolean success = XsmNative.setGameVersion(arena.allocateFrom(target));
+            if (!success) {
+                lastRejectedVersion = target;
+                LOGGER.warn("Unsupported MC version: {}, keeping current version ({})", target, lastAppliedVersion);
+                return false;
+            }
+        }
+        lastAppliedVersion = target;
+        // C 侧 setGameVersion 已重置 gen_setWorld，强制后续重新 setWorld 并清空全部缓存
+        resetWorldState();
+        CacheHelper.invalidateAll();
+        return true;
+    }
+
+    /** 重置种子/维度去重哨兵，强制下一次 setWorld 真正下发到 C 侧。 */
+    public static void resetWorldState() {
+        lastSeed = Long.MIN_VALUE;
+        lastDim = Integer.MIN_VALUE;
     }
 
     /** 设置世界种子/维度（已缓存去重）。 */

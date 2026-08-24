@@ -23,6 +23,7 @@ public class WorldConfig {
     private final StructureBitFlag disabledStructure; // 位1+为变种位; 默认全 0 = 全部可见
     private @Nullable BitSet disabledBiomes; // null ↔ 全部启用
     private @Nullable BitSetView disabledBiomesView;
+    private @Nullable String mcVersion; // null ↔ 跟随客户端版本
 
     WorldConfig(ConfigData main) {
         this.main = Objects.requireNonNull(main, "main");
@@ -84,9 +85,21 @@ public class WorldConfig {
         return BitSetView.EMPTY;
     }
 
+    /** 世界生成的 MC 版本 (如 "1.21.9"), null 表示跟随客户端。 */
+    public @Nullable String mcVersion() {
+        return mcVersion;
+    }
+
+    public void mcVersion(@Nullable String v) {
+        if (Objects.equals(mcVersion, v))
+            return;
+        this.mcVersion = v;
+        main.makeDirty();
+    }
+
     /** 写入到 DataOutput（由调用者实现）。 */
     void write(DataOutput out) throws IOException {
-        out.writeInt(1);
+        out.writeInt(2);
         out.writeBoolean(this.seed != null);
         if (this.seed != null)
             out.writeLong(this.seed);
@@ -97,13 +110,16 @@ public class WorldConfig {
             out.writeInt(bits.length);
             out.write(bits);
         }
+        out.writeBoolean(mcVersion != null);
+        if (mcVersion != null)
+            out.writeUTF(mcVersion);
     }
 
     /** 从 DataInput 读取（由调用者实现）。 */
     static WorldConfig read(ConfigData main, DataInput in) throws IOException {
         final var wc = new WorldConfig(main);
         final int version = in.readInt();
-        if (version == 1) {
+        if (version == 1 || version == 2) {
             final boolean hasSeed = in.readBoolean();
             if (hasSeed)
                 wc.seed = in.readLong();
@@ -115,6 +131,10 @@ public class WorldConfig {
                 in.readFully(bits);
                 wc.disabledBiomes = BitSet.valueOf(bits);
                 wc.disabledBiomesView = new BitSetView(wc.disabledBiomes);
+            }
+            if (version >= 2) {
+                if (in.readBoolean())
+                    wc.mcVersion = in.readUTF();
             }
         } else if (version == 0) {
             // 旧布局: seed + enabledStructures(BitSet,可空) + disabledBiomes(BitSet,可空)
@@ -158,11 +178,12 @@ public class WorldConfig {
         return Objects.equals(main, that.main)
                 && Objects.equals(seed, that.seed)
                 && Objects.equals(disabledStructure, that.disabledStructure)
-                && Objects.equals(disabledBiomes, that.disabledBiomes);
+                && Objects.equals(disabledBiomes, that.disabledBiomes)
+                && Objects.equals(mcVersion, that.mcVersion);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(main, seed, disabledStructure, disabledBiomes);
+        return Objects.hash(main, seed, disabledStructure, disabledBiomes, mcVersion);
     }
 }

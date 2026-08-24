@@ -17,6 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.gui.VersionDropdown;
 import xaero.map.MapProcessor;
 import xaero.map.graphics.MapRenderHelper;
 import xaero.map.gui.GuiMap;
@@ -33,6 +34,9 @@ public class GuiMapSwitchingMixin {
 
     @Unique
     private Button xsm$seedConfirmBtn;
+
+    @Unique
+    private VersionDropdown xsm$versionDropdown;
 
     @Unique
     private void xsm$useSeed(long seed) {
@@ -56,6 +60,8 @@ public class GuiMapSwitchingMixin {
         }
         this.xsm$seedInput = null;
         this.xsm$seedConfirmBtn = null;
+        VersionDropdown.unsetActive();
+        this.xsm$versionDropdown = null;
         if (!this.active)
             return;
 
@@ -86,6 +92,11 @@ public class GuiMapSwitchingMixin {
 
         mapScreen.addButton(xsm$seedInput);
         mapScreen.addButton(xsm$seedConfirmBtn);
+
+        // MC 版本选择：仅多人模式（单机世界版本固定为客户端版本）
+        if (Minecraft.getInstance().getSingleplayerServer() == null) {
+            xsm$versionDropdown = new VersionDropdown(width / 2 - 100, 172, 200, this.mapProcessor);
+        }
     }
 
     @Inject(method = "renderText", at = @At("TAIL"), remap = false)
@@ -96,6 +107,9 @@ public class GuiMapSwitchingMixin {
         String label = I18n.get("xsm.gui.switching.current_seed");
         MapRenderHelper.drawStringWithBackground(guiGraphics, minecraft.font, label, width / 2 - 100, 132, -1, 0.0F,
                 0.0F, 0.0F, 0.4F);
+        if (xsm$versionDropdown != null) {
+            xsm$versionDropdown.render(guiGraphics, minecraft.font, mouseX, mouseY);
+        }
     }
 
     @Shadow
