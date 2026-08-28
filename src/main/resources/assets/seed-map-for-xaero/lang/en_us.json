@@ -4,6 +4,8 @@
 
   "xsm.gui.switching.seed": "Seed",
   "xsm.gui.switching.confirm": "Confirm",
+  "xsm.gui.switching.copy": "Copy",
+  "xsm.gui.switching.copied": "Seed copied: %s",
   "xsm.gui.switching.current_seed": "Current World Seed:",
   "xsm.gui.switching.version": "World Version",
   "xsm.gui.switching.version.auto": "Follow client (%s)",
