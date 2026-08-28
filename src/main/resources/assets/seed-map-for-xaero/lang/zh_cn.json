@@ -4,6 +4,8 @@
 
   "xsm.gui.switching.seed": "种子",
   "xsm.gui.switching.confirm": "确定",
+  "xsm.gui.switching.copy": "复制",
+  "xsm.gui.switching.copied": "已复制种子: %s",
   "xsm.gui.switching.current_seed": "当前世界种子:",
   "xsm.gui.switching.version": "世界版本",
   "xsm.gui.switching.version.auto": "跟随客户端 (%s)",
