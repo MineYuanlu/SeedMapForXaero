@@ -204,4 +204,24 @@ public final class StructureDataConfig {
         if (data != null)
             data.setGroupHidden(group, hidden);
     }
+
+    // ─── /sm4x 命令入口 ─────────────────────────────────────────
+
+    /**
+     * 删除某种子的全部历史数据并立即落盘（不轮替 .old）。
+     *
+     * @return 删除的记录数; -1 = 该种子正在使用中（拒绝删除）; 0 = 无数据
+     */
+    public synchronized static int removeSeedForCommand(long seed) {
+        final var data = activeData;
+        if (data == null)
+            return 0;
+        final var active = activeSeed();
+        if (active != null && active == seed)
+            return -1;
+        int n = data.removeSeed(seed);
+        if (n > 0)
+            flush();
+        return n;
+    }
 }

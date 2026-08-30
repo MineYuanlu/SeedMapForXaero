@@ -52,6 +52,29 @@ public class StructureData {
         }
     }
 
+    /** 有标记数据的种子快照（升序）；命令列表用，避免迭代中并发插入。 */
+    public long[] seedsSnapshot() {
+        synchronized (seeds) {
+            long[] out = seeds.keySet().toLongArray();
+            java.util.Arrays.sort(out);
+            return out;
+        }
+    }
+
+    /** 删除某种子的全部数据，返回删除的标记记录数（无该种子返回 0）。 */
+    public int removeSeed(long seed) {
+        synchronized (seeds) {
+            var removed = seeds.remove(seed);
+            if (removed == null)
+                return 0;
+            int n = 0;
+            for (DimData dd : removed.dims.values())
+                n += dd.recordCount();
+            makeDirty();
+            return n;
+        }
+    }
+
     /** 组在面板/地图上是否被隐藏。 */
     public boolean isGroupHidden(String group) {
         synchronized (hiddenGroups) {
@@ -192,6 +215,34 @@ public class StructureData {
             return count;
         }
 
+        /** 标记记录总数（含访问/分组任意一种）。 */
+        int recordCount() {
+            int n = 0;
+            synchronized (this) {
+                for (var m : types)
+                    if (m != null)
+                        n += m.size();
+            }
+            return n;
+        }
+
+        /** 累加统计: 返回本维度记录数, 同时把用到的非默认组名收进 {@code groups}。 */
+        int accumulateStats(java.util.Set<String> groups) {
+            int n = 0;
+            synchronized (this) {
+                for (var m : types) {
+                    if (m == null)
+                        continue;
+                    n += m.size();
+                    for (var mark : m.values()) {
+                        if (!mark.group().isEmpty())
+                            groups.add(mark.group());
+                    }
+                }
+            }
+            return n;
+        }
+
         private void write(DataOutputStream out) throws IOException {
             out.writeInt(0);
             synchronized (this) {
@@ -239,6 +290,25 @@ public class StructureData {
             }
             return dd;
         }
+    }
+
+    /** 某种子的数据量统计: 用到的组数（去重, 非默认组）+ 有记录的结构数。 */
+    public record SeedStats(int groups, int structures) {
+    }
+
+    /** 某种子的数据量统计；无该种子返回 null。 */
+    public @Nullable SeedStats stats(long seed) {
+        final SeedData sd;
+        synchronized (seeds) {
+            sd = seeds.get(seed);
+        }
+        if (sd == null)
+            return null;
+        var groups = new java.util.HashSet<String>();
+        int structures = 0;
+        for (DimData dd : sd.dims.values())
+            structures += dd.accumulateStats(groups);
+        return new SeedStats(groups.size(), structures);
     }
 
     /** structure_data 文档的编解码器，配合 {@code Sm4xFile} 使用；版本号是内部细节。 */

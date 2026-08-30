@@ -89,6 +89,20 @@ public class ConfigData {
         return lootDisplayMode;
     }
 
+    /** 种子历史的一条只读快照（/sm4x history seed 列表用）。 */
+    public record SeedHistoryEntry(long seed, String lastUsed) {
+    }
+
+    /** 种子历史（MRU 序）只读快照。 */
+    public java.util.List<SeedHistoryEntry> getSeedHistory() {
+        synchronized (allSeeds) {
+            var out = new ArrayList<SeedHistoryEntry>(allSeeds.size());
+            for (SeedEntry e : allSeeds)
+                out.add(new SeedHistoryEntry(e.seed, e.lastUsed()));
+            return java.util.List.copyOf(out);
+        }
+    }
+
     public synchronized void setTheme(@Nullable String theme) {
         if (Objects.equals(this.theme, theme))
             return;

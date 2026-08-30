@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
+import bid.yuanlu.seedmap4xaero.client.command.Sm4xCommand;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
@@ -30,6 +31,7 @@ public class XaeroSeedMapClient implements ClientModInitializer {
         StructureVisitTracker.register();
         HighlightWorldRenderer.register();
         HighlightHudRenderer.register();
+        Sm4xCommand.register();
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             CellCache.clear();

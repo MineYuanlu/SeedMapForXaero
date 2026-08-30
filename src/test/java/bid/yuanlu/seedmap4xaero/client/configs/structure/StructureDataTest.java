@@ -249,4 +249,50 @@ class StructureDataTest {
         assertEquals(StructureDataConfig.keyOf(-1, -2), StructureDataConfig.keyOf(-1, -2));
         assertTrue(StructureDataConfig.keyOf(-1, -2) != StructureDataConfig.keyOf(-2, -1));
     }
+
+    // ─── 种子级统计与删除 (二阶段: /sm4x history) ──────────────
+
+    @Test
+    void seedStatsCountsGroupsAndStructures() {
+        var data = new StructureData();
+        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
+        dim.markVisited(StructureType.VILLAGE.id, 1L, 5); // 仅访问
+        dim.setGroup(StructureType.VILLAGE.id, 2L, StructureGroups.DONE); // 仅分组
+        dim.markVisited(StructureType.MANSION.id, 3L, 2);
+        dim.setGroup(StructureType.MANSION.id, 3L, StructureGroups.DONE); // 访问+分组 = 1 条
+        data.getOrCreateSeed(1L).getOrCreateDim("nether")
+                .setGroup(StructureType.FORTRESS.id, 4L, StructureGroups.SPECIAL);
+
+        var stats = data.stats(1L);
+        assertNotNull(stats);
+        assertEquals(2, stats.groups()); // done + special (跨维度去重)
+        assertEquals(4, stats.structures()); // 4 条记录 (第 3 条只算一次)
+        assertNull(data.stats(2L));
+    }
+
+    @Test
+    void removeSeedRemovesAllDimsAndCounts() {
+        var data = new StructureData();
+        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
+        dim.markVisited(StructureType.VILLAGE.id, 1L, 5);
+        dim.setGroup(StructureType.MANSION.id, 2L, StructureGroups.DONE);
+        data.getOrCreateSeed(1L).getOrCreateDim("nether")
+                .setGroup(StructureType.FORTRESS.id, 3L, StructureGroups.SPECIAL);
+        data.getOrCreateSeed(2L).getOrCreateDim("w")
+                .markVisited(StructureType.VILLAGE.id, 9L, 1);
+
+        assertEquals(3, data.removeSeed(1L));
+        assertNull(data.getSeed(1L));
+        assertNotNull(data.getSeed(2L));
+        assertEquals(0, data.removeSeed(1L)); // 幂等
+    }
+
+    @Test
+    void seedsSnapshotSortedAscending() {
+        var data = new StructureData();
+        data.getOrCreateSeed(30L).getOrCreateDim("w");
+        data.getOrCreateSeed(-10L).getOrCreateDim("w");
+        data.getOrCreateSeed(20L).getOrCreateDim("w");
+        assertArrayEquals(new long[] { -10L, 20L, 30L }, data.seedsSnapshot());
+    }
 }
