@@ -121,6 +121,35 @@ public class SeedMapPanel {
     // screen dimensions
     private int scrW, scrH;
 
+    /** 当前 GuiMap 的面板实例 (onInit 注册; E2E gametest 取用)。 */
+    private static SeedMapPanel activePanel;
+
+    public static SeedMapPanel activePanel() {
+        return activePanel;
+    }
+
+    // ─── E2E gametest 钩子 (生产路径不调用) ─────────────────────
+
+    /** 展开结构区 (面板截图前置状态; 保持生物群系折叠, 小屏下结构区才有可见空间)。 */
+    public void testExpandSections() {
+        structureExpanded = true;
+        groupCountCooldown = 0;
+    }
+
+    /** 切换结构区 Tab (0=类型 1=分组 2=图标)。 */
+    public void testSelectStructTab(int tab) {
+        structTab = Math.max(0, Math.min(2, tab));
+        deleteArmed = false;
+        colorSliderDrag = -1;
+        groupCountCooldown = 0;
+    }
+
+    /** 新建用户组并展开其编辑器; 返回组名 (失败 null)。 */
+    public String testCreateGroup() {
+        createGroup();
+        return editorGroup;
+    }
+
     public SeedMapPanel(GuiMap screen) {
         this.screen = screen;
         this.mc = Minecraft.getInstance();
@@ -147,6 +176,7 @@ public class SeedMapPanel {
     public void onInit(int width, int height) {
         this.scrW = width;
         this.scrH = height;
+        activePanel = this;
 
         // recreate search fields if panel is open
         if (panelOpen) {
