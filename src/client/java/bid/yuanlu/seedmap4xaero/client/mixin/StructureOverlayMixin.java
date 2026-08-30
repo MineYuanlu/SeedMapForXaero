@@ -11,14 +11,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
 import bid.yuanlu.seedmap4xaero.client.structure.ChestLootWidget;
 import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureIcons;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+
+import java.util.ArrayList;
+
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -56,6 +62,9 @@ public class StructureOverlayMixin {
 
     @Unique
     private String xsm$hoverText;
+
+    @Unique
+    private final ArrayList<String> xsm$hoverLines = new ArrayList<>();
 
     @Unique
     private float xsm$bestDist;
@@ -139,6 +148,7 @@ public class StructureOverlayMixin {
         xsm$hoverText = null;
         xsm$bestDist = iconHalf;
         xsm$hoverType = null;
+        xsm$hoverLines.clear();
 
         final StructureIcons.Transform t = new StructureIcons.Transform(
                 cameraX, cameraZ, scale, invScale, guiW, guiH);
@@ -161,6 +171,7 @@ public class StructureOverlayMixin {
                 if (vk != null)
                     hover += " (" + I18n.get(vk) + ")";
                 xsm$hoverText = hover;
+                xsm$buildHoverLines(type, blockX, blockZ);
             }
 
             final int idx = type.getSpriteIndex(variant);
@@ -176,14 +187,66 @@ public class StructureOverlayMixin {
             guiRenderState.addBlitToCurrentLayer(blit);
         }, t);
 
-        if (xsm$hoverText != null) {
-            MapRenderHelper.drawStringWithBackground(guiGraphics,
-                    mc.font, xsm$hoverText,
-                    scaledMouseX + 12, scaledMouseY - 4,
-                    -1, 0.0F, 0.0F, 0.0F, 0.6F);
-        }
-
         xsm$renderLootWidget(guiGraphics, scaledMouseX, scaledMouseY, guiW, guiH);
+
+        // hover tooltip 最后绘制, 压在战利品预览 widget 之上
+        if (!xsm$hoverLines.isEmpty()) {
+            xsm$drawTooltip(guiGraphics, mc.font, xsm$hoverLines,
+                    scaledMouseX, scaledMouseY, guiW, guiH);
+        }
+    }
+
+    /** 组装 hover 的多行内容: 标题 + 访问状态 + 分组。 */
+    @Unique
+    private void xsm$buildHoverLines(StructureType type, int blockX, int blockZ) {
+        xsm$hoverLines.clear();
+        xsm$hoverLines.add(xsm$hoverText);
+        final var dimData = StructureDataConfig.activeDimData();
+        final var mark = dimData == null ? null
+                : dimData.getMark(type.id, StructureDataConfig.keyOf(blockX, blockZ));
+        xsm$hoverLines.add(I18n.get(mark != null && mark.visited()
+                ? "xsm.hover.visited" : "xsm.hover.unvisited",
+                mark == null ? 0 : mark.minDist()));
+        if (mark != null && !mark.group().isEmpty()) {
+            xsm$hoverLines.add(I18n.get("xsm.hover.group",
+                    I18n.get(StructureGroups.translationKey(mark.group()))));
+        }
+    }
+
+    /**
+     * 原版物品 tooltip 风格的多行悬浮框: 深色底 + 紫色 1px 边框,
+     * 首行白色 (标题), 其余行灰色 (详情)。
+     */
+    @Unique
+    private static void xsm$drawTooltip(GuiGraphicsExtractor g, Font font,
+            ArrayList<String> lines, int mouseX, int mouseY, double guiW, double guiH) {
+        final int PAD = 3;
+        int textW = 0;
+        for (String line : lines)
+            textW = Math.max(textW, font.width(line));
+        final int lineH = font.lineHeight + 1;
+        final int boxW = textW + PAD * 2;
+        final int boxH = lines.size() * lineH + PAD * 2 - 1;
+        int x = mouseX + 12;
+        int y = mouseY - 4;
+        if (x + boxW > guiW)
+            x = (int) guiW - boxW;
+        if (y + boxH > guiH)
+            y = (int) guiH - boxH;
+        x = Math.max(1, x);
+        y = Math.max(1, y);
+
+        g.fill(x, y, x + boxW, y + boxH, 0xF0100010);
+        // 紫色边框 (上下 0xFF5000FF, 左右渐变简化为同色系, 与原版观感一致)
+        g.fill(x - 1, y - 1, x + boxW + 1, y, 0xFF5000FF);
+        g.fill(x - 1, y + boxH, x + boxW + 1, y + boxH + 1, 0xFF5000FF);
+        g.fill(x - 1, y, x, y + boxH, 0xFF2A007F);
+        g.fill(x + boxW, y, x + boxW + 1, y + boxH, 0xFF2A007F);
+
+        for (int i = 0; i < lines.size(); i++) {
+            g.text(font, lines.get(i), x + PAD, y + PAD + i * lineH,
+                    i == 0 ? 0xFFFFFFFF : 0xFFA0A0A8);
+        }
     }
 
     @Unique

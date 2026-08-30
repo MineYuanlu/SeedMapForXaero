@@ -7,8 +7,11 @@ import org.jetbrains.annotations.Nullable;
 
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
+import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
 import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
@@ -72,6 +75,10 @@ public class SeedMapPanel {
 
     /** 无配置时的回退 flags: 全 0 = 全部可见 */
     private static final StructureBitFlagView DEFAULT_FLAGS = new StructureBitFlag();
+
+    /** 分组计数缓存: 命名组 = 全量标记数, 未分组 = 当前视口可见的未标记图标数; 每 20 帧刷新 */
+    private static final int[] GROUP_COUNTS = new int[StructureGroups.BUILTIN.size()];
+    private static int groupCountCooldown;
 
     // slider
     private float sliderValue = 1.0f;
@@ -307,6 +314,26 @@ public class SeedMapPanel {
             y += 16;
         }
 
+        // 分组区: checkbox(显示开关) + 组名 + 组内数量 (缓存值, 每 20 帧刷新)
+        var sdata = StructureDataConfig.getActiveData();
+        if (structureExpanded && --groupCountCooldown <= 0) {
+            updateGroupCounts();
+            groupCountCooldown = 20;
+        }
+        for (int gi = 0; gi < StructureGroups.BUILTIN.size(); gi++) {
+            String group = StructureGroups.BUILTIN.get(gi);
+            boolean shown = sdata == null || !sdata.isGroupHidden(group);
+            boolean hoverRow = my >= y && my < y + ITEM_H
+                    && mx >= PADDING && mx <= PANEL_WIDTH - PADDING;
+            renderCheckbox(g, PADDING, y + (ITEM_H - 9) / 2, shown, hoverRow);
+            String groupLabel = I18n.get(StructureGroups.translationKey(group))
+                    + " (" + GROUP_COUNTS[gi] + ")";
+            g.text(font, groupLabel, PADDING + 12, y + (ITEM_H - font.lineHeight) / 2,
+                    shown ? 0xFFFFFFFF : 0xFF888888);
+            y += ITEM_H;
+        }
+        y += 5;
+
         // structure list
         if (filteredStructures == null)
             updateStructFilter();
@@ -522,6 +549,17 @@ public class SeedMapPanel {
             y += PADDING;
             y += 16; // search field height
 
+            // 分组行: checkbox 切换组显示
+            for (String group : StructureGroups.BUILTIN) {
+                if (my >= y && my <= y + ITEM_H && mx >= PADDING && mx <= PADDING + 9) {
+                    StructureDataConfig.setGroupHidden(group,
+                            !StructureDataConfig.isGroupHidden(group));
+                    return true;
+                }
+                y += ITEM_H;
+            }
+            y += 5;
+
             // structure list items
             int visible = Math.min(MAX_VISIBLE_ITEMS,
                     Math.max(MIN_VISIBLE_ITEMS, (scrH - y - 30) / ITEM_H));
@@ -648,6 +686,7 @@ public class SeedMapPanel {
 
         if (structureExpanded) {
             y += PADDING + 16; // past search field
+            y += StructureGroups.BUILTIN.size() * ITEM_H + 5; // past group rows
             if (filteredStructures == null)
                 updateStructFilter();
             int structVisible = Math.min(MAX_VISIBLE_ITEMS,
@@ -722,6 +761,57 @@ public class SeedMapPanel {
                 filteredBiomes.add(b);
             }
         }
+    }
+
+    /**
+     * 刷新分组计数 (渲染线程, 每 20 帧且面板展开时调用)。
+     * 命名组 = 标记表全量计数 (用户标记量级, 极小);
+     * 未分组 = 当前视口内未标记 (或组为默认) 的可见图标数, 遍历
+     * {@link StructureCache#REGIONS} + 要塞快照, 与渲染同源的类型/变种过滤,
+     * 逐图标仅一次 map get, 无 native 调用。
+     */
+    private void updateGroupCounts() {
+        var wc = ServerConfig.getActiveWorldConfig();
+        StructureBitFlagView flags = wc != null ? wc.getDisabledStructures() : DEFAULT_FLAGS;
+        var enabledTypes = wc != null ? wc.getStructureTypeSet() : BitSetView.EMPTY;
+        var dimData = StructureDataConfig.activeDimData();
+
+        for (int gi = 1; gi < StructureGroups.BUILTIN.size(); gi++) {
+            GROUP_COUNTS[gi] = dimData == null ? 0
+                    : dimData.countGroup(StructureGroups.BUILTIN.get(gi), enabledTypes);
+        }
+
+        int ungrouped = 0;
+        for (var entry : StructureCache.REGIONS.entrySet()) {
+            StructureType type = entry.getKey();
+            if (flags.isStructureSet(type.id))
+                continue;
+            for (StructureCache.StructurePos rp : entry.getValue()) {
+                if (!rp.loaded())
+                    continue;
+                if (flags.isVariantSet(type.id, rp.getVariant()))
+                    continue;
+                var mark = dimData == null ? null
+                        : dimData.getMark(type.id, StructureDataConfig.keyOf(rp.blockX(), rp.blockZ()));
+                if (mark == null || mark.group().isEmpty())
+                    ungrouped++;
+            }
+        }
+        if (!flags.isStructureSet(StructureType.STRONGHOLD.id)) {
+            var strongholds = StructureCache.strongholds();
+            if (strongholds != null) {
+                for (var sh : strongholds) {
+                    if (sh == null)
+                        continue;
+                    var mark = dimData == null ? null
+                            : dimData.getMark(StructureType.STRONGHOLD.id,
+                                    StructureDataConfig.keyOf(sh.blockX(), sh.blockZ()));
+                    if (mark == null || mark.group().isEmpty())
+                        ungrouped++;
+                }
+            }
+        }
+        GROUP_COUNTS[0] = ungrouped;
     }
 
     private void updateStructFilter() {

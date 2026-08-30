@@ -30,6 +30,10 @@
   "xsm.menu.highlight": "在世界中高亮",
   "xsm.menu.unhighlight": "取消高亮",
 
+  "xsm.menu.group.done": "标记为: 完成",
+  "xsm.menu.group.hidden": "标记为: 隐藏",
+  "xsm.menu.group.special": "标记为: 特殊",
+  "xsm.menu.group_clear": "清除标记",
   "xsm.highlight.distance": "%s米",
 
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
@@ -72,6 +76,10 @@
   "xsm.structure.trial_chambers": "试炼密室",
   "xsm.structure.stronghold": "要塞",
 
+  "xsm.group.default": "未分组",
+  "xsm.group.done": "完成",
+  "xsm.group.hidden": "隐藏",
+  "xsm.group.special": "特殊",
   "xsm.structure.end_city.normal": "普通",
   "xsm.structure.end_city.ship": "带末地船",
   "xsm.structure.village.plains": "平原",
@@ -101,6 +109,9 @@
 
   "xsm.biome.unknown": "未知生物群系 (%d)",
 
+  "xsm.hover.visited": "已访问 (最近 %d 米)",
+  "xsm.hover.unvisited": "未访问",
+  "xsm.hover.group": "分组: %s",
   "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
   "xsm.chestLoot.extraInfo.pieceName": "构件: %s",
   "xsm.chestLoot.extraInfo.chestPos": "位置: %s",

@@ -89,7 +89,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 │   ├── cache/         # AGENTS.md: caches, sparse structures, strongholds, tile coords
 │   ├── mixin/         # mixins — table in client/AGENTS.md
 │   ├── render/        # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
-│   ├── structure/     # StructureType enum (26 types, config from C, 稀疏类型自带 prob)
+│   ├── structure/     # AGENTS.md: 结构运行时 — StructureType + 图标/交互/访问检测
 │   ├── biome/         # BiomeType (sprite index, loaded from biomes.ini)
 │   ├── gui/           # AGENTS.md: SeedMapPanel side panel, XsmIconButton
 │   └── accessor/      # SeedMapToggleAccessor interface

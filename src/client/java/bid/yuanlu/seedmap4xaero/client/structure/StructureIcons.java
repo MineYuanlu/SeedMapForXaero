@@ -4,6 +4,9 @@ import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureData;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
 
 /**
  * 结构图标的共享枚举 + 屏幕坐标几何。
@@ -66,6 +69,8 @@ public final class StructureIcons {
             return false;
         final var wc = ServerConfig.getActiveWorldConfig();
         final StructureBitFlagView flags = wc.getDisabledStructures();
+        // 隐藏组过滤: 每帧只解析一次标记表 (激活数据为 null 时零开销)
+        final var dimData = StructureDataConfig.activeDimData();
 
         for (var entry : StructureCache.REGIONS.entrySet()) {
             StructureType type = entry.getKey();
@@ -74,6 +79,8 @@ public final class StructureIcons {
                 if (!rp.loaded())
                     continue;
                 if (flags.isStructureSet(typeId) || flags.isVariantSet(typeId, rp.getVariant()))
+                    continue;
+                if (dimData != null && xsm$isGroupHidden(dimData, typeId, rp.blockX(), rp.blockZ()))
                     continue;
                 out.accept(type, rp.getVariant(), rp.blockX(), rp.blockZ(),
                         t.guiX(rp.blockX()), t.guiZ(rp.blockZ()));
@@ -86,11 +93,24 @@ public final class StructureIcons {
                 for (StrongholdPos sh : strongholds) {
                     if (sh == null)
                         continue;
+                    if (dimData != null && xsm$isGroupHidden(dimData,
+                            StructureType.STRONGHOLD.id, sh.blockX(), sh.blockZ()))
+                        continue;
                     out.accept(StructureType.STRONGHOLD, sh.getVariant(), sh.blockX(),
                             sh.blockZ(), t.guiX(sh.blockX()), t.guiZ(sh.blockZ()));
                 }
             }
         }
         return true;
+    }
+
+    /**
+     * 图标所属组是否被隐藏。无标记 = 未分组, 因此隐藏「未分组」会隐藏所有未标记结构。
+     */
+    private static boolean xsm$isGroupHidden(StructureData.DimData dimData,
+            int typeId, int blockX, int blockZ) {
+        final var mark = dimData.getMark(typeId, StructureDataConfig.keyOf(blockX, blockZ));
+        return StructureDataConfig.isGroupHidden(
+                mark == null ? StructureGroups.DEFAULT : mark.group());
     }
 }

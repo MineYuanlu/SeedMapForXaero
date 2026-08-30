@@ -30,6 +30,10 @@
   "xsm.menu.highlight": "Highlight in World",
   "xsm.menu.unhighlight": "Remove Highlight",
 
+  "xsm.menu.group.done": "Mark as Done",
+  "xsm.menu.group.hidden": "Mark as Hidden",
+  "xsm.menu.group.special": "Mark as Special",
+  "xsm.menu.group_clear": "Clear Mark",
   "xsm.highlight.distance": "%sm",
 
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
@@ -72,6 +76,10 @@
   "xsm.structure.trial_chambers": "Trial Chambers",
   "xsm.structure.stronghold": "Stronghold",
 
+  "xsm.group.default": "Ungrouped",
+  "xsm.group.done": "Done",
+  "xsm.group.hidden": "Hidden",
+  "xsm.group.special": "Special",
   "xsm.structure.end_city.normal": "Normal",
   "xsm.structure.end_city.ship": "with End Ship",
   "xsm.structure.village.plains": "Plains",
@@ -101,6 +109,9 @@
 
   "xsm.biome.unknown": "Unknown Biome (%d)",
 
+  "xsm.hover.visited": "Visited (within %dm)",
+  "xsm.hover.unvisited": "Not visited",
+  "xsm.hover.group": "Group: %s",
   "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
   "xsm.chestLoot.extraInfo.pieceName": "Piece: %s",
   "xsm.chestLoot.extraInfo.chestPos": "Position: %s",

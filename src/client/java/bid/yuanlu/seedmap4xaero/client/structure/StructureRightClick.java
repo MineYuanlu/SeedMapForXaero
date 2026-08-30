@@ -7,6 +7,9 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
+
 import xaero.map.gui.GuiMap;
 import xaero.map.gui.IRightClickableElement;
 import xaero.map.gui.dropdown.rightclick.RightClickOption;
@@ -95,6 +98,29 @@ public final class StructureRightClick implements IRightClickableElement {
                 HighlightedStructures.toggle(dimId, blockX, blockZ, type, variant);
             }
         });
+        // 分组标记: 当前组打 ✓ 前缀, 设默认组 = 清除记录
+        final long key = StructureDataConfig.keyOf(blockX, blockZ);
+        final var mark = StructureDataConfig.getMark(type, key);
+        final String curGroup = mark == null ? StructureGroups.DEFAULT : mark.group();
+        for (String group : StructureGroups.BUILTIN) {
+            final String labelKey = group.equals(StructureGroups.DEFAULT)
+                    ? "xsm.menu.group_clear"
+                    : "xsm.menu.group." + group;
+            final String prefix = group.equals(curGroup) ? "✔ " : "";
+            options.add(new RightClickOption(labelKey, options.size(), this) {
+                @Override
+                public String getDisplayName() {
+                    return prefix + I18n.get(this.getName());
+                }
+
+                    @Override
+                    public void onAction(Screen screen) {
+                        StructureDataConfig.setGroup(type, key,
+                                group.equals(StructureGroups.DEFAULT) ? null : group);
+                        StructureDataConfig.flush();
+                    }
+            });
+        }
         return options;
     }
 
