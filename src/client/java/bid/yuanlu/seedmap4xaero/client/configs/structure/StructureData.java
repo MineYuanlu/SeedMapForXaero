@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -24,6 +25,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  *
  * <pre>
  * hiddenGroups : [ String … ]          // 面板中关闭显示的组 (文件级, 与种子无关)
+ * userGroups   : [ UserGroup … ]       // 用户组 + 内置组颜色覆盖 (version 1+)
  * seeds : { seed → { mwId → DimData } } // 标记与种子强相关 (同一方块坐标换种子即另一结构)
  * DimData : { typeId → { key → StructureMark } }  // key = (blockX<<32)|blockZ, 结构为 2D 无 Y
  * </pre>
@@ -32,6 +34,18 @@ public class StructureData {
 
     private final Long2ObjectOpenHashMap<SeedData> seeds = new Long2ObjectOpenHashMap<>();
     private final ArrayList<String> hiddenGroups = new ArrayList<>();
+    /**
+     * 用户组表: 用户自建组 + 内置组的颜色覆盖条目。
+     * mark.group() 以组名字符串引用; 内置组无条目时用 {@link StructureGroups} 默认色。
+     */
+    private final ArrayList<UserGroup> userGroups = new ArrayList<>();
+
+    /** 用户组名上限。 */
+    public static final int MAX_GROUP_NAME = 32;
+
+    /** 组色条目: 用户组 (增删改查对象) 或内置组颜色覆盖。color 为 ARGB。 */
+    public record UserGroup(String name, int color) {
+    }
 
     final AtomicBoolean dirty = new AtomicBoolean(false);
 
@@ -94,6 +108,140 @@ public class StructureData {
                     return;
             }
             makeDirty();
+        }
+    }
+
+    // ─── 用户组 (三阶段) ────────────────────────────────────────
+
+    /** 用户组快照 (含内置组颜色覆盖条目)。 */
+    public List<UserGroup> userGroups() {
+        synchronized (userGroups) {
+            return List.copyOf(userGroups);
+        }
+    }
+
+    /** 组名是否可用: 非空白、≤{@link #MAX_GROUP_NAME}、不与内置组重名。 */
+    public static boolean validGroupName(String name) {
+        if (name == null)
+            return false;
+        String t = name.trim();
+        if (t.isEmpty() || t.length() > MAX_GROUP_NAME)
+            return false;
+        return !StructureGroups.isBuiltin(t);
+    }
+
+    /** 新建用户组; false = 名称非法或重名。 */
+    public boolean addGroup(String name, int color) {
+        if (!validGroupName(name))
+            return false;
+        String t = name.trim();
+        synchronized (userGroups) {
+            if (indexOfGroup(t) >= 0)
+                return false;
+            userGroups.add(new UserGroup(t, color));
+        }
+        makeDirty();
+        return true;
+    }
+
+    /**
+     * 设置任意组的颜色; 组无条目时创建 (内置组 = 颜色覆盖条目, 未知组拒绝)。
+     * false = 未知组或颜色无变化。
+     */
+    public boolean setGroupColor(String name, int color) {
+        synchronized (userGroups) {
+            int i = indexOfGroup(name);
+            if (i >= 0) {
+                if (userGroups.get(i).color() == color)
+                    return false;
+                userGroups.set(i, new UserGroup(name, color));
+            } else {
+                if (!StructureGroups.isBuiltin(name))
+                    return false;
+                userGroups.add(new UserGroup(name, color));
+            }
+        }
+        makeDirty();
+        return true;
+    }
+
+    /** 移除内置组的颜色覆盖 (恢复默认色); 用户组请用 {@link #removeGroup}。 */
+    public boolean clearGroupColor(String name) {
+        if (!StructureGroups.isBuiltin(name))
+            return false;
+        synchronized (userGroups) {
+            int i = indexOfGroup(name);
+            if (i < 0)
+                return false;
+            userGroups.remove(i);
+        }
+        makeDirty();
+        return true;
+    }
+
+    /** 重命名用户组: 同步重写全部标记引用 + 隐藏表; false = 名称非法/重名/内置组。 */
+    public boolean renameGroup(String from, String to) {
+        if (StructureGroups.isBuiltin(from) || !validGroupName(to))
+            return false;
+        String t = to.trim();
+        synchronized (userGroups) {
+            int i = indexOfGroup(from);
+            if (i < 0 || indexOfGroup(t) >= 0)
+                return false;
+            userGroups.set(i, new UserGroup(t, userGroups.get(i).color()));
+        }
+        rewriteGroupRefs(from, t);
+        synchronized (hiddenGroups) {
+            int hi = hiddenGroups.indexOf(from);
+            if (hi >= 0)
+                hiddenGroups.set(hi, t);
+        }
+        makeDirty();
+        return true;
+    }
+
+    /**
+     * 删除用户组: 引用它的标记保留访问记录、组清为默认
+     * (无访问的纯分组记录整条删除); 同时从隐藏表移除。false = 内置组或不存在。
+     */
+    public boolean removeGroup(String name) {
+        if (StructureGroups.isBuiltin(name))
+            return false;
+        synchronized (userGroups) {
+            int i = indexOfGroup(name);
+            if (i < 0)
+                return false;
+            userGroups.remove(i);
+        }
+        rewriteGroupRefs(name, StructureGroups.DEFAULT);
+        synchronized (hiddenGroups) {
+            hiddenGroups.remove(name);
+        }
+        makeDirty();
+        return true;
+    }
+
+    private void rewriteGroupRefs(String from, String to) {
+        synchronized (seeds) {
+            for (SeedData sd : seeds.values())
+                for (DimData dd : sd.dims.values())
+                    dd.reassignGroup(from, to);
+        }
+    }
+
+    /** 组名 → 条目下标 (须在 userGroups 锁内调用)。 */
+    private int indexOfGroup(String name) {
+        for (int i = 0; i < userGroups.size(); i++)
+            if (userGroups.get(i).name().equals(name))
+                return i;
+        return -1;
+    }
+
+    /** 用户组/覆盖条目的颜色; 无条目返回 0 (由调用方回退内置默认色)。 */
+    public int colorOf(String group) {
+        synchronized (userGroups) {
+            int i = indexOfGroup(group);
+            return i >= 0 ? userGroups.get(i).color() : 0;
         }
     }
 
@@ -243,6 +391,35 @@ public class StructureData {
             return n;
         }
 
+        /**
+         * 组引用重写 (组改名/删组): from→to。to 为默认组且记录未访问 → 整条删除;
+         * 否则仅改组名、保留访问距离。返回是否发生变更。
+         */
+        boolean reassignGroup(String from, String to) {
+            boolean changed = false;
+            synchronized (this) {
+                for (var m : types) {
+                    if (m == null)
+                        continue;
+                    var it = m.long2ObjectEntrySet().iterator();
+                    while (it.hasNext()) {
+                        var e = it.next();
+                        var mark = e.getValue();
+                        if (!mark.group().equals(from))
+                            continue;
+                        if (to.equals(StructureGroups.DEFAULT) && !mark.visited())
+                            it.remove();
+                        else
+                            e.setValue(new StructureMark(mark.minDist(), to));
+                        changed = true;
+                    }
+                }
+                if (changed)
+                    owner.makeDirty();
+            }
+            return changed;
+        }
+
         private void write(DataOutputStream out) throws IOException {
             out.writeInt(0);
             synchronized (this) {
@@ -326,12 +503,20 @@ public class StructureData {
 
     /** 写入数据体（不含 magic 信封）。 */
     private synchronized void write(DataOutputStream out) throws IOException {
-        out.writeInt(0);
+        out.writeInt(1);
 
         synchronized (hiddenGroups) {
             out.writeInt(hiddenGroups.size());
             for (String g : hiddenGroups)
                 out.writeUTF(g);
+        }
+
+        synchronized (userGroups) {
+            out.writeInt(userGroups.size());
+            for (UserGroup ug : userGroups) {
+                out.writeUTF(ug.name());
+                out.writeInt(ug.color());
+            }
         }
 
         synchronized (seeds) {
@@ -347,7 +532,7 @@ public class StructureData {
 
     private static StructureData read(DataInputStream in) throws IOException {
         final var version = in.readInt();
-        if (version != 0)
+        if (version != 0 && version != 1)
             throw new IOException("Unsupported StructureData version: " + version);
         final var data = new StructureData();
 
@@ -355,6 +540,14 @@ public class StructureData {
         synchronized (data.hiddenGroups) {
             for (int i = 0; i < hiddenCount; i++)
                 data.hiddenGroups.add(in.readUTF());
+        }
+
+        if (version >= 1) {
+            int groupCount = in.readInt();
+            synchronized (data.userGroups) {
+                for (int i = 0; i < groupCount; i++)
+                    data.userGroups.add(new UserGroup(in.readUTF(), in.readInt()));
+            }
         }
 
         int seedCount = in.readInt();

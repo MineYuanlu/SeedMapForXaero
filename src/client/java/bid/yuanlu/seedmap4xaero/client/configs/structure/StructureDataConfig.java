@@ -2,6 +2,7 @@ package bid.yuanlu.seedmap4xaero.client.configs.structure;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -203,6 +204,69 @@ public final class StructureDataConfig {
         var data = activeData;
         if (data != null)
             data.setGroupHidden(group, hidden);
+    }
+
+    // ─── 用户组管理 (三阶段; 全部立即落盘) ──────────────────────
+
+    /** 新建用户组; false = 名称非法/重名/未激活。 */
+    public synchronized static boolean addGroup(String name, int color) {
+        var data = activeData;
+        if (data == null || !data.addGroup(name, color))
+            return false;
+        flush();
+        return true;
+    }
+
+    /** 设置任意组颜色 (内置组 = 创建覆盖条目); false = 未知组/无变化/未激活。 */
+    public synchronized static boolean setGroupColor(String name, int color) {
+        var data = activeData;
+        if (data == null || !data.setGroupColor(name, color))
+            return false;
+        flush();
+        return true;
+    }
+
+    /**
+     * 拖拽中的实时颜色预览: 只改内存并标脏, 不落盘
+     * (松开时由调用方 {@link #flush()}, 避免拖拽期间逐帧写盘)。
+     */
+    public synchronized static void previewGroupColor(String name, int color) {
+        var data = activeData;
+        if (data != null)
+            data.setGroupColor(name, color);
+    }
+
+    /** 恢复内置组默认色 (移除覆盖条目); false = 非内置组/无覆盖/未激活。 */
+    public synchronized static boolean clearGroupColor(String name) {
+        var data = activeData;
+        if (data == null || !data.clearGroupColor(name))
+            return false;
+        flush();
+        return true;
+    }
+
+    /** 重命名用户组 (同步重写全部标记引用); false = 名称非法/重名/未激活。 */
+    public synchronized static boolean renameGroup(String from, String to) {
+        var data = activeData;
+        if (data == null || !data.renameGroup(from, to))
+            return false;
+        flush();
+        return true;
+    }
+
+    /** 删除用户组 (引用标记保留访问、组清默认); false = 内置组/不存在/未激活。 */
+    public synchronized static boolean removeGroup(String name) {
+        var data = activeData;
+        if (data == null || !data.removeGroup(name))
+            return false;
+        flush();
+        return true;
+    }
+
+    /** 用户组快照 (含内置组颜色覆盖); 未激活返回空。 */
+    public static List<StructureData.UserGroup> userGroups() {
+        var data = activeData;
+        return data != null ? data.userGroups() : List.of();
     }
 
     // ─── /sm4x 命令入口 ─────────────────────────────────────────

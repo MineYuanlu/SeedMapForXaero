@@ -160,7 +160,7 @@ public class StructureClickMixin {
 
         final double[] best = { iconHalf };
         final StructureRightClick[] found = { null };
-        StructureIcons.forEachVisible((type, variant, blockX, blockZ, guiX, guiZ) -> {
+        StructureIcons.forEachVisible((type, variant, blockX, blockZ, guiX, guiZ, mark) -> {
             final double dist = Math.max(Math.abs(scaledMouseX - guiX),
                     Math.abs(scaledMouseY - guiZ));
             if (dist < best[0]) {

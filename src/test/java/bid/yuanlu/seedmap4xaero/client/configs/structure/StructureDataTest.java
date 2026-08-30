@@ -136,6 +136,8 @@ class StructureDataTest {
                 StructureType.TREASURE.id, 400L, 2);
         data.setGroupHidden(StructureGroups.HIDDEN, true);
         data.setGroupHidden(StructureGroups.DEFAULT, true);
+        data.addGroup("mines", 0xFF00AAFF);
+        data.setGroupColor(StructureGroups.DONE, 0xFF22CC44);
         return data;
     }
 
@@ -164,6 +166,9 @@ class StructureDataTest {
         }
         for (String g : StructureGroups.BUILTIN)
             assertEquals(expect.isGroupHidden(g), actual.isGroupHidden(g));
+        assertEquals(expect.userGroups(), actual.userGroups());
+        for (String g : StructureGroups.BUILTIN)
+            assertEquals(expect.colorOf(g), actual.colorOf(g));
     }
 
     @Test
@@ -294,5 +299,122 @@ class StructureDataTest {
         data.getOrCreateSeed(-10L).getOrCreateDim("w");
         data.getOrCreateSeed(20L).getOrCreateDim("w");
         assertArrayEquals(new long[] { -10L, 20L, 30L }, data.seedsSnapshot());
+    }
+
+    // ─── 用户组 (三阶段) ────────────────────────────────────────
+
+    @Test
+    void userGroupCrudValidation() {
+        var data = new StructureData();
+        assertTrue(data.addGroup("mines", 0xFF00AAFF));
+        assertFalse(data.addGroup("mines", 0xFF000000)); // 重名
+        assertFalse(data.addGroup("  ", 0)); // 空白
+        assertFalse(data.addGroup(null, 0));
+        assertFalse(data.addGroup("x".repeat(StructureData.MAX_GROUP_NAME + 1), 0)); // 超长
+        assertFalse(data.addGroup(StructureGroups.DONE, 0)); // 内置重名
+        assertFalse(data.addGroup(StructureGroups.DEFAULT, 0));
+        assertEquals(1, data.userGroups().size());
+        assertEquals("mines", data.userGroups().get(0).name());
+        assertEquals(0xFF00AAFF, data.userGroups().get(0).color());
+    }
+
+    @Test
+    void setGroupColorOverridesBuiltin() {
+        var data = new StructureData();
+        assertEquals(StructureGroups.builtinColor(StructureGroups.DONE),
+                StructureGroups.colorOf(data, StructureGroups.DONE));
+        assertTrue(data.setGroupColor(StructureGroups.DONE, 0xFF123456));
+        assertEquals(0xFF123456, StructureGroups.colorOf(data, StructureGroups.DONE));
+        assertTrue(data.clearGroupColor(StructureGroups.DONE));
+        assertEquals(StructureGroups.builtinColor(StructureGroups.DONE),
+                StructureGroups.colorOf(data, StructureGroups.DONE));
+        // 未知组不能经 setGroupColor 创建; clear 仅内置组
+        assertFalse(data.setGroupColor("ghost", 0xFF000001));
+        assertFalse(data.clearGroupColor("ghost"));
+    }
+
+    @Test
+    void renameGroupRewritesAllRefs() {
+        var data = new StructureData();
+        assertTrue(data.addGroup("mines", 0xFF00AAFF));
+        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
+        dim.setGroup(StructureType.VILLAGE.id, 1L, "mines");
+        dim.markVisited(StructureType.MANSION.id, 2L, 6);
+        dim.setGroup(StructureType.MANSION.id, 2L, "mines");
+        data.getOrCreateSeed(2L).getOrCreateDim("nether")
+                .setGroup(StructureType.FORTRESS.id, 3L, "mines");
+        data.setGroupHidden("mines", true);
+
+        assertTrue(data.renameGroup("mines", "矿组"));
+        assertEquals(1, data.userGroups().size());
+        assertEquals("矿组", data.userGroups().get(0).name());
+        assertEquals(0xFF00AAFF, data.colorOf("矿组"));
+        assertEquals("矿组", dim.getMark(StructureType.VILLAGE.id, 1L).group());
+        assertEquals("矿组", dim.getMark(StructureType.MANSION.id, 2L).group());
+        assertEquals("矿组", data.getSeed(2L).getDim("nether")
+                .getMark(StructureType.FORTRESS.id, 3L).group());
+        assertTrue(data.isGroupHidden("矿组"));
+        assertFalse(data.isGroupHidden("mines"));
+        // 内置组不可改名; 目标重名/默认组名拒绝
+        assertFalse(data.renameGroup(StructureGroups.DONE, "x"));
+        assertFalse(data.renameGroup("矿组", StructureGroups.DONE));
+        assertFalse(data.renameGroup("ghost", "x"));
+    }
+
+    @Test
+    void removeGroupKeepsVisitClearsGroup() {
+        var data = new StructureData();
+        data.addGroup("mines", 0xFF00AAFF);
+        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
+        dim.setGroup(StructureType.VILLAGE.id, 1L, "mines"); // 纯分组 → 整条删
+        dim.markVisited(StructureType.MANSION.id, 2L, 6);
+        dim.setGroup(StructureType.MANSION.id, 2L, "mines"); // 访问+分组 → 保留访问
+        data.setGroupHidden("mines", true);
+
+        assertTrue(data.removeGroup("mines"));
+        assertNull(dim.getMark(StructureType.VILLAGE.id, 1L));
+        var kept = dim.getMark(StructureType.MANSION.id, 2L);
+        assertNotNull(kept);
+        assertTrue(kept.visited());
+        assertEquals(6, kept.minDist());
+        assertEquals(StructureGroups.DEFAULT, kept.group());
+        assertFalse(data.isGroupHidden("mines"));
+        assertTrue(data.userGroups().isEmpty());
+        assertFalse(data.removeGroup("mines")); // 幂等
+        assertFalse(data.removeGroup(StructureGroups.SPECIAL)); // 内置拒绝
+    }
+
+    @Test
+    void readsLegacyV0WithoutUserGroups() throws IOException {
+        // 手工构造 v0 帧: MAGIC + [ver=0, hiddenGroups, seeds] + MAGIC
+        var bos = new java.io.ByteArrayOutputStream();
+        var out = new java.io.DataOutputStream(bos);
+        out.write(Sm4xFile.MAGIC_WORD);
+        out.writeInt(0);
+        out.writeInt(1);
+        out.writeUTF(StructureGroups.HIDDEN);
+        out.writeInt(1); // seeds
+        out.writeLong(7L);
+        out.writeInt(1); // dims
+        out.writeUTF("w");
+        out.writeInt(0); // DimData version
+        out.writeInt(1); // typeCount
+        out.writeByte(StructureType.VILLAGE.id);
+        out.writeInt(1); // entries
+        out.writeLong(100L);
+        out.writeInt(4);
+        out.writeUTF(StructureGroups.DONE);
+        out.write(Sm4xFile.MAGIC_WORD);
+        out.flush();
+        Path file = tmp.resolve("legacy.sm4x");
+        Files.write(file, bos.toByteArray());
+
+        StructureData read = Sm4xFile.readFrame(file, StructureData.CODEC);
+        var mark = read.getSeed(7L).getDim("w").getMark(StructureType.VILLAGE.id, 100L);
+        assertNotNull(mark);
+        assertEquals(4, mark.minDist());
+        assertEquals(StructureGroups.DONE, mark.group());
+        assertTrue(read.userGroups().isEmpty());
+        assertTrue(read.isGroupHidden(StructureGroups.HIDDEN));
     }
 }

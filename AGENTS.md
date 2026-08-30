@@ -85,6 +85,7 @@ Folder-scoped docs (see the `AGENTS.md` in each tree — loaded automatically wh
 src/client/java/bid/yuanlu/seedmap4xaero/
 ├── client/            # mixin + render pipeline (client/AGENTS.md)
 │   ├── configs/       # AGENTS.md: config persistence & multiplayer
+│   ├── command/       # AGENTS.md: /sm4x 客户端命令（种子历史 list/remove）
 │   ├── nativeapi/     # Xsm.java (System.load + FFM wrappers), XsmNative.java (generated)
 │   ├── cache/         # AGENTS.md: caches, sparse structures, strongholds, tile coords
 │   ├── mixin/         # mixins — table in client/AGENTS.md

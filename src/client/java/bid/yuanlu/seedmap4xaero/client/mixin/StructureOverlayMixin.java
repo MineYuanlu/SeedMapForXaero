@@ -1,6 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.mixin;
 
 import org.joml.Matrix3x2f;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -13,6 +14,7 @@ import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureMark;
 import bid.yuanlu.seedmap4xaero.client.structure.ChestLootWidget;
 import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureIcons;
@@ -63,8 +65,13 @@ public class StructureOverlayMixin {
     @Unique
     private String xsm$hoverText;
 
+    /** hover 行: 文本 + ARGB 颜色 (分组行用组色, 其余白/灰)。 */
     @Unique
-    private final ArrayList<String> xsm$hoverLines = new ArrayList<>();
+    private record HoverLine(String text, int color) {
+    }
+
+    @Unique
+    private final ArrayList<HoverLine> xsm$hoverLines = new ArrayList<>();
 
     @Unique
     private float xsm$bestDist;
@@ -152,7 +159,9 @@ public class StructureOverlayMixin {
 
         final StructureIcons.Transform t = new StructureIcons.Transform(
                 cameraX, cameraZ, scale, invScale, guiW, guiH);
-        StructureIcons.forEachVisible((type, variant, blockX, blockZ, guiX, guiZ) -> {
+        // 组色解析: 每帧取一次文档 (遮罩 = 组色 blit, 仅覆盖图标非透明像素)
+        final var doc = StructureDataConfig.getActiveData();
+        StructureIcons.forEachVisible((type, variant, blockX, blockZ, guiX, guiZ, mark) -> {
             if (guiX < -iconHalf || guiX > guiW + iconHalf || guiZ < -iconHalf || guiZ > guiH + iconHalf)
                 return;
 
@@ -171,7 +180,7 @@ public class StructureOverlayMixin {
                 if (vk != null)
                     hover += " (" + I18n.get(vk) + ")";
                 xsm$hoverText = hover;
-                xsm$buildHoverLines(type, blockX, blockZ);
+                xsm$buildHoverLines(type, blockX, blockZ, mark);
             }
 
             final int idx = type.getSpriteIndex(variant);
@@ -181,10 +190,20 @@ public class StructureOverlayMixin {
             final Matrix3x2f pose = new Matrix3x2f(basePose)
                     .translate((float) guiX, (float) guiZ)
                     .scale(iconScale, iconScale);
-            final BlitRenderState blit = new BlitRenderState(RenderPipelines.GUI_TEXTURED, setup, pose,
-                    -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
-                    u0, u1, 0.0F, 1.0F, -1, null);
-            guiRenderState.addBlitToCurrentLayer(blit);
+            guiRenderState.addBlitToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED,
+                    setup, pose, -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
+                    u0, u1, 0.0F, 1.0F, -1, null));
+            // 组色遮罩: 同 UV 第二次 blit, 顶点色乘法混合 → 只染色非透明像素;
+            // alpha=0 (透明度 100%) 跳过
+            if (mark != null) {
+                final int tint = StructureGroups.colorOf(doc, mark.group());
+                if ((tint & 0xFF000000) != 0) {
+                    guiRenderState.addBlitToCurrentLayer(new BlitRenderState(
+                            RenderPipelines.GUI_TEXTURED, setup, pose,
+                            -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
+                            u0, u1, 0.0F, 1.0F, tint, null));
+                }
+            }
         }, t);
 
         xsm$renderLootWidget(guiGraphics, scaledMouseX, scaledMouseY, guiW, guiH);
@@ -196,34 +215,37 @@ public class StructureOverlayMixin {
         }
     }
 
-    /** 组装 hover 的多行内容: 标题 + 访问状态 + 分组。 */
+    /** 组装 hover 的多行内容: 标题 (白) + 访问状态 (灰) + 分组 (组色)。 */
     @Unique
-    private void xsm$buildHoverLines(StructureType type, int blockX, int blockZ) {
+    private void xsm$buildHoverLines(StructureType type, int blockX, int blockZ,
+            @Nullable StructureMark mark) {
         xsm$hoverLines.clear();
-        xsm$hoverLines.add(xsm$hoverText);
-        final var dimData = StructureDataConfig.activeDimData();
-        final var mark = dimData == null ? null
-                : dimData.getMark(type.id, StructureDataConfig.keyOf(blockX, blockZ));
-        xsm$hoverLines.add(I18n.get(mark != null && mark.visited()
+        xsm$hoverLines.add(new HoverLine(xsm$hoverText, 0xFFFFFFFF));
+        xsm$hoverLines.add(new HoverLine(I18n.get(mark != null && mark.visited()
                 ? "xsm.hover.visited" : "xsm.hover.unvisited",
-                mark == null ? 0 : mark.minDist()));
+                mark == null ? 0 : mark.minDist()), 0xFFA0A0A8));
         if (mark != null && !mark.group().isEmpty()) {
-            xsm$hoverLines.add(I18n.get("xsm.hover.group",
-                    I18n.get(StructureGroups.translationKey(mark.group()))));
+            final String g = mark.group();
+            final String name = StructureGroups.isBuiltin(g)
+                    ? I18n.get(StructureGroups.translationKey(g))
+                    : g; // 用户组显示原名
+            final int color = StructureGroups.colorOf(StructureDataConfig.getActiveData(), g);
+            xsm$hoverLines.add(new HoverLine(I18n.get("xsm.hover.group", name),
+                    color != 0 ? StructureGroups.opaque(color) : 0xFFA0A0A8));
         }
     }
 
     /**
      * 原版物品 tooltip 风格的多行悬浮框: 深色底 + 紫色 1px 边框,
-     * 首行白色 (标题), 其余行灰色 (详情)。
+     * 首行白色 (标题), 其余按行色 (灰/组色)。
      */
     @Unique
     private static void xsm$drawTooltip(GuiGraphicsExtractor g, Font font,
-            ArrayList<String> lines, int mouseX, int mouseY, double guiW, double guiH) {
+            ArrayList<HoverLine> lines, int mouseX, int mouseY, double guiW, double guiH) {
         final int PAD = 3;
         int textW = 0;
-        for (String line : lines)
-            textW = Math.max(textW, font.width(line));
+        for (HoverLine line : lines)
+            textW = Math.max(textW, font.width(line.text()));
         final int lineH = font.lineHeight + 1;
         final int boxW = textW + PAD * 2;
         final int boxH = lines.size() * lineH + PAD * 2 - 1;
@@ -244,8 +266,8 @@ public class StructureOverlayMixin {
         g.fill(x + boxW, y, x + boxW + 1, y + boxH, 0xFF2A007F);
 
         for (int i = 0; i < lines.size(); i++) {
-            g.text(font, lines.get(i), x + PAD, y + PAD + i * lineH,
-                    i == 0 ? 0xFFFFFFFF : 0xFFA0A0A8);
+            HoverLine line = lines.get(i);
+            g.text(font, line.text(), x + PAD, y + PAD + i * lineH, line.color());
         }
     }
 
