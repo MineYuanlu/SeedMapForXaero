@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
 import xaero.map.MapProcessor;

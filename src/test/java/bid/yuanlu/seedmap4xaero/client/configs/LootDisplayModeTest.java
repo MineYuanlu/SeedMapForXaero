@@ -1,4 +1,4 @@
-package bid.yuanlu.seedmap4xaero.client.configs;
+package bid.yuanlu.seedmap4xaero.client.configs.basic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

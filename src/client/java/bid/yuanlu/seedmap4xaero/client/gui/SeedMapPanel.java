@@ -7,8 +7,8 @@ import org.jetbrains.annotations.Nullable;
 
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
-import bid.yuanlu.seedmap4xaero.client.configs.LootDisplayMode;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
 import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;

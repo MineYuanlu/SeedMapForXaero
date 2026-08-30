@@ -7,7 +7,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 
 import net.minecraft.client.Minecraft;

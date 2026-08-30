@@ -3,7 +3,7 @@ package bid.yuanlu.seedmap4xaero.client.structure;
 import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 
 /**
  * 结构图标的共享枚举 + 屏幕坐标几何。

@@ -1,40 +1,10 @@
-# configs — persistence & multiplayer
+# configs — persistence framework & basic config
 
-## Seed resolution
+```
+configs/
+├── core/    # 通用 .sm4x 框架（类型无关，无 MC 依赖）— 见 core/AGENTS.md
+└── basic/   # server_config.sm4x 的数据与门面 — 见 basic/AGENTS.md
+```
 
-`ServerConfig.resolveSeed()` — singleplayer → `Minecraft.server.getWorldGenSettings().options().seed()` directly. Multiplayer → lookup by `mwId` in config.
-
-## Config storage
-
-Path: `gameDir/xaero/seed-map-for-xaero/<mainId>/server_config.sm4x`  
-`mainId` = Xaero world root (e.g. `Multiplayer_192.168.1.1`). Each multiplayer server gets its own file.
-
-Format: custom binary (`ConfigData.write`/`read`, magic word + version 0). **Not JSON.**
-
-## Activation flow
-
-- **World switch** → `WorldSwitchMixin` on `MapProcessor.checkForWorldUpdate` detects `getCurrentWorldId()` change → `ServerConfig.activate(mp)` → saves old, loads new config, re-applies biome color table.
-- **GuiMap init** → `SeedMapMixin.xsm$onGuiMapInit` also calls `ServerConfig.activate`.
-- **Switching GUI** → `GuiMapSwitchingMixin` adds seed `EditBox` + confirm button, persists via `cfg.getOrCreateWorld(mwId).seed(seed)`.
-- **Disconnect** → `XaeroSeedMapClient` registers `DISCONNECT` handler clears caches + deactivates.
-
-## Persisted state
-
-- Seed per (mainId, mwId) — `WorldConfig`
-- World-gen MC version per (mainId, mwId) — `WorldConfig.mcVersion` (nullable String, null = follow client; ViaVersion/ViaFabric cross-version scenario; applied each frame in `SeedMapMixin.tickWorldInfo` via `Xsm.applyGameVersion`)
-- Color theme name — `ConfigData.theme` (restored via `BiomeColorTable.resolveProvider()`)
-- Toggle invisible biomes — `ConfigData.invisibleBiomes` (`SeedMapToggleMixin` reads/writes config)
-- Toggle invisible structures — `ConfigData.invisibleStructures` (separate from biomes)
-- Structure icon size — `ConfigData.structureIconSize` (float 0.05~2.0, persisted)
-- Seed history — `ConfigData.allSeeds` (capped 1000, MRU-ordered)
-- Enabled structure types — `WorldConfig.enabledStructures` (`BitSet`, persisted per mwId)
-- Disabled biome types — `WorldConfig.disabledBiomes` (`BitSet`, persisted per mwId)
-- Two-level structure filter — `WorldConfig.disabledStructure` (`StructureBitFlag`, persisted per mwId; bit0 = 整类禁用, bit1+ = 变种禁用, 默认全 0 = 全部可见). 变种过滤仅作用于渲染, 生成/缓存不变. 可见性 = `!isStructureSet(id) && !isVariantSet(id, variant)`, 由调用方组合. `WorldConfig` format **version 2**; version 1 records load as-is (no `mcVersion` tail → null = follow client); version 0 configs migrate by flipping legacy `enabledStructures` into `disabledStructure` (variant bits stay 0 = all visible). Record v2 is prefix-compatible with v1 (only appends the nullable UTF `mcVersion`).
-
-## Atomic save
-
-`ServerConfig.save()`: write `.tmp` → rename existing → `.old` → `ATOMIC_MOVE` `.tmp` → target. Load falls back to `.old` if main corrupt.
-
-## Thread safety
-
-`ServerConfig.activate`/`deactivate`/`save` are `synchronized`. `activeMainId`, `activeMapProcessor`, `activeConfig` are `volatile`. `ConfigData` uses `ConcurrentHashMap` + `synchronized` blocks for seed history.
+后续新增配置文件（如 structures.sm4x）自建新包（`configs/<name>/`），
+实现一个 `Sm4xCodec` + 调 `Sm4xFile` 即可，各包独立。

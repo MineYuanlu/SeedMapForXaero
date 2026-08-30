@@ -3,7 +3,7 @@ package bid.yuanlu.seedmap4xaero.client.render;
 import java.util.ArrayList;
 import java.util.List;
 
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

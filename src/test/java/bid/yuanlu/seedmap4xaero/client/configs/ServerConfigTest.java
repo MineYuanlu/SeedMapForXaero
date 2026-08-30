@@ -1,4 +1,4 @@
-package bid.yuanlu.seedmap4xaero.client.configs;
+package bid.yuanlu.seedmap4xaero.client.configs.basic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -19,6 +19,7 @@ import java.util.BitSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 
@@ -54,8 +55,8 @@ class ServerConfigTest {
         Path file = tmp.resolve("sub/server_config.sm4x");
         Files.createDirectories(file.getParent());
 
-        cfg.write(file);
-        ConfigData read = ConfigData.read(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
 
         assertEquals("Vanilla", read.getTheme());
         assertTrue(read.isInvisibleBiomes());
@@ -68,8 +69,8 @@ class ServerConfigTest {
     void emptyConfigRoundTrip() throws IOException {
         ConfigData cfg = new ConfigData();
         Path file = tmp.resolve("empty.sm4x");
-        cfg.write(file);
-        ConfigData read = ConfigData.read(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
         assertNull(read.getTheme());
         assertFalse(read.isInvisibleBiomes());
         assertEquals(1.0f, read.getStructureIconSize());
@@ -80,17 +81,17 @@ class ServerConfigTest {
     void corruptMagicWordRejected() throws IOException {
         Path file = tmp.resolve("bad.sm4x");
         Files.writeString(file, "THIS IS NOT A CONFIG FILE");
-        org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> ConfigData.read(file));
+        org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> Sm4xFile.readFrame(file, ConfigData.CODEC));
     }
 
     @Test
     void truncatedFileRejected() throws IOException {
         ConfigData cfg = sample(new ConfigData());
         Path file = tmp.resolve("trunc.sm4x");
-        cfg.write(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
         byte[] all = Files.readAllBytes(file);
         Files.write(file, java.util.Arrays.copyOf(all, all.length / 2));
-        org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> ConfigData.read(file));
+        org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> Sm4xFile.readFrame(file, ConfigData.CODEC));
     }
 
     @Test
@@ -170,8 +171,8 @@ class ServerConfigTest {
         wc.setVariantEnabled(StructureType.VILLAGE.id, 8, false); // 僵尸平原村禁用
 
         Path file = tmp.resolve("bits.sm4x");
-        cfg.write(file);
-        ConfigData read = ConfigData.read(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
 
         var flags = read.getWorld("w").getDisabledStructures();
         assertFalse(flags.isStructureSet(StructureType.VILLAGE.id), "village visible");
@@ -259,15 +260,15 @@ class ServerConfigTest {
         ConfigData cfg = new ConfigData();
         cfg.getOrCreateWorld("w").mcVersion("1.21.9");
         Path file = tmp.resolve("mcv.sm4x");
-        cfg.write(file);
-        assertEquals("1.21.9", ConfigData.read(file).getWorld("w").mcVersion());
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        assertEquals("1.21.9", Sm4xFile.readFrame(file, ConfigData.CODEC).getWorld("w").mcVersion());
 
         // null（跟随客户端）也要能往返
         ConfigData auto = new ConfigData();
         auto.getOrCreateWorld("w").mcVersion(null);
         Path file2 = tmp.resolve("mcv_auto.sm4x");
-        auto.write(file2);
-        assertNull(ConfigData.read(file2).getWorld("w").mcVersion());
+        Sm4xFile.writeFrame(file2, auto, ConfigData.CODEC);
+        assertNull(Sm4xFile.readFrame(file2, ConfigData.CODEC).getWorld("w").mcVersion());
     }
 
     @Test
@@ -308,7 +309,7 @@ class ServerConfigTest {
         ConfigData loaded = ServerConfig.loadConfig(tmp, "srvD");
         assertEquals(2L, loaded.getWorld("w").seed());
         // 老文件应为第一次的内容
-        ConfigData old = ConfigData.read(tmp.resolve("srvD/server_config.sm4x.old"));
+        ConfigData old = Sm4xFile.readFrame(tmp.resolve("srvD/server_config.sm4x.old"), ConfigData.CODEC);
         assertEquals(1L, old.getWorld("w").seed());
     }
 
@@ -317,8 +318,8 @@ class ServerConfigTest {
         ConfigData cfg = new ConfigData();
         cfg.setLootPreview(true);
         Path file = tmp.resolve("loot.sm4x");
-        cfg.write(file);
-        ConfigData read = ConfigData.read(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
         assertTrue(read.isLootPreview());
     }
 
@@ -345,7 +346,7 @@ class ServerConfigTest {
         Path file = tmp.resolve("oldv0.sm4x");
         Files.write(file, bos.toByteArray());
 
-        ConfigData read = ConfigData.read(file);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
         assertFalse(read.isLootPreview(), "old v0 file without lootPreview byte defaults false");
         assertEquals(LootDisplayMode.QUICK_PEEK, read.getLootDisplayMode());
     }
@@ -371,7 +372,7 @@ class ServerConfigTest {
             Path file = tmp.resolve("v1_mode_" + mode.ordinal() + ".sm4x");
             Files.write(file, bos.toByteArray());
 
-            ConfigData read = ConfigData.read(file);
+            ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
             assertEquals(mode, read.getLootDisplayMode(), "v1 file should restore mode");
             assertTrue(read.isLootPreview(), "v1 file should restore lootPreview");
         }
@@ -384,7 +385,7 @@ class ServerConfigTest {
         cfg.setLootPreview(true);
         cfg.setLootDisplayMode(LootDisplayMode.TILED_DETAIL);
         Path file = tmp.resolve("v1write.sm4x");
-        cfg.write(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
 
         byte[] bytes = Files.readAllBytes(file);
         String header = new String(bytes, StandardCharsets.UTF_8);
@@ -394,7 +395,7 @@ class ServerConfigTest {
                 | ((bytes[15] & 0xFF) << 8) | (bytes[16] & 0xFF);
         assertEquals(1, version, "cfg.write should emit version 1");
 
-        ConfigData read = ConfigData.read(file);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
         assertEquals(LootDisplayMode.TILED_DETAIL, read.getLootDisplayMode());
         assertTrue(read.isLootPreview());
     }
@@ -406,8 +407,8 @@ class ServerConfigTest {
             cfg.setLootPreview(true);
             cfg.setLootDisplayMode(mode);
             Path file = tmp.resolve("mode_" + mode.ordinal() + ".sm4x");
-            cfg.write(file);
-            ConfigData read = ConfigData.read(file);
+            Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+            ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
             assertEquals(mode, read.getLootDisplayMode());
             assertTrue(read.isLootPreview(), "lootPreview should survive round trip");
         }

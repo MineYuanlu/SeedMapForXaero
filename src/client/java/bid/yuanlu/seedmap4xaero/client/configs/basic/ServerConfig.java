@@ -1,4 +1,4 @@
-package bid.yuanlu.seedmap4xaero.client.configs;
+package bid.yuanlu.seedmap4xaero.client.configs.basic;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.Level;
@@ -7,36 +7,36 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
+import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile.Sm4xPaths;
 import bid.yuanlu.seedmap4xaero.client.mixin.WorldSwitchMixin;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 
 import xaero.map.MapProcessor;
 
 /**
- * 种子地图持久化配置的门面类。
+ * basic 配置（{@code server_config.sm4x}）的门面类。
  * <p>
  * 职责：
  * <ul>
  * <li>维护当前活动的 {@code mainId}（即 XWM 的世界根标识，如 {@code Multiplayer_192.168.1.1}）
  * <li>懒加载对应的 {@link ConfigData} 并缓存
- * <li>提供 {@link #resolveSeed} / {@link #setSeed} 等方法
- * <li>原子写入
- * {@code gameDir/xaero/seed-map-for-xaero/&lt;mainId&gt;/server_config.json}
+ * <li>提供 {@link #resolveSeed} 等方法与各配置项的便捷读写
+ * <li>通过 {@link Sm4xFile} 原子写入
+ * {@code gameDir/xaero/seed-map-for-xaero/&lt;mainId&gt;/server_config.sm4x}
  * </ul>
  * <p>
- * 所有方法设计为在 Minecraft 渲染线程调用，暂无需额外同步。
+ * 磁盘 IO（magic/版本帧、.tmp/.old 轮替、损坏回退）在 {@code core.Sm4xFile}；
+ * 本类只保留 basic 文档的文件名与生命周期。新增其他 .sm4x 配置文件时新建自己的包，
+ * 复用 {@code Sm4xCodec} + {@code Sm4xFile} 即可。
  */
 public final class ServerConfig {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/ServerConfig");
     private static final String CONFIG_FILE = "server_config.sm4x";
-    private static final String TMP_SUFFIX = ".tmp";
-    private static final String OLD_SUFFIX = ".old";
 
     private static volatile @Nullable String activeMainId;
     private static volatile @Nullable MapProcessor activeMapProcessor;
@@ -52,20 +52,8 @@ public final class ServerConfig {
                 .resolve("seed-map-for-xaero");
     }
 
-    private static Path worldDir(Path base, String mainId) {
-        return base.resolve(mainId);
-    }
-
-    private static Path targetFile(Path base, String mainId) {
-        return worldDir(base, mainId).resolve(CONFIG_FILE);
-    }
-
-    private static Path tmpFile(Path base, String mainId) {
-        return worldDir(base, mainId).resolve(CONFIG_FILE + TMP_SUFFIX);
-    }
-
-    private static Path oldFile(Path base, String mainId) {
-        return worldDir(base, mainId).resolve(CONFIG_FILE + OLD_SUFFIX);
+    private static Sm4xPaths paths(Path base, String mainId) {
+        return Sm4xFile.pathsFor(base, mainId, CONFIG_FILE);
     }
 
     public static @Nullable String activeMainId() {
@@ -217,14 +205,7 @@ public final class ServerConfig {
     }
 
     /**
-     * 立即将当前配置原子写入磁盘。
-     * <p>
-     * 流程：
-     * <ol>
-     * <li>将 {@code cached} 序列化写入 {@code server_config.json.tmp}
-     * <li>若 {@code server_config.json} 存在，移动到 {@code server_config.json.old}
-     * <li>将 {@code .tmp} 移动到 {@code .json}（尽力原子操作）
-     * </ol>
+     * 立即将当前配置原子写入磁盘（仅脏时）。流程见 {@link Sm4xFile#save}。
      */
     public synchronized static void save() {
         final var mainId = activeMainId;
@@ -240,34 +221,10 @@ public final class ServerConfig {
     /**
      * 将 {@code cfg} 原子写入 {@code base/<mainId>/server_config.sm4x}。
      * base 参数独立注入以便单元测试 (不依赖 Minecraft 客户端)。
-     * <p>
-     * 流程：
-     * <ol>
-     * <li>将 {@code cfg} 序列化写入 {@code server_config.sm4x.tmp}
-     * <li>若主文件存在，移动到 {@code .old}
-     * <li>将 {@code .tmp} 移动到主文件（尽力原子操作）
-     * </ol>
      */
     static void saveConfig(Path base, String mainId, ConfigData cfg) {
         try {
-            var dir = worldDir(base, mainId);
-            Files.createDirectories(dir);
-
-            var target = targetFile(base, mainId);
-            var tmp = tmpFile(base, mainId);
-            var old = oldFile(base, mainId);
-
-            // 1. 写入临时文件
-            cfg.write(tmp);
-
-            // 2. 轮替旧文件
-            if (Files.exists(target)) {
-                Files.move(target, old, StandardCopyOption.REPLACE_EXISTING);
-            }
-
-            // 3. 提交
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
-
+            Sm4xFile.save(paths(base, mainId), cfg, ConfigData.CODEC);
         } catch (IOException e) {
             LOGGER.error("Failed to save config for {}", mainId, e);
         }
@@ -283,30 +240,10 @@ public final class ServerConfig {
     }
 
     /**
-     * 从 {@code base/&lt;mainId&gt;} 加载配置: 主文件 → 损坏则删主文件回退 {@code .old} →
+     * 从 {@code base/&lt;mainId>} 加载配置: 主文件 → 损坏则删主文件回退 {@code .old} →
      * 损坏或不存在则新建。base 参数独立注入以便单元测试。
      */
     static ConfigData loadConfig(Path base, String mainId) {
-        final var target = targetFile(base, mainId);
-        if (Files.exists(target)) {
-            try {
-                return ConfigData.read(target);
-            } catch (IOException e) {
-                LOGGER.error("Failed to load config for {}, try load old config instead", mainId, e);
-                try {
-                    Files.deleteIfExists(target);
-                } catch (Throwable ignored) {
-                }
-            }
-        }
-        final var old = oldFile(base, mainId);
-        if (Files.exists(old)) {
-            try {
-                return ConfigData.read(old);
-            } catch (IOException e) {
-                LOGGER.error("Failed to load old config for {}, create new config instead", mainId, e);
-            }
-        }
-        return new ConfigData();
+        return Sm4xFile.load(paths(base, mainId), new ConfigData(), ConfigData.CODEC);
     }
 }
