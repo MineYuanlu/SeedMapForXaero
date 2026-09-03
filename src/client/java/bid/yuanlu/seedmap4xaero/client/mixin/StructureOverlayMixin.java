@@ -161,6 +161,8 @@ public class StructureOverlayMixin {
                 cameraX, cameraZ, scale, invScale, guiW, guiH);
         // 组色解析: 每帧取一次文档 (遮罩 = 组色 blit, 仅覆盖图标非透明像素)
         final var doc = StructureDataConfig.getActiveData();
+        // 未分组色预解析一次 (mark==null / 组为空串共用; 避免热循环内逐图标扫 userGroups)
+        final int defaultTint = StructureGroups.colorOf(doc, StructureGroups.DEFAULT);
         StructureIcons.forEachVisible((type, variant, blockX, blockZ, guiX, guiZ, mark) -> {
             if (guiX < -iconHalf || guiX > guiW + iconHalf || guiZ < -iconHalf || guiZ > guiH + iconHalf)
                 return;
@@ -194,15 +196,15 @@ public class StructureOverlayMixin {
                     setup, pose, -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
                     u0, u1, 0.0F, 1.0F, -1, null));
             // 组色遮罩: 同 UV 第二次 blit, 顶点色乘法混合 → 只染色非透明像素;
-            // alpha=0 (透明度 100%) 跳过
-            if (mark != null) {
-                final int tint = StructureGroups.colorOf(doc, mark.group());
-                if ((tint & 0xFF000000) != 0) {
-                    guiRenderState.addBlitToCurrentLayer(new BlitRenderState(
-                            RenderPipelines.GUI_TEXTURED, setup, pose,
-                            -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
-                            u0, u1, 0.0F, 1.0F, tint, null));
-                }
+            // alpha=0 (透明度 100%) 跳过。无 mark 记录 (= 未分组) 也按未分组组色解析,
+            // 与 forEachVisible 的隐藏过滤把 mark==null 归为 DEFAULT 一致。
+            final int tint = (mark == null || mark.group().isEmpty())
+                    ? defaultTint : StructureGroups.colorOf(doc, mark.group());
+            if ((tint & 0xFF000000) != 0) {
+                guiRenderState.addBlitToCurrentLayer(new BlitRenderState(
+                        RenderPipelines.GUI_TEXTURED, setup, pose,
+                        -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
+                        u0, u1, 0.0F, 1.0F, tint, null));
             }
         }, t);
 

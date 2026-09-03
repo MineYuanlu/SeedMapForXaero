@@ -228,7 +228,8 @@ public final class StructureDataConfig {
 
     /**
      * 拖拽中的实时颜色预览: 只改内存并标脏, 不落盘
-     * (松开时由调用方 {@link #flush()}, 避免拖拽期间逐帧写盘)。
+     * (由调用方在编辑器 {@code 完成} 提交或离开编辑器时 {@link #flush()},
+     * 避免拖拽期间逐帧写盘)。
      */
     public synchronized static void previewGroupColor(String name, int color) {
         var data = activeData;

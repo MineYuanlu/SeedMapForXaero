@@ -17,8 +17,8 @@
 
 ## 组色渲染（三阶段）
 
-- 图标遮罩（`StructureOverlayMixin`）：组色 ≠ 0 且 alpha ≠ 0 时，在原图标 blit 后追加同 pose/UV 的第二个 `BlitRenderState`，顶点色乘法混合 → 只染色非透明像素；alpha 即遮罩不透明度（透明度滑条 0=纯色剪影, 100=无遮罩）。
-- hover tooltip 分组行：文字色 = `StructureGroups.opaque(组色)`（无色回退灰），用户组显示原名（不走翻译 key）。
+- 图标遮罩（`StructureOverlayMixin`）：组色 ≠ 0 且 alpha ≠ 0 时，在原图标 blit 后追加同 pose/UV 的第二个 `BlitRenderState`，顶点色乘法混合 → 只染色非透明像素；alpha 即遮罩不透明度（透明度滑条 0=纯色剪影, 100=无遮罩）。**无 mark 记录（=未分组）的图标按 DEFAULT 组解析组色**——与 `StructureIcons.forEachVisible` 把 `mark==null` 归为 DEFAULT 的隐藏过滤一致；未分组色覆盖即可罩住所有未分组图标（含未访问无记录者）。
+- hover tooltip 分组行：文字色 = `StructureGroups.opaque(组色)`（无色回退灰），用户组显示原名（不走翻译 key）。未分组图标不补 tooltip 分组行。
 
 ## 消费方
 

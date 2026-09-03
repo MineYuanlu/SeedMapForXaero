@@ -11,7 +11,7 @@
 - `StructureDataConfig` — 门面：activate/deactivate/save + 脏标志 CAS；磁盘 IO 全部走 `core/Sm4xFile`（含 `saveLoadForTest`/`targetPathForTest` 单测辅助）。
   便捷查询 `getMark`/`markVisited`/`setGroup` 基于当前激活的 seed+mwId。
   `flush()` — 用户设置分组等显式操作后立即落盘，跳过 `.old` 轮替（右键菜单分组项调用），`.old` 始终保留上次世界切换时的完整备份。
-  `previewGroupColor()` — 组颜色拖拽实时预览：只改内存标脏不落盘，松开时由调用方 `flush()`，避免拖拽逐帧写盘。
+  `previewGroupColor()` — 组颜色拖拽实时预览：只改内存标脏不落盘，由调用方在编辑器 `完成` 提交或离开编辑器（收起/切换组）时 `flush()`，避免拖拽逐帧写盘。
   用户组管理 `addGroup`/`setGroupColor`/`clearGroupColor`/`renameGroup`/`removeGroup`/`userGroups()` — 操作成功即 `flush()`。
   命令入口 `removeSeedForCommand(seed)` — 当前使用中的种子返回 -1 拒绝；否则删除 + flush。
 - `StructureData` — 数据体 + `CODEC`（version 1，读兼容 version 0）：`hiddenGroups`（文件级组可见性） + `userGroups`（用户组 + 内置组颜色覆盖条目，`UserGroup(name, color)`） + `seeds: { seed → SeedData → DimData → { key → StructureMark } }`。
@@ -22,6 +22,7 @@
 - `StructureGroups` — 内置组字符串常量（默认/完成/隐藏/特殊）+ 组色解析；纯 Java（无 MC 依赖，可 JVM 单测）。
   内置默认色 alpha=0（默认无遮罩，仅文字/色块着色）；`colorOf(doc, group)`：文档覆盖条目优先 → 内置默认色 → 0（无色）。
   color 的 alpha 通道即图标遮罩不透明度（0=无遮罩, FF=纯色剪影）；文字用途经 `opaque()` 强制不透明。
+  面板允许为内置组（含**未分组 DEFAULT 空串**）调色：覆盖条目经 `setGroupColor("", c)` 写入；DEFAULT 覆盖色同时罩住无 mark 记录的未分组图标（见 client/structure AGENTS）。
 
 ## 结构 key
 

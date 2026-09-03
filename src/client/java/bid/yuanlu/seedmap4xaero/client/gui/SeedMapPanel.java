@@ -91,10 +91,10 @@ public class SeedMapPanel {
     /** 颜色滑条轨道起点 (标签固定宽)。 */
     private static final int COLOR_TRACK_X0 = PADDING + 34;
 
-    /** 新建组的轮转默认色 (alpha=0: 默认无遮罩, 仅文字/色块着色)。 */
+    /** 新建组的轮转默认色 (alpha=0x80: 半透明遮罩, 编辑器预览/地图均可见)。 */
     private static final int[] NEW_GROUP_PALETTE = {
-            0x00FF5555, 0x00FFAA00, 0x00FFFF55, 0x0055FF55,
-            0x0000FFAA, 0x0000AAFF, 0x00AA55FF, 0x00FF55FF };
+            0x80FF5555, 0x80FFAA00, 0x80FFFF55, 0x8055FF55,
+            0x8000FFAA, 0x8000AAFF, 0x80AA55FF, 0x80FF55FF };
     private static int newGroupColorIdx;
 
     /** 结构区激活 Tab: 0=类型 1=分组 2=图标 (会话级)。 */
@@ -105,8 +105,10 @@ public class SeedMapPanel {
     private static boolean deleteArmed;
     /** 编辑器颜色状态: h/s/v + 透明度 (0=纯色剪影, 1=无遮罩), 均 [0,1]。 */
     private static final float[] editorHSV = new float[4];
-    /** 拖拽中的颜色滑条 id 1..4; -1 = 无 (松开时 flush)。 */
+    /** 拖拽中的颜色滑条 id 1..4; -1 = 无 (松开仅结束拖拽; 落盘在 完成 提交或离开编辑器时)。 */
     private static int colorSliderDrag = -1;
+    /** 本次编辑会话颜色已改动且未落盘 (点亮 完成; 提交/离开编辑器时清除)。 */
+    private static boolean editorColorDirty;
 
     // slider
     private float sliderValue = 1.0f;
@@ -214,8 +216,7 @@ public class SeedMapPanel {
             groupEditField.setCanLoseFocus(true);
             groupEditField.setVisible(false);
             groupEditField.setResponder(s -> {
-                String t = s.trim();
-                groupEditField.setTextColor(t.isEmpty() || StructureData.validGroupName(t)
+                groupEditField.setTextColor(renameTargetNameOk(s, editorGroup)
                         ? 0xFFFFFFFF : 0xFFFF5555);
             });
             if (editorGroup != null)
@@ -558,8 +559,8 @@ public class SeedMapPanel {
             renderCheckbox(g, PADDING, y + (ITEM_H - 9) / 2, shown, hoverRow);
             int color = StructureGroups.colorOf(sdata, group);
             int textX = PADDING + 12;
-            if (!group.isEmpty()) {
-                // 色块 (显示用强制不透明)
+            if (!group.isEmpty() || color != 0) {
+                // 色块 (显示用强制不透明; 未分组有覆盖色时同样展示)
                 g.fill(textX, y + 1, textX + 9, y + 10, 0xFF888888);
                 g.fill(textX + 1, y + 2, textX + 8, y + 9, StructureGroups.opaque(color));
                 textX += 12;
@@ -627,12 +628,16 @@ public class SeedMapPanel {
             g.fill(x0, y, x0 + rw, y + ITEM_H, hov ? 0xFF666666 : 0xFF333333);
             g.text(font, resetLabel, x0 + 4, y + (ITEM_H - font.lineHeight) / 2, 0xFFFFFFFF);
         }
+        boolean doneEnabled = canCommitRename(group) || editorColorDirty;
         String doneLabel = I18n.get("xsm.gui.panel.group_done");
         int doneW = font.width(doneLabel) + 8;
         int doneX = PANEL_WIDTH - PADDING - doneW;
-        boolean hovDone = my >= y && my <= y + ITEM_H && mx >= doneX && mx <= doneX + doneW;
-        g.fill(doneX, y, doneX + doneW, y + ITEM_H, hovDone ? 0xFF666666 : 0xFF333333);
-        g.text(font, doneLabel, doneX + 4, y + (ITEM_H - font.lineHeight) / 2, 0xFFFFFFFF);
+        boolean hovDone = doneEnabled && my >= y && my <= y + ITEM_H
+                && mx >= doneX && mx <= doneX + doneW;
+        g.fill(doneX, y, doneX + doneW, y + ITEM_H,
+                !doneEnabled ? 0xFF262626 : hovDone ? 0xFF666666 : 0xFF333333);
+        g.text(font, doneLabel, doneX + 4, y + (ITEM_H - font.lineHeight) / 2,
+                doneEnabled ? 0xFFFFFFFF : 0xFF888888);
         return y + ITEM_H + 2;
     }
 
@@ -658,8 +663,11 @@ public class SeedMapPanel {
         return (a << 24) | (java.awt.Color.HSBtoRGB(editorHSV[0], editorHSV[1], editorHSV[2]) & 0xFFFFFF);
     }
 
-    /** 由组的当前颜色同步编辑器 HSV 状态并展开。 */
+    /** 由组的当前颜色同步编辑器 HSV 状态并展开 (先落盘上一会话未保存的颜色)。 */
     private void openGroupEditor(String group) {
+        if (editorColorDirty)
+            StructureDataConfig.flush();
+        editorColorDirty = false;
         editorGroup = group;
         deleteArmed = false;
         int argb = StructureGroups.colorOf(StructureDataConfig.getActiveData(), group);
@@ -698,6 +706,7 @@ public class SeedMapPanel {
         float t = (float) (mx - COLOR_TRACK_X0) / (trackX1 - COLOR_TRACK_X0 - 6);
         editorHSV[colorSliderDrag - 1] = Math.max(0, Math.min(1, t));
         StructureDataConfig.previewGroupColor(editorGroup, currentEditorArgb());
+        editorColorDirty = true;
     }
 
     private static float[] rgbToHsv(int argb) {
@@ -932,13 +941,23 @@ public class SeedMapPanel {
             String group = names.get(i);
             if (my >= y && my < y + ITEM_H) {
                 deleteArmed = false;
+                colorSliderDrag = -1;
                 if (mx >= PADDING && mx <= PADDING + 9) {
                     StructureDataConfig.setGroupHidden(group,
                             !StructureDataConfig.isGroupHidden(group));
                     return true;
                 }
-                if (!group.isEmpty() && mx >= PADDING + 12) {
-                    openGroupEditor(group);
+                if (mx >= PADDING + 12) {
+                    // 再点当前展开的组行 = 收起; 否则展开/搬移 (含未分组)
+                    if (group.equals(editorGroup)) {
+                        if (editorColorDirty) {
+                            editorColorDirty = false;
+                            StructureDataConfig.flush();
+                        }
+                        editorGroup = null;
+                    } else
+                        openGroupEditor(group);
+                    groupCountCooldown = 0;
                 }
                 return true;
             }
@@ -990,6 +1009,7 @@ public class SeedMapPanel {
                         deleteArmed = true;
                     } else if (StructureDataConfig.removeGroup(group)) {
                         editorGroup = null;
+                        editorColorDirty = false; // removeGroup 已 flush
                     }
                     return true;
                 }
@@ -1011,12 +1031,41 @@ public class SeedMapPanel {
             int doneX = PANEL_WIDTH - PADDING - doneW;
             if (mx >= doneX && mx <= doneX + doneW) {
                 deleteArmed = false;
-                commitGroupRename(group);
+                if (canCommitRename(group)) {
+                    // 改名内部已 flush (含颜色); openGroupEditor 会清 dirty
+                    commitGroupRename(group);
+                } else if (editorColorDirty) {
+                    editorColorDirty = false;
+                    StructureDataConfig.flush();
+                }
                 return true;
             }
         }
         deleteArmed = false;
         return true;
+    }
+
+    /** 改名目标名是否合法: 非空白/不超长/不撞内置保留名/不与其它自定义组重名 (自身不算冲突)。 */
+    private boolean renameTargetNameOk(@Nullable String raw, @Nullable String self) {
+        String t = raw == null ? "" : raw.trim();
+        if (!StructureData.validGroupName(t))
+            return false;
+        if (t.equals(self))
+            return true;
+        for (var ug : StructureDataConfig.userGroups())
+            if (ug.name().equals(t))
+                return false;
+        return true;
+    }
+
+    /** 当前编辑器能否提交改名 (完成 按钮可用): 用户组 + 名合法 + 不重名 + 确实改动。 */
+    private boolean canCommitRename(@Nullable String group) {
+        if (group == null || groupEditField == null)
+            return false;
+        if (StructureGroups.isBuiltin(group))
+            return false;
+        String t = groupEditField.getValue().trim();
+        return !t.equals(group) && renameTargetNameOk(t, group);
     }
 
     /** 提交名称修改 (内置组不可改名); 失败静默 (输入框已红名提示)。 */
@@ -1083,8 +1132,7 @@ public class SeedMapPanel {
             return true;
         }
         if (button == 0 && colorSliderDrag > 0) {
-            colorSliderDrag = -1;
-            StructureDataConfig.flush();
+            colorSliderDrag = -1; // 颜色不在此处落盘: 完成 提交或离开编辑器时 flush
             return true;
         }
         return false;
