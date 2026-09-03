@@ -9,6 +9,9 @@ import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache.CellKey;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
+import bid.yuanlu.seedmap4xaero.client.gui.SeedMapPanel;
 import bid.yuanlu.seedmap4xaero.client.mixin.SeedMapMixin;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.HighlightHudRenderer;
@@ -72,6 +75,8 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             assertStructureCachePopulated(context);
 
             context.takeScreenshot("seed-map-final");
+
+            assertPanelScreenshots(context, singleplayer);
 
             assertHighlightHudHiddenWhenBehind(context, singleplayer);
 
@@ -179,6 +184,82 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
 
     /** 要高亮的真实结构位置。 */
     private record StructureTarget(int blockX, int blockZ, StructureType type, int variant) {
+    }
+
+    /**
+     * 面板 UI 截图（人工验收）: 打开面板 → 类型/分组/组编辑器/图标 四张；
+     * 再给最近结构上组色遮罩，截一张无面板遮挡的地图视图验证图标 mask。
+     * 结束后还原标记与组色。
+     */
+    private static void assertPanelScreenshots(ClientGameTestContext context,
+            TestSingleplayerContext singleplayer) {
+        // 保证最近结构在地图视野内 (面板截图时背后可见)
+        StructureTarget target = context.computeOnClient(client -> nearestStructure(client));
+        if (target == null) {
+            throw new AssertionError("no loaded structure for panel mask screenshot");
+        }
+        if (context.computeOnClient(client -> Math.hypot(
+                client.player.getX() - (target.blockX() + 0.5),
+                client.player.getZ() - (target.blockZ() + 0.5)) > 400.0)) {
+            context.runOnClient(client -> client.setScreenAndShow(null));
+            context.waitTick();
+            teleportNear(context, singleplayer, target.blockX() + 32, target.blockZ() + 32);
+            openWorldMap(context);
+            context.waitForScreen(GuiMap.class);
+            context.waitTicks(20);
+        }
+
+        context.runOnClient(client -> {
+            SeedMapPanel panel = SeedMapPanel.activePanel();
+            if (panel == null) {
+                throw new AssertionError("SeedMapPanel not registered after GuiMap init");
+            }
+            panel.toggleOpen();
+            panel.testExpandSections();
+        });
+        context.waitTick();
+        context.takeScreenshot("panel-types");
+
+        setStructTab(context, 1);
+        context.waitTick();
+        context.takeScreenshot("panel-groups");
+
+        context.runOnClient(client -> {
+            if (SeedMapPanel.activePanel().testCreateGroup() == null) {
+                throw new AssertionError("createGroup failed to open editor");
+            }
+        });
+        context.waitTick();
+        context.takeScreenshot("panel-group-editor");
+
+        setStructTab(context, 2);
+        context.waitTick();
+        context.takeScreenshot("panel-icons");
+
+        // 图标组色遮罩: 最近结构标为 done + 半透明红覆盖
+        context.runOnClient(client -> {
+            SeedMapPanel.activePanel().toggleOpen(); // 关面板露出地图
+            var t = nearestStructure(client);
+            StructureDataConfig.setGroup(t.type(),
+                    StructureDataConfig.keyOf(t.blockX(), t.blockZ()), StructureGroups.DONE);
+            StructureDataConfig.setGroupColor(StructureGroups.DONE, 0x80FF5555);
+        });
+        context.waitTick();
+        context.takeScreenshot("icon-mask");
+
+        // 还原 (避免 run 目录的 structure_data 残留影响下次运行)
+        context.runOnClient(client -> {
+            var t = nearestStructure(client);
+            StructureDataConfig.setGroup(t.type(),
+                    StructureDataConfig.keyOf(t.blockX(), t.blockZ()), null);
+            StructureDataConfig.clearGroupColor(StructureGroups.DONE);
+        });
+        context.waitTick();
+        LOGGER.info("panel screenshots taken");
+    }
+
+    private static void setStructTab(ClientGameTestContext context, int tab) {
+        context.runOnClient(client -> SeedMapPanel.activePanel().testSelectStructTab(tab));
     }
 
     /**

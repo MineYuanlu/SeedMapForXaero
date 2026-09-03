@@ -51,28 +51,39 @@ public final class Sm4xFile {
     }
 
     /**
+     * 原子写入 {@code data} 到 {@code paths.target()}（默认轮替 .old）。
+     */
+    public static <T> void save(Sm4xPaths paths, T data, Sm4xCodec<T> codec) throws IOException {
+        save(paths, data, codec, true);
+    }
+
+    /**
      * 原子写入 {@code data} 到 {@code paths.target()}。
      * <p>
      * 流程：
      * <ol>
      * <li>序列化写入 {@code .tmp}
-     * <li>若主文件存在，移动到 {@code .old}
+     * <li>{@code rotate=true} 时：若主文件存在，移动到 {@code .old}
      * <li>将 {@code .tmp} 移动到主文件（ATOMIC_MOVE，尽力原子）
      * </ol>
+     * <p>
+     * {@code rotate=false} 跳过轮替、主文件直接被替换——用于游玩中的主动刷写：
+     * 高频刷写不应滚动覆盖 {@code .old}，让 .old 始终保留"上次世界切换时的完整备份"。
      */
-    public static <T> void save(Sm4xPaths paths, T data, Sm4xCodec<T> codec) throws IOException {
+    public static <T> void save(Sm4xPaths paths, T data, Sm4xCodec<T> codec,
+            boolean rotate) throws IOException {
         Files.createDirectories(paths.target().getParent());
 
         // 1. 写入临时文件
         writeFrame(paths.tmp(), data, codec);
 
         // 2. 轮替旧文件
-        if (Files.exists(paths.target())) {
+        if (rotate && Files.exists(paths.target())) {
             Files.move(paths.target(), paths.old(), StandardCopyOption.REPLACE_EXISTING);
         }
 
-        // 3. 提交
-        Files.move(paths.tmp(), paths.target(), StandardCopyOption.ATOMIC_MOVE);
+        // 3. 提交 (跳过轮替时主文件可能已存在, 需 REPLACE_EXISTING)
+        Files.move(paths.tmp(), paths.target(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
     /**

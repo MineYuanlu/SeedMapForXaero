@@ -12,7 +12,8 @@
 - `Sm4xFile` — 磁盘 IO（全 static）：
   - `MAGIC_WORD`（"SEEDMAP4XAERO"，全仓库唯一持有处）
   - `pathsFor(baseDir, mainId, fileName)` → `Sm4xPaths(target, tmp, old)`，目录按 `baseDir/<mainId>/` 平铺
-  - `save(paths, data, codec)`：写 `.tmp` → 主文件轮替到 `.old` → `ATOMIC_MOVE` 提交
+  - `save(paths, data, codec, rotate?=true)`：写 `.tmp` → 主文件轮替到 `.old`
+    → `ATOMIC_MOVE` 提交；`rotate=false` 跳过轮替
   - `load(paths, fallback, codec)`：主文件 → 损坏删主文件回退 `.old` → 都不行返回 `fallback`
   - `writeFrame` / `readFrame`：单帧读写（magic + version + body + magic）
 

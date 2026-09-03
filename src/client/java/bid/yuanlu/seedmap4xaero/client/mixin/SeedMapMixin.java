@@ -8,6 +8,7 @@ import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 
 import net.minecraft.client.Minecraft;
@@ -133,6 +134,7 @@ public class SeedMapMixin {
     private void xsm$onGuiMapInit(CallbackInfo ci) {
         if (this.mapProcessor != null) {
             ServerConfig.activate(this.mapProcessor);
+            StructureDataConfig.activate(this.mapProcessor);
         }
     }
 

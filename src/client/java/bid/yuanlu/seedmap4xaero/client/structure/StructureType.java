@@ -286,6 +286,8 @@ public enum StructureType {
     public final float prob;
 
     private volatile @Nullable Config lazyConfig;
+    /** config 缺失的告警是否已发 (只 warn 一次, 避免渲染循环刷屏)。 */
+    private volatile boolean configMissingWarned;
 
     private StructureType(int id, @NotNull String key, boolean enableDefault, int maxRegionHide) {
         this(id, key, enableDefault, maxRegionHide, -1f);
@@ -302,6 +304,10 @@ public enum StructureType {
     /**
      * 惰性加载 native 侧结构配置 (cubiomes getStructureConfig)。
      * 延迟到首次访问而非枚举类初始化, 使无 native 的测试 JVM 可以安全加载枚举。
+     * <p>
+     * null 结果不缓存 (MC 版本切换后可能变为可用), 故结构渲染循环每帧会重查
+     * native —— 因此缺失告警只发一次 (见 {@link #configMissingWarned}), 且已知
+     * 天生无配置的类型 (要塞 id25; 地物 id0 在 MC&gt;1.12 无 region config) 不告警。
      */
     public @Nullable Config config() {
         var c = lazyConfig;
@@ -311,8 +317,10 @@ public enum StructureType {
             c = lazyConfig;
             if (c == null) {
                 c = Xsm.getStructureConfig(id);
-                if (c == null && id != 25/* 要塞没有config */)
+                if (c == null && id != STRONGHOLD.id && id != FEATURE.id && !configMissingWarned) {
+                    configMissingWarned = true;
                     LoggerHolder.LOGGER.warn("Can't load StructureType config for {} ({})", id, key);
+                }
                 lazyConfig = c;
             }
         }

@@ -47,4 +47,9 @@ public final class CacheHelper {
             return t;
         });
     }
+
+    /** 缓存/后台计算共用线程池 (包外只读访问, 如访问检测)。 */
+    public static ExecutorService worker() {
+        return CACHE_WORKER;
+    }
 }

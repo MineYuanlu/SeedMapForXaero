@@ -50,6 +50,20 @@ class ServerConfigTest {
     }
 
     @Test
+    void seedHistoryMruSnapshot() {
+        ConfigData cfg = new ConfigData();
+        assertTrue(cfg.getSeedHistory().isEmpty());
+        cfg.useSeed(42L);
+        cfg.useSeed(999L);
+        cfg.useSeed(42L); // MRU 提前
+        var hist = cfg.getSeedHistory();
+        assertEquals(2, hist.size());
+        assertEquals(42L, hist.get(0).seed());
+        assertEquals(999L, hist.get(1).seed());
+        assertFalse(hist.get(0).lastUsed().isEmpty());
+    }
+
+    @Test
     void binaryRoundTrip() throws IOException {
         ConfigData cfg = sample(new ConfigData());
         Path file = tmp.resolve("sub/server_config.sm4x");
