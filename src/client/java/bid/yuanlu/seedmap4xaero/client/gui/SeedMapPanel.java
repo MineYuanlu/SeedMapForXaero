@@ -7,8 +7,12 @@ import org.jetbrains.annotations.Nullable;
 
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
-import bid.yuanlu.seedmap4xaero.client.configs.LootDisplayMode;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureData;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
 import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
@@ -73,6 +77,39 @@ public class SeedMapPanel {
     /** 无配置时的回退 flags: 全 0 = 全部可见 */
     private static final StructureBitFlagView DEFAULT_FLAGS = new StructureBitFlag();
 
+    /** 分组计数缓存: 命名组 = 全量标记数, 未分组 = 当前视口可见的未标记图标数; 每 20 帧刷新 */
+    private static final java.util.HashMap<String, Integer> GROUP_COUNTS = new java.util.HashMap<>();
+    private static int groupCountCooldown;
+
+    // ─── 结构区 Tab (类型/分组/图标) ────────────────────────────
+    private static final int TAB_H = 14;
+    private static final int TAB_GAP = 2;
+    /** 组编辑器高度: 名称行 + 4 滑条 + 按钮行 + 尾距 (须与 renderGroupEditor 实际推进严格一致)。 */
+    private static final int EDITOR_H = 16 + 4 * 12 + ITEM_H + 2;
+    /** 编辑器高度折算的列表行数 (滚动钳制用)。 */
+    private static final int EDITOR_ROWS = (EDITOR_H + ITEM_H - 1) / ITEM_H;
+    /** 颜色滑条轨道起点 (标签固定宽)。 */
+    private static final int COLOR_TRACK_X0 = PADDING + 34;
+
+    /** 新建组的轮转默认色 (alpha=0x80: 半透明遮罩, 编辑器预览/地图均可见)。 */
+    private static final int[] NEW_GROUP_PALETTE = {
+            0x80FF5555, 0x80FFAA00, 0x80FFFF55, 0x8055FF55,
+            0x8000FFAA, 0x8000AAFF, 0x80AA55FF, 0x80FF55FF };
+    private static int newGroupColorIdx;
+
+    /** 结构区激活 Tab: 0=类型 1=分组 2=图标 (会话级)。 */
+    private static int structTab;
+    private static int groupsScrollOff;
+    /** 正在展开编辑器的组名; null = 关闭。 */
+    private static String editorGroup;
+    private static boolean deleteArmed;
+    /** 编辑器颜色状态: h/s/v + 透明度 (0=纯色剪影, 1=无遮罩), 均 [0,1]。 */
+    private static final float[] editorHSV = new float[4];
+    /** 拖拽中的颜色滑条 id 1..4; -1 = 无 (松开仅结束拖拽; 落盘在 完成 提交或离开编辑器时)。 */
+    private static int colorSliderDrag = -1;
+    /** 本次编辑会话颜色已改动且未落盘 (点亮 完成; 提交/离开编辑器时清除)。 */
+    private static boolean editorColorDirty;
+
     // slider
     private float sliderValue = 1.0f;
     public boolean sliderDragging;
@@ -80,9 +117,40 @@ public class SeedMapPanel {
     // search edit boxes
     private EditBox biomeSearchField;
     private EditBox structSearchField;
+    /** 组编辑器的名称输入框 (随编辑器展开定位)。 */
+    private EditBox groupEditField;
 
     // screen dimensions
     private int scrW, scrH;
+
+    /** 当前 GuiMap 的面板实例 (onInit 注册; E2E gametest 取用)。 */
+    private static SeedMapPanel activePanel;
+
+    public static SeedMapPanel activePanel() {
+        return activePanel;
+    }
+
+    // ─── E2E gametest 钩子 (生产路径不调用) ─────────────────────
+
+    /** 展开结构区 (面板截图前置状态; 保持生物群系折叠, 小屏下结构区才有可见空间)。 */
+    public void testExpandSections() {
+        structureExpanded = true;
+        groupCountCooldown = 0;
+    }
+
+    /** 切换结构区 Tab (0=类型 1=分组 2=图标)。 */
+    public void testSelectStructTab(int tab) {
+        structTab = Math.max(0, Math.min(2, tab));
+        deleteArmed = false;
+        colorSliderDrag = -1;
+        groupCountCooldown = 0;
+    }
+
+    /** 新建用户组并展开其编辑器; 返回组名 (失败 null)。 */
+    public String testCreateGroup() {
+        createGroup();
+        return editorGroup;
+    }
 
     public SeedMapPanel(GuiMap screen) {
         this.screen = screen;
@@ -110,6 +178,7 @@ public class SeedMapPanel {
     public void onInit(int width, int height) {
         this.scrW = width;
         this.scrH = height;
+        activePanel = this;
 
         // recreate search fields if panel is open
         if (panelOpen) {
@@ -140,6 +209,19 @@ public class SeedMapPanel {
             structSearchField.setCanLoseFocus(true);
             structSearchField.setVisible(structureExpanded);
             screen.addButton(structSearchField);
+
+            groupEditField = new EditBox(font, PADDING, 0, PANEL_WIDTH - PADDING * 2 - 16, 14,
+                    Component.translatable("xsm.gui.panel.group_name_hint"));
+            groupEditField.setMaxLength(StructureData.MAX_GROUP_NAME);
+            groupEditField.setCanLoseFocus(true);
+            groupEditField.setVisible(false);
+            groupEditField.setResponder(s -> {
+                groupEditField.setTextColor(renameTargetNameOk(s, editorGroup)
+                        ? 0xFFFFFFFF : 0xFFFF5555);
+            });
+            if (editorGroup != null)
+                groupEditField.setValue(displayNameOf(editorGroup));
+            screen.addButton(groupEditField);
         }
     }
 
@@ -152,6 +234,10 @@ public class SeedMapPanel {
         // slider drag update
         if (sliderDragging) {
             updateSlider(mouseX);
+        }
+        // color slider drag: live preview (flush on release)
+        if (colorSliderDrag > 0) {
+            applyColorSliderDrag(mouseX);
         }
 
         // refresh slider value from config
@@ -273,6 +359,72 @@ public class SeedMapPanel {
         return y + visible * ITEM_H;
     }
 
+    // ─── 结构区: Tab 布局 ──────────────────────────────────────
+
+    /** 结构区内容区布局 (单一来源: render / mouseClicked / mouseScrolled 共用)。 */
+    private record StructLayout(int tabY, int tabW, int contentY,
+            int typeListY, int typeVisible,
+            int groupListY, int groupVisibleRows) {
+    }
+
+    private StructLayout structLayout(int headerY) {
+        int tabY = headerY + HEADER_H + PADDING;
+        int tabW = (PANEL_WIDTH - PADDING * 2 - TAB_GAP * 2) / 3;
+        int contentY = tabY + TAB_H + PADDING;
+        int typeListY = contentY + 16; // 搜索框高
+        int typeVisible = Math.min(MAX_VISIBLE_ITEMS,
+                Math.max(MIN_VISIBLE_ITEMS, (scrH - typeListY - 30) / ITEM_H));
+        int groupVisibleRows = Math.max(MIN_VISIBLE_ITEMS, (scrH - contentY - 10) / ITEM_H);
+        return new StructLayout(tabY, tabW, contentY, typeListY, typeVisible, contentY, groupVisibleRows);
+    }
+
+    private void renderTabBar(GuiGraphicsExtractor g, StructLayout L, int mx, int my) {
+        String[] keys = { "xsm.gui.panel.tab_types", "xsm.gui.panel.tab_groups", "xsm.gui.panel.tab_icons" };
+        for (int i = 0; i < 3; i++) {
+            int x = PADDING + i * (L.tabW() + TAB_GAP);
+            boolean active = structTab == i;
+            boolean hover = mx >= x && mx <= x + L.tabW() && my >= L.tabY() && my <= L.tabY() + TAB_H;
+            g.fill(x, L.tabY(), x + L.tabW(), L.tabY() + TAB_H,
+                    active ? 0xFF4A4A4A : hover ? 0xFF333333 : 0xFF262626);
+            String label = I18n.get(keys[i]);
+            g.text(font, label, x + (L.tabW() - font.width(label)) / 2,
+                    L.tabY() + (TAB_H - font.lineHeight) / 2, active ? 0xFFFFFFFF : 0xFFAAAAAA);
+        }
+    }
+
+    /** Tab 命中; -1 = 未命中。 */
+    private int hitTab(int mx, int my, StructLayout L) {
+        if (my < L.tabY() || my > L.tabY() + TAB_H || mx < PADDING)
+            return -1;
+        int i = (mx - PADDING) / (L.tabW() + TAB_GAP);
+        return i >= 0 && i < 3 ? i : -1;
+    }
+
+    /** 内置组 + 用户组 (去重) 的展示顺序列表。 */
+    private static List<String> allGroupNames() {
+        var out = new ArrayList<String>(StructureGroups.BUILTIN);
+        for (var ug : StructureDataConfig.userGroups())
+            if (!out.contains(ug.name()))
+                out.add(ug.name());
+        return out;
+    }
+
+    /** 组显示名: 内置组走翻译, 用户组显示原名。 */
+    private static String displayNameOf(String group) {
+        return StructureGroups.isBuiltin(group)
+                ? I18n.get(StructureGroups.translationKey(group))
+                : group;
+    }
+
+    /** 超宽截断加省略号。 */
+    private String truncate(String s, int maxW) {
+        if (font.width(s) <= maxW)
+            return s;
+        while (!s.isEmpty() && font.width(s + "…") > maxW)
+            s = s.substring(0, s.length() - 1);
+        return s + "…";
+    }
+
     private int renderStructSection(GuiGraphicsExtractor g, int mx, int my, int y) {
         boolean enabled = ServerConfig.isStructureEnabled();
         boolean hoverHdr = my >= y && my < y + HEADER_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING;
@@ -290,28 +442,43 @@ public class SeedMapPanel {
         int arrX = PANEL_WIDTH - PADDING - font.width(arrow);
         g.text(font, arrow, arrX, y + (HEADER_H - font.lineHeight) / 2, 0xFFFFFFFF);
 
+        int structHeaderY = y;
         y += HEADER_H;
 
         if (structSearchField != null)
-            structSearchField.setVisible(structureExpanded);
+            structSearchField.setVisible(structureExpanded && structTab == 0);
+        if (groupEditField != null)
+            groupEditField.setVisible(structureExpanded && structTab == 1 && editorGroup != null);
 
         if (!structureExpanded)
             return y;
 
-        y += PADDING;
+        var L = structLayout(structHeaderY);
+        renderTabBar(g, L, mx, my);
+
+        return switch (structTab) {
+            case 0 -> renderTypesTab(g, mx, my, L);
+            case 1 -> renderGroupsTab(g, mx, my, L);
+            default -> renderIconsTab(g, mx, my, L);
+        };
+    }
+
+    // ─── Tab: 类型 ───────────────────────────────────────────
+
+    private int renderTypesTab(GuiGraphicsExtractor g, int mx, int my, StructLayout L) {
+        int y = L.contentY();
 
         // search field
         if (structSearchField != null) {
             structSearchField.setY(y);
             structSearchField.extractRenderState(g, mx, my, 0);
-            y += 16;
         }
+        y = L.typeListY();
 
         // structure list
         if (filteredStructures == null)
             updateStructFilter();
-        int visible = Math.min(MAX_VISIBLE_ITEMS,
-                Math.max(MIN_VISIBLE_ITEMS, (scrH - y - 30) / ITEM_H));
+        int visible = L.typeVisible();
         int size = filteredStructures.size();
         if (structScrollOff > size - visible)
             structScrollOff = Math.max(0, size - visible);
@@ -358,11 +525,203 @@ public class SeedMapPanel {
                         si ? 0xFFFFFFFF : 0xFF888888);
             }
         }
+        return y + visible * ITEM_H;
+    }
 
-        y += visible * ITEM_H;
+    // ─── Tab: 分组 ───────────────────────────────────────────
 
-        // slider
-        y += 5;
+    /** 列表总行数 (编辑器额外高度折算行)。 */
+    private static int groupRowsUsed(List<String> names) {
+        int rows = names.size() + 1; // + 新建组
+        if (editorGroup != null)
+            rows += EDITOR_ROWS;
+        return rows;
+    }
+
+    private int renderGroupsTab(GuiGraphicsExtractor g, int mx, int my, StructLayout L) {
+        var sdata = StructureDataConfig.getActiveData();
+        if (--groupCountCooldown <= 0) {
+            updateGroupCounts();
+            groupCountCooldown = 20;
+        }
+
+        var names = allGroupNames();
+        int listBottom = L.groupListY() + L.groupVisibleRows() * ITEM_H;
+        int rowsUsed = groupRowsUsed(names);
+        if (groupsScrollOff > rowsUsed - L.groupVisibleRows())
+            groupsScrollOff = Math.max(0, rowsUsed - L.groupVisibleRows());
+
+        int y = L.groupListY();
+        for (int i = groupsScrollOff; i < names.size() && y < listBottom; i++) {
+            String group = names.get(i);
+            boolean shown = sdata == null || !sdata.isGroupHidden(group);
+            boolean hoverRow = my >= y && my < y + ITEM_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING;
+            renderCheckbox(g, PADDING, y + (ITEM_H - 9) / 2, shown, hoverRow);
+            int color = StructureGroups.colorOf(sdata, group);
+            int textX = PADDING + 12;
+            if (!group.isEmpty() || color != 0) {
+                // 色块 (显示用强制不透明; 未分组有覆盖色时同样展示)
+                g.fill(textX, y + 1, textX + 9, y + 10, 0xFF888888);
+                g.fill(textX + 1, y + 2, textX + 8, y + 9, StructureGroups.opaque(color));
+                textX += 12;
+            }
+            int count = GROUP_COUNTS.getOrDefault(group, 0);
+            String full = truncate(displayNameOf(group) + " (" + count + ")",
+                    PANEL_WIDTH - PADDING - textX);
+            g.text(font, full, textX, y + (ITEM_H - font.lineHeight) / 2,
+                    color != 0 ? StructureGroups.opaque(color)
+                            : shown ? 0xFFFFFFFF : 0xFF888888);
+            y += ITEM_H;
+            if (group.equals(editorGroup))
+                y = renderGroupEditor(g, mx, my, y, group);
+        }
+
+        // 新建组行
+        if (y < listBottom) {
+            boolean hoverNew = my >= y && my < y + ITEM_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING;
+            if (hoverNew)
+                g.fill(PADDING, y, PANEL_WIDTH - PADDING, y + ITEM_H, 0x22_FFFFFF);
+            g.text(font, I18n.get("xsm.gui.panel.group_new"), PADDING + 12,
+                    y + (ITEM_H - font.lineHeight) / 2, 0xFFAAAAAA);
+            y += ITEM_H;
+        }
+        return y;
+    }
+
+    /** 组编辑器 (名称 + HSV/透明度滑条 + 按钮), 返回新的 y。 */
+    private int renderGroupEditor(GuiGraphicsExtractor g, int mx, int my, int y, String group) {
+        int x0 = PADDING + 12;
+        int w = PANEL_WIDTH - PADDING - x0;
+
+        // 名称行: EditBox + 颜色预览块
+        int previewX = PANEL_WIDTH - PADDING - 12;
+        if (groupEditField != null) {
+            groupEditField.setX(x0);
+            groupEditField.setY(y);
+            groupEditField.setWidth(w - 16);
+            groupEditField.extractRenderState(g, mx, my, 0);
+        }
+        g.fill(previewX, y, previewX + 12, y + 12, 0xFF888888);
+        g.fill(previewX + 1, y + 1, previewX + 11, y + 11, currentEditorArgb());
+        y += 16;
+
+        // HSV + 透明度 4 滑条
+        String[] keys = { "xsm.gui.panel.color.hue", "xsm.gui.panel.color.sat",
+                "xsm.gui.panel.color.val", "xsm.gui.panel.color.alpha" };
+        for (int id = 1; id <= 4; id++)
+            y = renderColorSlider(g, mx, my, y, id, keys[id - 1], editorHSV[id - 1]);
+
+        // 按钮行: 删除 (用户组) / 恢复默认色 (内置有覆盖时) … 完成 (右)
+        var sdata = StructureDataConfig.getActiveData();
+        if (!StructureGroups.isBuiltin(group)) {
+            String delLabel = I18n.get(deleteArmed
+                    ? "xsm.gui.panel.group_delete_confirm" : "xsm.gui.panel.group_delete");
+            int delW = font.width(delLabel) + 8;
+            boolean hov = my >= y && my <= y + ITEM_H && mx >= x0 && mx <= x0 + delW;
+            g.fill(x0, y, x0 + delW, y + ITEM_H,
+                    deleteArmed ? 0xFF7A2222 : hov ? 0xFF666666 : 0xFF333333);
+            g.text(font, delLabel, x0 + 4, y + (ITEM_H - font.lineHeight) / 2, 0xFFFFFFFF);
+        } else if (sdata != null && sdata.colorOf(group) != 0) {
+            String resetLabel = I18n.get("xsm.gui.panel.group_reset_color");
+            int rw = font.width(resetLabel) + 8;
+            boolean hov = my >= y && my <= y + ITEM_H && mx >= x0 && mx <= x0 + rw;
+            g.fill(x0, y, x0 + rw, y + ITEM_H, hov ? 0xFF666666 : 0xFF333333);
+            g.text(font, resetLabel, x0 + 4, y + (ITEM_H - font.lineHeight) / 2, 0xFFFFFFFF);
+        }
+        boolean doneEnabled = canCommitRename(group) || editorColorDirty;
+        String doneLabel = I18n.get("xsm.gui.panel.group_done");
+        int doneW = font.width(doneLabel) + 8;
+        int doneX = PANEL_WIDTH - PADDING - doneW;
+        boolean hovDone = doneEnabled && my >= y && my <= y + ITEM_H
+                && mx >= doneX && mx <= doneX + doneW;
+        g.fill(doneX, y, doneX + doneW, y + ITEM_H,
+                !doneEnabled ? 0xFF262626 : hovDone ? 0xFF666666 : 0xFF333333);
+        g.text(font, doneLabel, doneX + 4, y + (ITEM_H - font.lineHeight) / 2,
+                doneEnabled ? 0xFFFFFFFF : 0xFF888888);
+        return y + ITEM_H + 2;
+    }
+
+    /** 线性小滑条 (标签 + 轨道 + thumb), 返回新的 y。 */
+    private int renderColorSlider(GuiGraphicsExtractor g, int mx, int my, int y,
+            int id, String labelKey, float t) {
+        String label = I18n.get(labelKey);
+        g.text(font, label, PADDING, y + (12 - font.lineHeight) / 2, 0xFFAAAAAA);
+        int trackX1 = PANEL_WIDTH - PADDING;
+        int trackY = y + 4;
+        g.fill(COLOR_TRACK_X0, trackY, trackX1, trackY + 4, 0xFF444444);
+        int thumbW = 6;
+        int thumbX = COLOR_TRACK_X0 + (int) ((trackX1 - COLOR_TRACK_X0 - thumbW) * Math.max(0, Math.min(1, t)));
+        boolean hover = mx >= thumbX && mx <= thumbX + thumbW && my >= y && my <= y + 12;
+        g.fill(thumbX, y, thumbX + thumbW, y + 12,
+                hover || colorSliderDrag == id ? 0xFFAAAAAA : 0xFF888888);
+        return y + 12;
+    }
+
+    /** 当前编辑器 ARGB (透明度滑条 → alpha = 255×(1−t), 即透明度 0 = 纯色剪影)。 */
+    private static int currentEditorArgb() {
+        int a = (int) ((1f - editorHSV[3]) * 255f);
+        return (a << 24) | (java.awt.Color.HSBtoRGB(editorHSV[0], editorHSV[1], editorHSV[2]) & 0xFFFFFF);
+    }
+
+    /** 由组的当前颜色同步编辑器 HSV 状态并展开 (先落盘上一会话未保存的颜色)。 */
+    private void openGroupEditor(String group) {
+        if (editorColorDirty)
+            StructureDataConfig.flush();
+        editorColorDirty = false;
+        editorGroup = group;
+        deleteArmed = false;
+        int argb = StructureGroups.colorOf(StructureDataConfig.getActiveData(), group);
+        float[] hsv = rgbToHsv(argb);
+        editorHSV[0] = hsv[0];
+        editorHSV[1] = hsv[1];
+        editorHSV[2] = hsv[2];
+        editorHSV[3] = 1f - ((argb >>> 24) & 0xFF) / 255f;
+        if (groupEditField != null) {
+            groupEditField.setValue(displayNameOf(group));
+            groupEditField.setEditable(!StructureGroups.isBuiltin(group));
+            groupEditField.setTextColor(0xFFFFFFFF);
+        }
+        groupCountCooldown = 0;
+    }
+
+    /** 新建用户组 (轮转默认色) 并立即展开编辑器。 */
+    private void createGroup() {
+        int color = NEW_GROUP_PALETTE[newGroupColorIdx % NEW_GROUP_PALETTE.length];
+        String base = I18n.get("xsm.gui.panel.group_new_name");
+        for (int n = 1; n < 1000; n++) {
+            String name = base + n;
+            if (StructureDataConfig.addGroup(name, color)) {
+                newGroupColorIdx++;
+                openGroupEditor(name);
+                return;
+            }
+        }
+    }
+
+    /** 拖拽中的颜色滑条按 mouseX 更新 (只改内存, mouseReleased 时 flush)。 */
+    private void applyColorSliderDrag(int mx) {
+        if (colorSliderDrag < 1 || editorGroup == null)
+            return;
+        int trackX1 = PANEL_WIDTH - PADDING;
+        float t = (float) (mx - COLOR_TRACK_X0) / (trackX1 - COLOR_TRACK_X0 - 6);
+        editorHSV[colorSliderDrag - 1] = Math.max(0, Math.min(1, t));
+        StructureDataConfig.previewGroupColor(editorGroup, currentEditorArgb());
+        editorColorDirty = true;
+    }
+
+    private static float[] rgbToHsv(int argb) {
+        int r = (argb >> 16) & 0xFF;
+        int g = (argb >> 8) & 0xFF;
+        int b = argb & 0xFF;
+        float[] hsv = new float[3];
+        java.awt.Color.RGBtoHSB(r, g, b, hsv);
+        return hsv;
+    }
+
+    // ─── Tab: 图标 ───────────────────────────────────────────
+
+    private int renderIconsTab(GuiGraphicsExtractor g, int mx, int my, StructLayout L) {
+        int y = L.contentY() + 5;
         int thumbW = 8;
         int thumbH = 12;
 
@@ -457,6 +816,10 @@ public class SeedMapPanel {
             screen.setFocused(structSearchField);
             return true;
         }
+        if (groupEditField != null && editorGroup != null && groupEditField.isMouseOver(mx, my)) {
+            screen.setFocused(groupEditField);
+            return true;
+        }
 
         // clicking panel → unfocus EditBox and clear screen focus
         screen.setFocused(null);
@@ -508,6 +871,7 @@ public class SeedMapPanel {
         y += 5;
 
         // structure section header: checkbox toggles enable, rest of the header toggles expand
+        int structHeaderY = y;
         if (hitCheckbox(mx, my, y)) {
             ServerConfig.setStructureEnabled(!ServerConfig.isStructureEnabled());
             return true;
@@ -516,19 +880,30 @@ public class SeedMapPanel {
             structureExpanded = !structureExpanded;
             return true;
         }
-        y += HEADER_H;
 
-        if (structureExpanded) {
-            y += PADDING;
-            y += 16; // search field height
+        if (!structureExpanded)
+            return true;
 
+        var L = structLayout(structHeaderY);
+        int tab = hitTab(mx, my, L);
+        if (tab >= 0 && tab != structTab) {
+            structTab = tab;
+            deleteArmed = false;
+            colorSliderDrag = -1;
+            if (tab == 1)
+                groupCountCooldown = 0;
+            return true;
+        }
+
+        if (structTab == 0) {
             // structure list items
-            int visible = Math.min(MAX_VISIBLE_ITEMS,
-                    Math.max(MIN_VISIBLE_ITEMS, (scrH - y - 30) / ITEM_H));
+            if (filteredStructures == null)
+                updateStructFilter();
+            int visible = L.typeVisible();
             int size = filteredStructures.size();
             int end = Math.min(structScrollOff + visible, size);
             for (int i = structScrollOff; i < end; i++) {
-                int itemY = y + (i - structScrollOff) * ITEM_H;
+                int itemY = L.typeListY() + (i - structScrollOff) * ITEM_H;
                 if (my >= itemY && my <= itemY + ITEM_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING) {
                     StructRow row = filteredStructures.get(i);
                     var wc = ServerConfig.getActiveWorldConfig();
@@ -548,59 +923,216 @@ public class SeedMapPanel {
                     return true;
                 }
             }
+        } else if (structTab == 1) {
+            return clickGroupsTab(mx, my, L);
+        } else {
+            return clickIconsTab(mx, my, L);
+        }
 
-            y += visible * ITEM_H + 5;
+        return true;
+    }
 
-            // slider
-            int thumbW = 8;
-            int thumbH = 12;
-            int labelW = font.width(I18n.get("xsm.gui.panel.icon_size"));
-            int valW = font.width(String.format("%.2f", sliderValue));
-            int sliderStart = PADDING + labelW + 5;
-            int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
-            int trackLen = sliderEnd - sliderStart - thumbW;
-            float t = (float) ((-1.75f + Math.sqrt(3.0225f + 0.8f * sliderValue)) / 0.4f);
-            int thumbX = sliderStart + (int) (t * trackLen);
-
-            if (mx >= thumbX && mx <= thumbX + thumbW && my >= y && my <= y + thumbH) {
-                sliderDragging = true;
-                updateSlider(mx);
+    /** 分组 tab 点击: 组行 (checkbox/展开编辑器) + 编辑器内部 + 新建组。 */
+    private boolean clickGroupsTab(int mx, int my, StructLayout L) {
+        var names = allGroupNames();
+        int listBottom = L.groupListY() + L.groupVisibleRows() * ITEM_H;
+        int y = L.groupListY();
+        for (int i = groupsScrollOff; i < names.size() && y < listBottom; i++) {
+            String group = names.get(i);
+            if (my >= y && my < y + ITEM_H) {
+                deleteArmed = false;
+                colorSliderDrag = -1;
+                if (mx >= PADDING && mx <= PADDING + 9) {
+                    StructureDataConfig.setGroupHidden(group,
+                            !StructureDataConfig.isGroupHidden(group));
+                    return true;
+                }
+                if (mx >= PADDING + 12) {
+                    // 再点当前展开的组行 = 收起; 否则展开/搬移 (含未分组)
+                    if (group.equals(editorGroup)) {
+                        if (editorColorDirty) {
+                            editorColorDirty = false;
+                            StructureDataConfig.flush();
+                        }
+                        editorGroup = null;
+                    } else
+                        openGroupEditor(group);
+                    groupCountCooldown = 0;
+                }
                 return true;
             }
-            // also allow click on track
-            if (mx >= sliderStart && mx <= sliderEnd && my >= y && my <= y + thumbH) {
-                sliderDragging = true;
-                updateSlider(mx);
-                return true;
+            y += ITEM_H;
+            if (group.equals(editorGroup)) {
+                if (handleGroupEditorClick(mx, my, y, group))
+                    return true;
+                y += EDITOR_H;
             }
+        }
+        // 新建组行
+        if (y < listBottom && my >= y && my < y + ITEM_H) {
+            deleteArmed = false;
+            createGroup();
+            return true;
+        }
+        return true;
+    }
 
-            // loot preview checkbox
-            y += thumbH + 5;
-            if (mx >= PADDING && mx <= PADDING + 9 && my >= y && my <= y + ITEM_H) {
-                boolean next = !ServerConfig.isLootPreviewEnabled();
-                ServerConfig.setLootPreviewEnabled(next);
-                if (!next)
-                    LootPreviewState.close();
+    /** 编辑器内部命中 (滑条/删除/恢复默认色/完成); 区域内点击一律消费。 */
+    private boolean handleGroupEditorClick(int mx, int my, int y, String group) {
+        if (my < y || my >= y + EDITOR_H)
+            return false;
+
+        // 滑条行 (名称行区域点击吞掉即可)
+        int sliderY = y + 16;
+        for (int id = 1; id <= 4; id++) {
+            if (my >= sliderY && my < sliderY + 12) {
+                deleteArmed = false;
+                if (mx >= COLOR_TRACK_X0 && mx <= PANEL_WIDTH - PADDING) {
+                    colorSliderDrag = id;
+                    applyColorSliderDrag(mx);
+                }
                 return true;
             }
-            // loot display mode button (cycle)
-            String modeName = I18n.get(ServerConfig.getLootDisplayMode().translationKey());
-            int modeBtnW = font.width(modeName) + 10;
-            int modeBtnX = PANEL_WIDTH - PADDING - modeBtnW;
-            if (mx >= modeBtnX && mx <= modeBtnX + modeBtnW && my >= y && my <= y + ITEM_H) {
-                var next = ServerConfig.getLootDisplayMode().ordinal() + 1;
-                ServerConfig.setLootDisplayMode(LootDisplayMode.values()[next % LootDisplayMode.values().length]);
-                LootPreviewState.close();
+            sliderY += 12;
+        }
+
+        // 按钮行
+        int btnY = sliderY;
+        int x0 = PADDING + 12;
+        if (my >= btnY && my < btnY + ITEM_H) {
+            if (!StructureGroups.isBuiltin(group)) {
+                String delLabel = I18n.get(deleteArmed
+                        ? "xsm.gui.panel.group_delete_confirm" : "xsm.gui.panel.group_delete");
+                int delW = font.width(delLabel) + 8;
+                if (mx >= x0 && mx <= x0 + delW) {
+                    if (!deleteArmed) {
+                        deleteArmed = true;
+                    } else if (StructureDataConfig.removeGroup(group)) {
+                        editorGroup = null;
+                        editorColorDirty = false; // removeGroup 已 flush
+                    }
+                    return true;
+                }
+                deleteArmed = false;
+            } else {
+                var sdata = StructureDataConfig.getActiveData();
+                if (sdata != null && sdata.colorOf(group) != 0) {
+                    String resetLabel = I18n.get("xsm.gui.panel.group_reset_color");
+                    int rw = font.width(resetLabel) + 8;
+                    if (mx >= x0 && mx <= x0 + rw) {
+                        StructureDataConfig.clearGroupColor(group);
+                        openGroupEditor(group); // 同步滑条到默认色
+                        return true;
+                    }
+                }
+            }
+            String doneLabel = I18n.get("xsm.gui.panel.group_done");
+            int doneW = font.width(doneLabel) + 8;
+            int doneX = PANEL_WIDTH - PADDING - doneW;
+            if (mx >= doneX && mx <= doneX + doneW) {
+                deleteArmed = false;
+                if (canCommitRename(group)) {
+                    // 改名内部已 flush (含颜色); openGroupEditor 会清 dirty
+                    commitGroupRename(group);
+                } else if (editorColorDirty) {
+                    editorColorDirty = false;
+                    StructureDataConfig.flush();
+                }
                 return true;
             }
         }
+        deleteArmed = false;
+        return true;
+    }
 
+    /** 改名目标名是否合法: 非空白/不超长/不撞内置保留名/不与其它自定义组重名 (自身不算冲突)。 */
+    private boolean renameTargetNameOk(@Nullable String raw, @Nullable String self) {
+        String t = raw == null ? "" : raw.trim();
+        if (!StructureData.validGroupName(t))
+            return false;
+        if (t.equals(self))
+            return true;
+        for (var ug : StructureDataConfig.userGroups())
+            if (ug.name().equals(t))
+                return false;
+        return true;
+    }
+
+    /** 当前编辑器能否提交改名 (完成 按钮可用): 用户组 + 名合法 + 不重名 + 确实改动。 */
+    private boolean canCommitRename(@Nullable String group) {
+        if (group == null || groupEditField == null)
+            return false;
+        if (StructureGroups.isBuiltin(group))
+            return false;
+        String t = groupEditField.getValue().trim();
+        return !t.equals(group) && renameTargetNameOk(t, group);
+    }
+
+    /** 提交名称修改 (内置组不可改名); 失败静默 (输入框已红名提示)。 */
+    private void commitGroupRename(String group) {
+        if (groupEditField == null)
+            return;
+        String newName = groupEditField.getValue().trim();
+        if (!StructureData.validGroupName(newName) || newName.equals(group))
+            return;
+        if (StructureDataConfig.renameGroup(group, newName))
+            openGroupEditor(newName);
+    }
+
+    /** 图标 tab 点击: 图标大小滑条 + 战利品预览 + 显示模式。 */
+    private boolean clickIconsTab(int mx, int my, StructLayout L) {
+        int y = L.contentY() + 5;
+        int thumbW = 8;
+        int thumbH = 12;
+        int labelW = font.width(I18n.get("xsm.gui.panel.icon_size"));
+        int valW = font.width(String.format("%.2f", sliderValue));
+        int sliderStart = PADDING + labelW + 5;
+        int sliderEnd = PANEL_WIDTH - PADDING - valW - 5;
+        int trackLen = sliderEnd - sliderStart - thumbW;
+        float t = (float) ((-1.75f + Math.sqrt(3.0225f + 0.8f * sliderValue)) / 0.4f);
+        int thumbX = sliderStart + (int) (t * trackLen);
+
+        if (mx >= thumbX && mx <= thumbX + thumbW && my >= y && my <= y + thumbH) {
+            sliderDragging = true;
+            updateSlider(mx);
+            return true;
+        }
+        // also allow click on track
+        if (mx >= sliderStart && mx <= sliderEnd && my >= y && my <= y + thumbH) {
+            sliderDragging = true;
+            updateSlider(mx);
+            return true;
+        }
+
+        // loot preview checkbox
+        y += thumbH + 5;
+        if (mx >= PADDING && mx <= PADDING + 9 && my >= y && my <= y + ITEM_H) {
+            boolean next = !ServerConfig.isLootPreviewEnabled();
+            ServerConfig.setLootPreviewEnabled(next);
+            if (!next)
+                LootPreviewState.close();
+            return true;
+        }
+        // loot display mode button (cycle)
+        String modeName = I18n.get(ServerConfig.getLootDisplayMode().translationKey());
+        int modeBtnW = font.width(modeName) + 10;
+        int modeBtnX = PANEL_WIDTH - PADDING - modeBtnW;
+        if (mx >= modeBtnX && mx <= modeBtnX + modeBtnW && my >= y && my <= y + ITEM_H) {
+            var next = ServerConfig.getLootDisplayMode().ordinal() + 1;
+            ServerConfig.setLootDisplayMode(LootDisplayMode.values()[next % LootDisplayMode.values().length]);
+            LootPreviewState.close();
+            return true;
+        }
         return true;
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0 && sliderDragging) {
             sliderDragging = false;
+            return true;
+        }
+        if (button == 0 && colorSliderDrag > 0) {
+            colorSliderDrag = -1; // 颜色不在此处落盘: 完成 提交或离开编辑器时 flush
             return true;
         }
         return false;
@@ -644,20 +1176,29 @@ public class SeedMapPanel {
         y += 5; // gap
 
         // ── Structure section ──
+        int structHeaderY = y;
         y += HEADER_H; // past structure header
 
         if (structureExpanded) {
-            y += PADDING + 16; // past search field
-            if (filteredStructures == null)
-                updateStructFilter();
-            int structVisible = Math.min(MAX_VISIBLE_ITEMS,
-                    Math.max(MIN_VISIBLE_ITEMS, (scrH - y - 30) / ITEM_H));
-            int structListBottom = y + structVisible * ITEM_H;
-            if (my >= y && my < structListBottom) {
-                int size = filteredStructures.size();
-                int maxOff = Math.max(0, size - structVisible);
-                structScrollOff = Math.max(0, Math.min(maxOff, structScrollOff + dir));
-                return true;
+            var L = structLayout(structHeaderY);
+            if (structTab == 0) {
+                int typeTop = L.typeListY();
+                int typeBottom = typeTop + L.typeVisible() * ITEM_H;
+                if (my >= typeTop && my < typeBottom) {
+                    if (filteredStructures == null)
+                        updateStructFilter();
+                    int size = filteredStructures.size();
+                    int maxOff = Math.max(0, size - L.typeVisible());
+                    structScrollOff = Math.max(0, Math.min(maxOff, structScrollOff + dir));
+                }
+            } else if (structTab == 1) {
+                int top = L.groupListY();
+                int bottom = top + L.groupVisibleRows() * ITEM_H;
+                if (my >= top && my < bottom) {
+                    int rowsUsed = groupRowsUsed(allGroupNames());
+                    int maxOff = Math.max(0, rowsUsed - L.groupVisibleRows());
+                    groupsScrollOff = Math.max(0, Math.min(maxOff, groupsScrollOff + dir));
+                }
             }
         }
 
@@ -722,6 +1263,60 @@ public class SeedMapPanel {
                 filteredBiomes.add(b);
             }
         }
+    }
+
+    /**
+     * 刷新分组计数 (渲染线程, 每 20 帧且面板展开时调用)。
+     * 命名组 = 标记表全量计数 (用户标记量级, 极小);
+     * 未分组 = 当前视口内未标记 (或组为默认) 的可见图标数, 遍历
+     * {@link StructureCache#REGIONS} + 要塞快照, 与渲染同源的类型/变种过滤,
+     * 逐图标仅一次 map get, 无 native 调用。
+     */
+    private void updateGroupCounts() {
+        var wc = ServerConfig.getActiveWorldConfig();
+        StructureBitFlagView flags = wc != null ? wc.getDisabledStructures() : DEFAULT_FLAGS;
+        var enabledTypes = wc != null ? wc.getStructureTypeSet() : BitSetView.EMPTY;
+        var dimData = StructureDataConfig.activeDimData();
+
+        GROUP_COUNTS.clear();
+        for (String group : allGroupNames()) {
+            if (group.isEmpty())
+                continue; // 未分组单独按视口统计
+            GROUP_COUNTS.put(group, dimData == null ? 0
+                    : dimData.countGroup(group, enabledTypes));
+        }
+
+        int ungrouped = 0;
+        for (var entry : StructureCache.REGIONS.entrySet()) {
+            StructureType type = entry.getKey();
+            if (flags.isStructureSet(type.id))
+                continue;
+            for (StructureCache.StructurePos rp : entry.getValue()) {
+                if (!rp.loaded())
+                    continue;
+                if (flags.isVariantSet(type.id, rp.getVariant()))
+                    continue;
+                var mark = dimData == null ? null
+                        : dimData.getMark(type.id, StructureDataConfig.keyOf(rp.blockX(), rp.blockZ()));
+                if (mark == null || mark.group().isEmpty())
+                    ungrouped++;
+            }
+        }
+        if (!flags.isStructureSet(StructureType.STRONGHOLD.id)) {
+            var strongholds = StructureCache.strongholds();
+            if (strongholds != null) {
+                for (var sh : strongholds) {
+                    if (sh == null)
+                        continue;
+                    var mark = dimData == null ? null
+                            : dimData.getMark(StructureType.STRONGHOLD.id,
+                                    StructureDataConfig.keyOf(sh.blockX(), sh.blockZ()));
+                    if (mark == null || mark.group().isEmpty())
+                        ungrouped++;
+                }
+            }
+        }
+        GROUP_COUNTS.put(StructureGroups.DEFAULT, ungrouped);
     }
 
     private void updateStructFilter() {

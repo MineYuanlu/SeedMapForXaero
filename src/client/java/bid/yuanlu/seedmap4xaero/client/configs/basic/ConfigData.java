@@ -1,17 +1,12 @@
-package bid.yuanlu.seedmap4xaero.client.configs;
+package bid.yuanlu.seedmap4xaero.client.configs.basic;
 
 import java.io.DataInput;
 import java.io.DataInputStream;
-import java.io.DataOutput;
 import java.io.DataOutputStream;
+import java.io.DataOutput;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -19,22 +14,25 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xCodec;
+
 /**
- * 种子地图的完整配置文件，对应 {@code server_config.json} 的存储格式。
+ * basic 配置文档（{@code server_config.sm4x}）的数据体：服务器级设置 + worlds 表 + 种子历史。
  * <p>
- * 组织方式：
+ * 只负责数据与自身序列化；magic word 帧包装、原子写、损坏回退在
+ * {@link bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile}。
  * 
  * <pre>
- * worlds : { dimKey → { mwId → WorldConfig } }
+ * worlds : { mwId → WorldConfig }
  * all_seeds : [ SeedEntry … ]
  * theme : String|null
- * invisibleBiomesBiomes : Boolean|null
- * invisibleBiomesStructures : Boolean|null
- * structureIconSize : float|null
+ * invisibleBiomes : Boolean
+ * invisibleStructures : Boolean
+ * structureIconSize : float
+ * lootPreview + lootDisplayMode (version 1+)
  * </pre>
  */
 public class ConfigData {
-    private static final byte[] MAGIC_WORD = "SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8);
     private static final int MAX_SEEDS = 1000;
     // mwId → 世界配置
     private final ConcurrentHashMap<String, WorldConfig> worlds = new ConcurrentHashMap<>();
@@ -89,6 +87,20 @@ public class ConfigData {
 
     public LootDisplayMode getLootDisplayMode() {
         return lootDisplayMode;
+    }
+
+    /** 种子历史的一条只读快照（/sm4x history seed 列表用）。 */
+    public record SeedHistoryEntry(long seed, String lastUsed) {
+    }
+
+    /** 种子历史（MRU 序）只读快照。 */
+    public java.util.List<SeedHistoryEntry> getSeedHistory() {
+        synchronized (allSeeds) {
+            var out = new ArrayList<SeedHistoryEntry>(allSeeds.size());
+            for (SeedEntry e : allSeeds)
+                out.add(new SeedHistoryEntry(e.seed, e.lastUsed()));
+            return java.util.List.copyOf(out);
+        }
     }
 
     public synchronized void setTheme(@Nullable String theme) {
@@ -158,10 +170,22 @@ public class ConfigData {
         }
     }
 
-    /** 写入到 DataOutput。 */
-    synchronized void write(DataOutputStream out) throws IOException {
-        out.write(MAGIC_WORD);
-        out.writeInt(1); // version
+    /** basic 文档的编解码器，配合 {@code Sm4xFile} 使用；版本号是内部细节。 */
+    public static final Sm4xCodec<ConfigData> CODEC = new Sm4xCodec<>(){
+        @Override
+        public void write(ConfigData data, DataOutputStream out) throws IOException {
+            data.write(out);
+        }
+
+        @Override
+        public ConfigData read(DataInputStream in) throws IOException {
+            return ConfigData.read(in);
+        }
+    };
+
+    /** 写入数据体（不含 magic/version 帧包装）。 */
+    private synchronized void write(DataOutputStream out) throws IOException {
+        out.writeInt(1);
         out.writeInt(worlds.size());
         for (final var worldEntry : worlds.entrySet()) {
             out.writeUTF(worldEntry.getKey());
@@ -184,17 +208,12 @@ public class ConfigData {
         }
         out.writeBoolean(lootPreview);
         out.writeByte(lootDisplayMode.ordinal());
-        out.write(MAGIC_WORD);
     }
 
-    /** 从 DataInput 读取。 */
-    static ConfigData read(DataInputStream in) throws IOException {
-        final byte[] magicWord = new byte[MAGIC_WORD.length];
-        in.readFully(magicWord);
-        if (!Arrays.equals(magicWord, MAGIC_WORD))
-            throw new IOException("Invalid magic word at start");
-        final var config = new ConfigData();
+    /** 从 DataInput 读取数据体（不含 magic/version 帧包装）。 */
+    private static ConfigData read(DataInputStream in) throws IOException {
         final var version = in.readInt();
+        final var config = new ConfigData();
         if (version == 0 || version == 1) {
             final var dimSize = in.readInt();
             for (int i = 0; i < dimSize; i++) {
@@ -220,25 +239,7 @@ public class ConfigData {
         } else {
             throw new IOException("Unsupported ConfigData version: " + version);
         }
-        in.readFully(magicWord);
-        if (!Arrays.equals(magicWord, MAGIC_WORD))
-            throw new IOException("Invalid magic word at end");
         return config;
-    }
-
-    /** 写入到指定文件。 */
-    void write(Path file) throws IOException {
-        try (final var out = new DataOutputStream(
-                Files.newOutputStream(file, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING))) {
-            write(out);
-        }
-    }
-
-    /** 从指定文件读取。 */
-    static ConfigData read(Path file) throws IOException {
-        try (final var in = new DataInputStream(Files.newInputStream(file, StandardOpenOption.READ))) {
-            return read(in);
-        }
     }
 
     /**

@@ -16,7 +16,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.gui.VersionDropdown;
 import xaero.map.MapProcessor;
 import xaero.map.graphics.MapRenderHelper;
@@ -63,6 +64,7 @@ public class GuiMapSwitchingMixin {
         xsm$LOGGER.info("init: active={}, mapProcessor={}", this.active, this.mapProcessor);
         if (this.active && this.mapProcessor != null) {
             ServerConfig.activate(this.mapProcessor);
+            StructureDataConfig.activate(this.mapProcessor);
         }
         this.xsm$seedInput = null;
         this.xsm$seedConfirmBtn = null;

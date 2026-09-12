@@ -4,7 +4,7 @@ import java.util.Objects;
 
 import org.jetbrains.annotations.Nullable;
 
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.gui.Font;

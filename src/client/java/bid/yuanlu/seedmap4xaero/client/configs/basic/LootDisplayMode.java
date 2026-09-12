@@ -1,4 +1,4 @@
-package bid.yuanlu.seedmap4xaero.client.configs;
+package bid.yuanlu.seedmap4xaero.client.configs.basic;
 
 /**
  * 战利品预览的显示模式。

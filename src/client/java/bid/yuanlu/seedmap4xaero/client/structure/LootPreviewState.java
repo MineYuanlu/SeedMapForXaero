@@ -7,8 +7,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import bid.yuanlu.seedmap4xaero.client.configs.LootDisplayMode;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm.ChestLoot;
 import net.minecraft.client.input.MouseButtonEvent;

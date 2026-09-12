@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.DropDownWidgetTitleAccessor;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureIcons;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureRightClick;
@@ -160,7 +160,7 @@ public class StructureClickMixin {
 
         final double[] best = { iconHalf };
         final StructureRightClick[] found = { null };
-        StructureIcons.forEachVisible((type, variant, blockX, blockZ, guiX, guiZ) -> {
+        StructureIcons.forEachVisible((type, variant, blockX, blockZ, guiX, guiZ, mark) -> {
             final double dist = Math.max(Math.abs(scaledMouseX - guiX),
                     Math.abs(scaledMouseY - guiZ));
             if (dist < best[0]) {

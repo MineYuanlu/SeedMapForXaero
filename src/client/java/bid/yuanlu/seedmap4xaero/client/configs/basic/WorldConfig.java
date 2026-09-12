@@ -1,4 +1,4 @@
-package bid.yuanlu.seedmap4xaero.client.configs;
+package bid.yuanlu.seedmap4xaero.client.configs.basic;
 
 import java.io.DataInput;
 import java.io.DataOutput;

@@ -7,6 +7,9 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
+
 import xaero.map.gui.GuiMap;
 import xaero.map.gui.IRightClickableElement;
 import xaero.map.gui.dropdown.rightclick.RightClickOption;
@@ -95,6 +98,36 @@ public final class StructureRightClick implements IRightClickableElement {
                 HighlightedStructures.toggle(dimId, blockX, blockZ, type, variant);
             }
         });
+        // 分组标记: 当前组打 ✓ 前缀, 设默认组 = 清除记录。
+        // 选项 = 内置组 + 用户组 (Xaero 菜单不支持滚动, 组数极大时可能超屏, 暂接受)
+        final long key = StructureDataConfig.keyOf(blockX, blockZ);
+        final var mark = StructureDataConfig.getMark(type, key);
+        final String curGroup = mark == null ? StructureGroups.DEFAULT : mark.group();
+        final var groups = new ArrayList<String>(StructureGroups.BUILTIN);
+        for (var ug : StructureDataConfig.userGroups())
+            if (!groups.contains(ug.name()))
+                groups.add(ug.name());
+        for (String group : groups) {
+            final String prefix = group.equals(curGroup) ? "✔ " : "";
+            options.add(new RightClickOption("xsm.menu.group." + group, options.size(), this) {
+                @Override
+                public String getDisplayName() {
+                    String name = StructureGroups.isBuiltin(group)
+                            ? I18n.get(group.equals(StructureGroups.DEFAULT)
+                                    ? "xsm.menu.group_clear"
+                                    : StructureGroups.translationKey(group))
+                            : group; // 用户组显示原名
+                    return prefix + name;
+                }
+
+                @Override
+                public void onAction(Screen screen) {
+                    StructureDataConfig.setGroup(type, key,
+                            group.equals(StructureGroups.DEFAULT) ? null : group);
+                    StructureDataConfig.flush();
+                }
+            });
+        }
         return options;
     }
 
