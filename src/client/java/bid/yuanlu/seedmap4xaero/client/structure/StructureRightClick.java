@@ -111,7 +111,7 @@ public final class StructureRightClick implements IRightClickableElement {
             final String prefix = group.equals(curGroup) ? "✔ " : "";
             options.add(new RightClickOption("xsm.menu.group." + group, options.size(), this) {
                 @Override
-                public String getDisplayName() {
+                protected String getName() {
                     String name = StructureGroups.isBuiltin(group)
                             ? I18n.get(group.equals(StructureGroups.DEFAULT)
                                     ? "xsm.menu.group_clear"
