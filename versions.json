@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated": "2026-09-07T08:14:18Z",
+  "generated": "2026-09-14T08:51:04Z",
   "minMinecraft": "26.1",
   "versions": [
     {
@@ -9,8 +9,8 @@
       "loomPlugin": null,
       "xaeroArtifactLine": "26.2",
       "xaeroOldest": "1.41.0",
-      "xaeroNewest": "1.45.0",
-      "fabricApi": "0.159.0+26.2"
+      "xaeroNewest": "1.46.0",
+      "fabricApi": "0.160.0+26.2"
     },
     {
       "id": "26.1.2",
@@ -18,8 +18,8 @@
       "loomPlugin": null,
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.40.14",
-      "xaeroNewest": "1.45.0",
-      "fabricApi": "0.155.2+26.1.2"
+      "xaeroNewest": "1.46.0",
+      "fabricApi": "0.155.3+26.1.2"
     },
     {
       "id": "26.1.1",
@@ -27,8 +27,8 @@
       "loomPlugin": null,
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.41.3",
-      "xaeroNewest": "1.45.0",
-      "fabricApi": "0.155.2+26.1.2"
+      "xaeroNewest": "1.46.0",
+      "fabricApi": "0.155.3+26.1.2"
     },
     {
       "id": "26.1",
@@ -36,8 +36,8 @@
       "loomPlugin": null,
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.41.3",
-      "xaeroNewest": "1.45.0",
-      "fabricApi": "0.155.2+26.1.2"
+      "xaeroNewest": "1.46.0",
+      "fabricApi": "0.155.3+26.1.2"
     }
   ]
 }
