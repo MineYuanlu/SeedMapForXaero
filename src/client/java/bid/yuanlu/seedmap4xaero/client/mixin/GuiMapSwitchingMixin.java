@@ -55,6 +55,8 @@ public class GuiMapSwitchingMixin {
             return;
         }
         var mw = this.mapProcessor.getCurrentMWId();
+        if (mw == null)
+            return;
         cfg.getOrCreateWorld(mw).seed(seed);
         ServerConfig.save();
     }

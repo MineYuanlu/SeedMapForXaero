@@ -155,7 +155,10 @@ public final class ServerConfig {
         var mp = activeMapProcessor;
         if (cfg == null || mp == null)
             return null;
-        var wc = cfg.getOrCreateWorld(mp.getCurrentMWId());
+        var mwId = mp.getCurrentMWId();
+        if (mwId == null)
+            return null;
+        var wc = cfg.getOrCreateWorld(mwId);
         return wc;
     }
 
