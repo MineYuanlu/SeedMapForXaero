@@ -24,7 +24,7 @@ import net.minecraft.resources.Identifier;
 /**
  * 生成结构枚举表
  */
-public enum StructureType {
+public enum StructureType implements StructureInfo {
     /** 地物 */
     FEATURE(0, "feature", false, Integer.MAX_VALUE),
     /** 沙漠神殿 */
@@ -357,13 +357,45 @@ public enum StructureType {
         return "xsm.structure." + key;
     }
 
-    /** 
+    /**
      * 获取当前类型支持的variants码表
      * <p>
      * 仅用于UI显示时遍历
      */
     public IntList getVariants() {
         return IntLists.emptyList();
+    }
+
+    // ─── StructureInfo 接口访问器 (字段同名方法) ───────────────
+
+    @Override
+    public int id() {
+        return id;
+    }
+
+    @Override
+    public String key() {
+        return key;
+    }
+
+    @Override
+    public boolean isDefaultEnabled() {
+        return enableDefault;
+    }
+
+    @Override
+    public int maxRegionHide() {
+        return maxRegionHide;
+    }
+
+    @Override
+    public float prob() {
+        return prob;
+    }
+
+    @Override
+    public boolean isCustom() {
+        return false;
     }
 
     public record Config(int salt, int regionSize, int chunkRange, int dim, float rarity) {

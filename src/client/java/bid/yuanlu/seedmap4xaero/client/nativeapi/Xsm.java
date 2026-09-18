@@ -142,6 +142,9 @@ public final class Xsm {
                 throw new IllegalStateException("Unsupported game version: " + version);
             }
         }
+        // C 侧 setGameVersion 已重置 gen_setWorld, Java 去重哨兵必须同步遗忘,
+        // 否则同 (seed, dim) 的 setWorld 会被跳过 → 世界未设置 (见 applyGameVersion 同款协议)
+        resetWorldState();
     }
 
     /**
@@ -443,6 +446,28 @@ public final class Xsm {
 
     public static int getStructFEATURE_NUM() {
         return XsmNative.xsmGetStructFEATURE_NUM();
+    }
+
+    /**
+     * 设置/清除数据包自定义结构集 (路线 A)。
+     * <p>
+     * 与 {@link #applyGameVersion} 同款协议: 变更后调用方需 {@link #resetWorldState()}
+     * + {@code CacheHelper.invalidateAll()} 清缓存。空数组 = 清除全部自定义结构。
+     *
+     * @param sets    集合数组, 每组 7 个 int: [salt, spacing, separation,
+     *                spreadType(0=linear/1=triangular), dim, firstEntry, entryCount]
+     * @param entries 条目数组, 按集合分组连续, 每组 2 个 int: [id ∈ [100,1000), weight]
+     * @return false = 参数被 C 侧校验拒绝
+     */
+    public static boolean setCustomStructures(int[] sets, int[] entries) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment setsSeg = sets.length == 0 ? MemorySegment.NULL
+                    : arena.allocateFrom(ValueLayout.JAVA_INT, sets);
+            MemorySegment entSeg = entries.length == 0 ? MemorySegment.NULL
+                    : arena.allocateFrom(ValueLayout.JAVA_INT, entries);
+            return XsmNative.xsmSetCustomStructures(setsSeg, sets.length / 7,
+                    entSeg, entries.length / 2);
+        }
     }
 
     public static @Nullable String biome2str(int biomeId) {

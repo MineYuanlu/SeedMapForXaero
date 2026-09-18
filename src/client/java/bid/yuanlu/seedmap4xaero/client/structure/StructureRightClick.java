@@ -31,14 +31,14 @@ public final class StructureRightClick implements IRightClickableElement {
     public static final int TITLE_BACKGROUND_COLOR = 0xFF2A5C3A;
 
     private final GuiMap guiMap;
-    private final StructureType type;
+    private final StructureInfo type;
     private final int variant;
     private final int blockX;
     private final int blockZ;
     private final ResourceKey<Level> dimId;
     private final double dimScale;
 
-    public StructureRightClick(GuiMap guiMap, StructureType type, int variant,
+    public StructureRightClick(GuiMap guiMap, StructureInfo type, int variant,
             int blockX, int blockZ, ResourceKey<Level> dimId, double dimScale) {
         this.guiMap = guiMap;
         this.type = type;
@@ -49,7 +49,7 @@ public final class StructureRightClick implements IRightClickableElement {
         this.dimScale = dimScale;
     }
 
-    public StructureType getType() {
+    public StructureInfo getType() {
         return type;
     }
 
@@ -143,10 +143,12 @@ public final class StructureRightClick implements IRightClickableElement {
 
     /** 结构显示名, 如 "Village (Plains)"。 */
     private String displayName() {
-        String name = I18n.get(type.translationKey());
-        String vk = type.variantTranslationKey(variant);
-        if (vk != null)
-            name += " (" + I18n.get(vk) + ")";
+        String name = type.localizedName();
+        if (!type.getVariants().isEmpty()) {
+            String vk = type.variantTranslationKey(variant);
+            if (vk != null)
+                name += " (" + I18n.get(vk) + ")";
+        }
         return name;
     }
 }

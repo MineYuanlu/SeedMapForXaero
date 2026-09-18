@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.core.JsonConfigFile;
 import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
-import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureInfo;
 import net.minecraft.client.Minecraft;
 
 import xaero.map.MapProcessor;
@@ -226,29 +226,29 @@ public final class StructureDataConfig {
     }
 
     /** 查询当前 (seed, mwId) 下某结构的标记；无记录/未激活返回 null。 */
-    public static @Nullable StructureMark getMark(StructureType type, long key) {
+    public static @Nullable StructureMark getMark(StructureInfo type, long key) {
         var dd = activeDimData();
-        return dd == null ? null : dd.getMark(type.id, key);
+        return dd == null ? null : dd.getMark(type.id(), key);
     }
 
     /** 记录访问 (历史最小距离)；未激活/种子未知时忽略。 */
-    public static void markVisited(StructureType type, long key, int dist) {
+    public static void markVisited(StructureInfo type, long key, int dist) {
         final var marks = marksStore;
         final var seed = activeSeed();
         final var mwId = activeMwId();
         if (marks == null || seed == null || mwId == null)
             return;
-        marks.doc(seed, mwId).markVisited(type.id, key, dist);
+        marks.doc(seed, mwId).markVisited(type.id(), key, dist);
     }
 
     /** 设置分组 ({@code null}/默认组 = 清除记录)；未激活/种子未知时忽略。 */
-    public static void setGroup(StructureType type, long key, @Nullable String group) {
+    public static void setGroup(StructureInfo type, long key, @Nullable String group) {
         final var marks = marksStore;
         final var seed = activeSeed();
         final var mwId = activeMwId();
         if (marks == null || seed == null || mwId == null)
             return;
-        marks.doc(seed, mwId).setGroup(type.id, key, group);
+        marks.doc(seed, mwId).setGroup(type.id(), key, group);
     }
 
     /** 组是否被隐藏 (面板 checkbox)；未激活返回 false。 */

@@ -14,8 +14,9 @@ class StructureIconsTest {
 
     /**
      * 热循环契约: VisibleIconSink 的抽象方法只接受原始类型 + 共享引用
-     * (枚举常量/标记表取出的 StructureMark), 禁止回归到 record Icon
-     * 这种每图标分配一次的写法 (渲染每帧几千图标时会产生大量 young gen 垃圾)。
+     * (枚举常量/注册表持有的 StructureInfo 实例/标记表取出的 StructureMark),
+     * 禁止回归到 record Icon 这种每图标分配一次的写法 (渲染每帧几千图标时
+     * 会产生大量 young gen 垃圾)。
      */
     @Test
     void visibleIconSinkIsPrimitiveOnly() {
@@ -26,9 +27,10 @@ class StructureIconsTest {
         var method = abstractMethods.get(0);
         assertEquals(7, method.getParameterCount());
         for (var type : method.getParameterTypes()) {
-            // 数值全原始类型 (禁止装箱/每图标对象); 对象参数仅共享枚举常量与
-            // 标记引用 (StructureMark), 均为零分配传递
-            assertTrue(type.isPrimitive() || type == StructureType.class
+            // 数值全原始类型 (禁止装箱/每图标对象); 对象参数仅共享引用
+            // (StructureInfo 的实现 = 枚举常量或 StructureTypes 注册表持有实例,
+            // 均为零分配传递; StructureMark 来自标记表共享引用)
+            assertTrue(type.isPrimitive() || type == StructureInfo.class
                     || type == StructureMark.class,
                     "sink parameter must be primitive or shared reference: " + type);
         }
