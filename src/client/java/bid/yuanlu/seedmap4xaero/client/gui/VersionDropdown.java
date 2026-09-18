@@ -180,7 +180,10 @@ public final class VersionDropdown {
         var cfg = ServerConfig.getActiveConfig();
         if (cfg == null || mapProcessor == null)
             return;
-        cfg.getOrCreateWorld(mapProcessor.getCurrentMWId()).mcVersion(version);
+        var mwId = mapProcessor.getCurrentMWId();
+        if (mwId == null)
+            return;
+        cfg.getOrCreateWorld(mwId).mcVersion(version);
         ServerConfig.save();
     }
 }
