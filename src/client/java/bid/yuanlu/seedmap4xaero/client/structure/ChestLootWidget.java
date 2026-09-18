@@ -74,7 +74,7 @@ public class ChestLootWidget {
     private final boolean tiled;
 
     private int chestIndex = 0;
-    private final StructureType structureType;
+    private final StructureInfo structureType;
     private final List<ChestLoot> chestDataList;
 
     /** 标题 extraInfo tooltip (每个箱子一条)。 */
@@ -83,7 +83,7 @@ public class ChestLootWidget {
     private int pendingTooltipX = 0;
     private int pendingTooltipY = 0;
 
-    public ChestLootWidget(int x, int y, StructureType structureType, List<ChestLoot> chestDataList, boolean tiled) {
+    public ChestLootWidget(int x, int y, StructureInfo structureType, List<ChestLoot> chestDataList, boolean tiled) {
         this.x = x;
         this.y = y;
         this.tiled = tiled;
@@ -155,7 +155,7 @@ public class ChestLootWidget {
                 CONTAINER_WIDTH, CONTAINER_HEIGHT);
 
         Component title = Component.translatable("xsm.chestLoot.title",
-                Component.translatable(this.structureType.translationKey()),
+                this.structureType.localizedName(),
                 index + 1, this.chestDataList.size());
 
         int minX = boxX + 8;

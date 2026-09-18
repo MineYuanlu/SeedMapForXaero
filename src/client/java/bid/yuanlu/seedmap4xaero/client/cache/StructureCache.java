@@ -1,9 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.cache;
 
 import java.util.AbstractCollection;
-import java.util.BitSet;
 import java.util.Collection;
-import java.util.EnumMap;
 import java.util.Iterator;
 
 import org.jetbrains.annotations.NotNull;
@@ -11,8 +9,11 @@ import org.jetbrains.annotations.Nullable;
 
 import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureInfo;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureTypes;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
@@ -20,13 +21,11 @@ import it.unimi.dsi.fastutil.objects.ObjectIterator;
 
 public class StructureCache {
 
-    private static final EnumMap<@NotNull StructureType, TileCache> CACHES = new EnumMap<>(
-            StructureType.class);
-    private static final EnumMap<@NotNull StructureType, TileCache2> SPARSE_CACHES = new EnumMap<>(
-            StructureType.class);
+    /** key = 结构 id (原版枚举 id / 自定义结构 id), 由 {@link StructureTypes} 解析 */
+    private static final Int2ObjectOpenHashMap<TileCache> CACHES = new Int2ObjectOpenHashMap<>();
+    private static final Int2ObjectOpenHashMap<TileCache2> SPARSE_CACHES = new Int2ObjectOpenHashMap<>();
     /** CACHES的伴生对象, 用于缓存结构查询结果, 由 {@link #updateStructuresInArea} 更新 */
-    public static final EnumMap<@NotNull StructureType, Collection<? extends StructurePos>> REGIONS = new EnumMap<>(
-            StructureType.class);
+    public static final Int2ObjectOpenHashMap<Collection<? extends StructurePos>> REGIONS = new Int2ObjectOpenHashMap<>();
 
     /**
      * 设置当前帧显示的范围, 触发结构计算更新
@@ -48,8 +47,10 @@ public class StructureCache {
             blockZ1 = temp;
         }
         for (int i = enabledTypes.nextSetBit(0); 0 <= i
-                && i < StructureType.FEATURE_NUM; i = enabledTypes.nextSetBit(i + 1)) {
-            final var type = StructureType.byId(i);
+                && i < StructureTypes.capacity(); i = enabledTypes.nextSetBit(i + 1)) {
+            final var type = StructureTypes.byId(i);
+            if (type == null)
+                continue;
             if (type.config() == null)
                 continue;
             final int blockPerRegion = type.config().regionSize() * 16;
@@ -58,23 +59,23 @@ public class StructureCache {
             final int regionZ0 = Math.floorDiv(blockZ0, blockPerRegion);
             final int regionZ1 = Math.floorDiv(blockZ1 - 1, blockPerRegion) + 1;
             final long regionCount = (long) (regionX1 - regionX0) * (long) (regionZ1 - regionZ0);
-            if (type.prob > 0) {
+            if (type.prob() > 0) {
                 // 稀疏类型(regionSize=1, 逐区块低概率): 按期望放置命中量过滤,
                 // 超量整类跳过 (prob = raw命中率×群系通过率, 群系过滤在 C 端扫描时完成)
-                final long expected = (long) Math.ceil(regionCount * type.prob);
+                final long expected = (long) Math.ceil(regionCount * type.prob());
                 if (expected > StructureType.MAX_SPARSE_HITS)
                     continue;
-                final var cache = SPARSE_CACHES.computeIfAbsent(type, t -> new TileCache2(t));
+                final var cache = SPARSE_CACHES.computeIfAbsent(type.id(), t -> new TileCache2(type));
                 final var tiles = cache.update(regionX0, regionX1, regionZ0, regionZ1);
                 if (tiles != null)
-                    REGIONS.put(type, tiles);
+                    REGIONS.put(type.id(), tiles);
             } else {
-                if (regionCount > type.maxRegionHide)
+                if (regionCount > type.maxRegionHide())
                     continue;
-                final var cache = CACHES.computeIfAbsent(type, t -> new TileCache(t));
+                final var cache = CACHES.computeIfAbsent(type.id(), t -> new TileCache(type));
                 final var tiles = cache.update(regionX0, regionX1, regionZ0, regionZ1);
                 if (tiles != null)
-                    REGIONS.put(type, tiles);
+                    REGIONS.put(type.id(), tiles);
             }
         }
     }
@@ -111,7 +112,7 @@ public class StructureCache {
      * 结果量超上限时截断续传; 快照 copy-on-write 发布, 渲染线程无锁读取。
      */
     private static final class TileCache2 extends AbstractCollection<StructurePos> {
-        private final @NotNull StructureType type;
+        private final @NotNull StructureInfo type;
         /** 已发布快照: (blockX<<32)|(blockZ&0xffffffff) → 变种码(缺省 0 = 无变种); 渲染线程只读 */
         private volatile Long2IntOpenHashMap snapshot = new Long2IntOpenHashMap();
         /** 上一帧 region 矩形(检测变化, 移除框外命中) */
@@ -126,7 +127,7 @@ public class StructureCache {
         /** 是否有 worker 任务在跑(防止重复入队) */
         private boolean jobRunning;
 
-        TileCache2(@NotNull StructureType type) {
+        TileCache2(@NotNull StructureInfo type) {
             this.type = type;
         }
 
@@ -220,7 +221,7 @@ public class StructureCache {
             final int fex0 = noExcl ? 0 : ex0, fex1 = noExcl ? 0 : ex1;
             final int fez0 = noExcl ? 0 : ez0, fez1 = noExcl ? 0 : ez1;
             final int cap = StructureType.MAX_SPARSE_HITS;
-            final int id = type.id;
+            final int id = type.id();
             CacheHelper.CACHE_WORKER.execute(() -> {
                 final Long2IntOpenHashMap hitVariants = new Long2IntOpenHashMap();
                 final long next = Xsm.querySparseStructures(
@@ -328,11 +329,11 @@ public class StructureCache {
      * 一个结构的全部缓存
      */
     private static final class TileCache {
-        private final @NotNull StructureType type;
+        private final @NotNull StructureInfo type;
         private final Long2ObjectLinkedOpenHashMap<RegionPos> tiles = new Long2ObjectLinkedOpenHashMap<>();
         private int rx0, rx1, rz0, rz1;
 
-        TileCache(@NotNull StructureType type) {
+        TileCache(@NotNull StructureInfo type) {
             this.type = type;
         }
 
@@ -389,7 +390,7 @@ public class StructureCache {
 
             // 进行diff更新, 只更新多出来的部分(在[r0,r1)且不在[fe0, fe1)的部分)，避免重复计算
             CacheHelper.CACHE_WORKER.execute(() -> Xsm.queryRegionStructuresGrid(
-                    type.id,
+                    type.id(),
                     rx0, rz0, rx1, rz1,
                     fex0, fez0, fex1, fez1,
                     (rx, rz, loaded, bx, bz, variant) -> {

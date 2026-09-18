@@ -321,11 +321,30 @@ Terralith 是完全数据驱动的，MC 客户端运行时会话里**动态注�
 #### 6.4 下一步
 
 - ✅ **cubiomes 可复用作结构位置预测器（已验证，§5.2/§5.3）**：`setStructureConfigProvider`（finders.h:248-256）现成可用，`random_spread` 网格算法与 cubiomes `salt/regionSize/chunkRange` 一一对应 → 路线 A 是唯一可低成本独立落地的路径。
-- ⬜ **Xaero 本体是否已消费 `c:` 约定文件**：决定我们是自行解析 `biome_colors.json` / `structure_icons.json`，还是复用 Xaero 的运行结果（查 `refs/lib_src/xaeroworldmap` 中是否读取 `c:worldgen/biome_colors` / `c:worldgen/structure_icons`）。
+- ✅ **Xaero 本体是否已消费 `c:` 约定文件（已验证）**：**不消费**。对 `refs/lib_src/xaeroworldmap` 全部 319 个文件扫描：`biome_colors`/`structure_icons`/`datapack`/JSON 解析零匹配；Xaero WM 连结构显示功能都没有（纯探索记录地图），生物群系着色走运行时 vanilla registry。→ `c:` 配色/图标必须 SeedMap 自行解析（路线 D 无法搭 Xaero 便车，但也不存在冲突）。
 
-路线 A 落地前的两个前置技术决策（待做最小 prototype 验证）：
+路线 A 落地前的两个前置技术决策（均已随实施解决）：
 
-- **`getStructurePos` 的 `switch(structureType)` 枚举路由如何扩展**：数据包结构没有 cubiomes 枚举分支，需新增通用 jigsaw 路由或虚拟 ID（决定 A 的实际改动面）。
-- **biome tag 校验取舍**：`isViableFeatureBiome` 硬编码 biome ID 集合、不认 `#terralith:has_structure/*` 标签——跳过会假阳性（struct possibly 标在不该出现处），做对要先有气候采样器（把 A 拖向 B 的成本）。
+- ✅ **`getStructurePos` 的 `switch(structureType)` 枚举路由如何扩展**：绕过枚举路由——自定义 id ([100,1000)) 在 `queryRegionStructuresGrid` 入口直调 `getFeaturePos`/`getLargeStructurePos` 的网格数学（linear/triangular 由 spread_type 决定），不碰 cubiomes 枚举 switch，`setStructureConfigProvider` 弃用。
+- ✅ **biome tag 校验取舍**：跳过（v1 已知假阳性）；做对需要气候采样器（路线 B 前置），hover 明确标注"预测位置 (未校验生物群系)"。
 
-若 Xaero 未消费 `c:`，建议先做 D（读 `c:` 元数据渲染配色/图标）作为零依赖的独立里程碑。
+### 7. 路线 A 实施记录（v1 已落地）
+
+| 项 | 状态 |
+|---|---|
+| C 核心 | ✅ `xsmSetCustomStructures` + `queryRegionStructuresGrid`/`xsmGetStructureConfig` 自定义分支（id ∈ [100,1000)）；linear 网格与 cubiomes `getFeaturePos` 对拍 121/121、triangular 81/81 逐字节一致，加权掷骰与 vanilla `WeightedRandom` + `setLargeFeatureSeed` 规格对拍一致 |
+| Java 类型系统 | ✅ `StructureInfo` 接口 + `StructureTypes` 注册表，三处枚举闭合点（byId / EnumMap / values()）全部收敛为 id 透传 |
+| 摄取管线 | ✅ `client/datapack/` 新包：单机 ResourceManager 扫描 → structure_set 解析 + biome tag 递归维度归类 + 原版跳过表 + `c:` 元数据 → 注入 |
+| 图标 | ✅ `c:structure_icons` 物品贴图启发式（item/block 两路径）+ 运行时 DynamicTexture sheet（20px/16px 两张）+ 琥珀菱形回退图标 |
+| 测试 | ✅ C 单测 + JVM 解析测试（内存源）+ native 集成测试 + E2E gametest 模拟注入用例 |
+| 多人手动导入 | ⬜ v2（M4：用户指定 zip/目录） |
+
+**v1 已知限制**（§5.3 成本决策的既定取舍）：
+
+1. 假阳性：无 biome tag 校验（消除需路线 B 气候采样器）
+2. 多结构集合图标为首选预测（位置正确，图标极端情况可能标错）
+3. 原版 set 被覆盖（改 salt，如 YUNG's）：保持原版预测 + WARN（v1.1 做抑制后可拿下 YUNG's 兼容）
+4. `/reload` 不热更新（重进世界生效）
+5. frequency<1 / exclusion_zone / 原版+自定义混排集合：跳过 + WARN
+
+**顺带修复的潜伏 bug**：`Xsm.setGameVersion()`（无参）重置了 C 侧 `gen_setWorld` 但未重置 Java 侧 `setWorld` 去重哨兵——同 (seed, dim) 的后续 setWorld 被跳过导致世界未设置（`applyGameVersion` 有 `resetWorldState()` 协议，无参版本遗漏；此前被测试类执行顺序掩盖）。

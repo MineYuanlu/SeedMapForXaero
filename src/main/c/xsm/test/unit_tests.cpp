@@ -588,3 +588,233 @@ TEST_CASE("xsmItemName/xsmEnchantmentName") {
   CHECK_MESSAGE(xsmEnchantmentName(1, buf, sizeof(buf)), "xsmEnchantmentName(1) failed");
   INFO("enchant 1 = ", buf);
 }
+
+// ===== 数据包自定义结构 (路线 A) =====
+
+namespace {
+
+// 单 region 查询: queryRegionStructuresGrid(type, rx..rx+1, rz..rz+1)
+struct SingleHit {
+  int8_t found;
+  int32_t bx, bz, variant;
+  SingleHit(int type, int32_t rx, int32_t rz)
+      : found(0), bx(0), bz(0), variant(0) {
+    queryRegionStructuresGrid(type, rx, rz, rx + 1, rz + 1, 0, 0, 0, 0,
+                              &found, &bx, &bz, &variant);
+  }
+};
+
+// 独立参考: 按 vanilla 规格手抄的加权掷骰 (WorldgenRandom.setLargeFeatureSeed
+// + WeightedRandom), 与实现互为对拍
+static int refPickStructure(int64_t weights[], int n, uint64_t worldSeed,
+                            int32_t chunkX, int32_t chunkZ) {
+  uint64_t rng;
+  setSeed(&rng, worldSeed);
+  const uint64_t a = nextLong(&rng);
+  const uint64_t b = nextLong(&rng);
+  setSeed(&rng, (uint64_t)((int64_t)chunkX * (int64_t)a) ^
+                (uint64_t)((int64_t)chunkZ * (int64_t)b) ^ worldSeed);
+  int64_t total = 0;
+  for (int i = 0; i < n; i++) total += weights[i];
+  int64_t w = nextInt(&rng, (int)total);
+  for (int i = 0; i < n; i++) {
+    w -= weights[i];
+    if (w < 0) return i;
+  }
+  return n - 1;
+}
+
+}  // namespace
+
+TEST_CASE("xsmSetCustomStructures: validation") {
+  setupOrFail();
+  const int32_t oneSet[7] = {10387312, 34, 8, 0, 0, 0, 1};
+  const int32_t oneEnt[2] = {100, 1};
+  CHECK(xsmSetCustomStructures(oneSet, 1, oneEnt, 1));
+  CHECK(xsmSetCustomStructures(nullptr, 0, nullptr, 0));  // 清除
+
+  CHECK(!xsmSetCustomStructures(nullptr, -1, nullptr, 0));       // nSets < 0
+  CHECK(!xsmSetCustomStructures(oneSet, 1, nullptr, 0));         // entries NULL
+
+  const int32_t idLow[2] = {99, 1}, idHigh[2] = {1000, 1}, w0[2] = {100, 0};
+  CHECK(!xsmSetCustomStructures(oneSet, 1, idLow, 1));           // id < 100
+  CHECK(!xsmSetCustomStructures(oneSet, 1, idHigh, 1));          // id >= 1000
+  CHECK(!xsmSetCustomStructures(oneSet, 1, w0, 1));              // weight < 1
+
+  const int32_t sepEq[7] = {0, 4, 4, 0, 0, 0, 1};
+  const int32_t noSpace[7] = {0, 0, 0, 0, 0, 0, 1};
+  const int32_t badDim[7] = {0, 4, 2, 0, 7, 0, 1};
+  const int32_t badSpread[7] = {0, 4, 2, 5, 0, 0, 1};
+  CHECK(!xsmSetCustomStructures(sepEq, 1, oneEnt, 1));           // sep >= spacing
+  CHECK(!xsmSetCustomStructures(noSpace, 1, oneEnt, 1));         // spacing < 1
+  CHECK(!xsmSetCustomStructures(badDim, 1, oneEnt, 1));          // dim 非法
+  CHECK(!xsmSetCustomStructures(badSpread, 1, oneEnt, 1));       // spread 非法
+
+  // 分组不连续: 第二组 first 应为 1
+  const int32_t gapSets[14] = {0, 4, 2, 0, 0, 0, 1, 0, 6, 3, 0, 0, 0, 1};
+  const int32_t twoEnt[4] = {100, 1, 101, 1};
+  CHECK(!xsmSetCustomStructures(gapSets, 2, twoEnt, 2));
+  // 条目未全部被分组覆盖
+  const int32_t halfSets[7] = {0, 4, 2, 0, 0, 0, 1};
+  CHECK(!xsmSetCustomStructures(halfSets, 1, twoEnt, 2));
+  // id 重复
+  const int32_t dupEnt[4] = {100, 1, 100, 2};
+  const int32_t okTwo[14] = {0, 4, 2, 0, 0, 0, 2, 0, 6, 3, 0, 0, 2, 1};
+  const int32_t threeEnt[6] = {100, 1, 101, 1, 102, 1};
+  CHECK(!xsmSetCustomStructures(okTwo, 2, dupEnt, 2));
+
+  // 合法两组
+  CHECK(xsmSetCustomStructures(okTwo, 2, threeEnt, 3));
+  CHECK(xsmSetCustomStructures(nullptr, 0, nullptr, 0));  // 收尾清除
+}
+
+TEST_CASE("custom grid == cubiomes getFeaturePos (linear)") {
+  setupOrFail();
+  // 以当前版本 Village 实际配置构造等价自定义集 (salt/spacing/separation)
+  StructureConfig vc;
+  REQUIRE(getStructureConfig(Village, testMcEnum(), &vc));
+  const int32_t sets[7] = {vc.salt, vc.regionSize,
+                           (int32_t)vc.regionSize - vc.chunkRange, 0,
+                           vc.dim, 0, 1};
+  const int32_t ent[2] = {100, 1};
+  REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1));
+
+  const uint64_t seed = 0x123456789ABCDEFULL;
+  REQUIRE(setWorld(seed, 0));
+
+  int mismatches = 0, hits = 0;
+  for (int rx = -5; rx <= 5; rx++) {
+    for (int rz = -5; rz <= 5; rz++) {
+      const Pos ref = getFeaturePos(vc, seed, rx, rz);
+      const SingleHit h(100, rx, rz);
+      CHECK_MESSAGE(h.found == 1, "region ", rx, ",", rz, " not found");
+      if (h.found) {
+        hits++;
+        if (h.bx != ref.x || h.bz != ref.z) mismatches++;
+      }
+    }
+  }
+  CHECK(hits == 121);
+  CHECK(mismatches == 0);
+  xsmSetCustomStructures(nullptr, 0, nullptr, 0);
+}
+
+TEST_CASE("custom grid == cubiomes getLargeStructurePos (triangular)") {
+  setupOrFail();
+  StructureConfig mc;
+  REQUIRE(getStructureConfig(Monument, testMcEnum(), &mc));
+  const int32_t sets[7] = {mc.salt, mc.regionSize,
+                           (int32_t)mc.regionSize - mc.chunkRange, 1,
+                           mc.dim, 0, 1};
+  const int32_t ent[2] = {100, 1};
+  REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1));
+
+  const uint64_t seed = 0xDEADBEEFCAFEULL;
+  REQUIRE(setWorld(seed, 0));
+
+  int mismatches = 0, hits = 0;
+  for (int rx = -4; rx <= 4; rx++) {
+    for (int rz = -4; rz <= 4; rz++) {
+      const Pos ref = getLargeStructurePos(mc, seed, rx, rz);
+      const SingleHit h(100, rx, rz);
+      CHECK_MESSAGE(h.found == 1, "region ", rx, ",", rz, " not found");
+      if (h.found) {
+        hits++;
+        if (h.bx != ref.x || h.bz != ref.z) mismatches++;
+      }
+    }
+  }
+  CHECK(hits == 81);
+  CHECK(mismatches == 0);
+  xsmSetCustomStructures(nullptr, 0, nullptr, 0);
+}
+
+TEST_CASE("custom multi-entry selection") {
+  setupOrFail();
+  // 3 结构等权集合 (salt=2358902, spacing=27, separation=15 — Terralith regular 同款参数)
+  const int32_t sets[7] = {2358902, 27, 15, 0, 0, 0, 3};
+  const int32_t ent[6] = {100, 1, 101, 1, 102, 1};
+  REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1 * 3));
+
+  const uint64_t seed = 424242;
+  REQUIRE(setWorld(seed, 0));
+
+  // 1. 每个位置恰有一个赢家: 各 id 的 found 之和 == region 数
+  // 2. 命中位置与掷骰参考一致 (chunk 对齐 refPickStructure)
+  int count[3] = {0, 0, 0};
+  for (int rx = -10; rx < 10; rx++) {
+    for (int rz = -10; rz < 10; rz++) {
+      int foundSum = 0;
+      int64_t weights[3] = {1, 1, 1};
+      for (int e = 0; e < 3; e++) {
+        const SingleHit h(100 + e, rx, rz);
+        foundSum += h.found;
+        if (h.found) {
+          count[e]++;
+          // 独立参考: 手抄 vanilla 掷骰
+          const int pick = refPickStructure(weights, 3, seed, h.bx >> 4,
+                                            h.bz >> 4);
+          CHECK_MESSAGE(pick == e, "selection mismatch at region ", rx, ",",
+                        rz, " impl=", e, " ref=", pick);
+        }
+      }
+      CHECK_MESSAGE(foundSum == 1, "region ", rx, ",", rz,
+                    " should have exactly 1 winner, got ", foundSum);
+    }
+  }
+  // 等权 -> 分布大致均匀 (400 regions, ~133 each; 宽松边界)
+  for (int e = 0; e < 3; e++)
+    CHECK_MESSAGE(count[e] > 80, "entry ", e, " picked only ", count[e],
+                  " times");
+
+  // 3. 确定性: 同 region 重复查询结果一致
+  const SingleHit a(100, 3, 3);
+  const SingleHit b(100, 3, 3);
+  CHECK(a.found == b.found);
+  CHECK(a.bx == b.bx);
+  CHECK(a.bz == b.bz);
+
+  // 4. xsmGetStructureConfig 自定义支持
+  int32_t salt, rs, cr, dim;
+  float rarity;
+  CHECK(xsmGetStructureConfig(101, &salt, &rs, &cr, &dim, &rarity));
+  CHECK(salt == 2358902);
+  CHECK(rs == 27);
+  CHECK(cr == 12);  // spacing - separation
+  CHECK(dim == 0);
+
+  // 5. 未注入的 id: 查询返回 0, config 失败
+  int8_t f9 = 0; int32_t x9 = 0, z9 = 0;
+  CHECK(queryRegionStructuresGrid(999, 0, 0, 1, 1, 0, 0, 0, 0,
+                                  &f9, &x9, &z9, nullptr) == 0);
+  CHECK(!xsmGetStructureConfig(999, &salt, &rs, &cr, &dim, &rarity));
+  xsmSetCustomStructures(nullptr, 0, nullptr, 0);
+}
+
+TEST_CASE("custom structures: dim filter + clear") {
+  setupOrFail();
+  // 下界集合, 主世界查询应返回 0
+  const int32_t sets[7] = {12345, 20, 8, 0, DIM_NETHER, 0, 1};
+  const int32_t ent[2] = {100, 1};
+  int8_t found[4];
+  int32_t bx[4], bz[4];
+  REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1));
+  const uint64_t seed = 777;
+  REQUIRE(setWorld(seed, 0));  // 主世界
+  uint32_t n = queryRegionStructuresGrid(100, 0, 0, 2, 2, 0, 0, 0, 0,
+                                         found, bx, bz, nullptr);
+  CHECK(n == 0);
+
+  // 下界查询命中
+  REQUIRE(setWorld(seed, DIM_NETHER));
+  n = queryRegionStructuresGrid(100, 0, 0, 2, 2, 0, 0, 0, 0,
+                                found, bx, bz, nullptr);
+  CHECK(n == 4);
+
+  // 清除后查询返回 0
+  REQUIRE(xsmSetCustomStructures(nullptr, 0, nullptr, 0));
+  REQUIRE(setWorld(seed, DIM_NETHER));
+  n = queryRegionStructuresGrid(100, 0, 0, 2, 2, 0, 0, 0, 0,
+                                found, bx, bz, nullptr);
+  CHECK(n == 0);
+}

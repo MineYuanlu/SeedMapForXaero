@@ -112,6 +112,8 @@
   "xsm.hover.visited": "已访问 (最近 %d 米)",
   "xsm.hover.unvisited": "未访问",
   "xsm.hover.group": "分组: %s",
+  "xsm.hover.datapack_predicted": "数据包结构 %s — 预测位置 (未校验生物群系)",
+  "xsm.structure.custom": "数据包结构",
 
   "xsm.command.help": "用法: /sm4x history seed list [页码] | /sm4x history structure list [页码] | /sm4x history structure remove <seed>",
   "xsm.command.empty": "暂无数据",

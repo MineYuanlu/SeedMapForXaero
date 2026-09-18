@@ -68,7 +68,7 @@ public final class LootPreviewState {
     /** 是否左键固定 (详情模式下悬停即自动固定)。 */
     private static boolean pinned;
     /** 悬浮目标 (用于固定回落与点击命中)。 */
-    private static StructureType hoverType;
+    private static StructureInfo hoverType;
     private static int hoverBlockX, hoverBlockZ;
     private static double hoverGuiX, hoverGuiZ;
     /** 当前屏幕 (GUI 缩放后) 尺寸, 用于容器右下角定位的钳制。 */
@@ -77,8 +77,8 @@ public final class LootPreviewState {
     private static long widgetKey = Long.MIN_VALUE;
 
     /** 该结构类型是否支持战利品查询。 */
-    public static boolean isLootSupported(StructureType type) {
-        return LOOT_SUPPORTED.contains(type.id);
+    public static boolean isLootSupported(StructureInfo type) {
+        return LOOT_SUPPORTED.contains(type.id());
     }
 
     /** 生成缓存的 key (structureType, blockX, blockZ) 压缩为 long。 */
@@ -93,14 +93,14 @@ public final class LootPreviewState {
     }
 
     /** 查询 (带缓存)。返回 null = native 错误 / 不支持。 */
-    public static @Nullable List<ChestLoot> queryLoot(StructureType type, int blockX, int blockZ) {
-        long k = key(type.id, blockX, blockZ);
+    public static @Nullable List<ChestLoot> queryLoot(StructureInfo type, int blockX, int blockZ) {
+        long k = key(type.id(), blockX, blockZ);
         synchronized (LOOT_CACHE) {
             if (LOOT_CACHE.containsKey(k)) {
                 return LOOT_CACHE.get(k);
             }
         }
-        List<ChestLoot> loot = Xsm.queryStructureLoot(type.id, blockX, blockZ);
+        List<ChestLoot> loot = Xsm.queryStructureLoot(type.id(), blockX, blockZ);
         synchronized (LOOT_CACHE) {
             LOOT_CACHE.put(k, loot);
         }
@@ -140,7 +140,7 @@ public final class LootPreviewState {
      * 详情模式 ({@link LootDisplayMode#isDetail()}): 悬停即自动进入固定态,
      * 与速览模式的唯一区别, 无需点击即可移入容器浏览/翻页。
      */
-    public static void onHover(StructureType type, int blockX, int blockZ,
+    public static void onHover(StructureInfo type, int blockX, int blockZ,
             double guiX, double guiZ, double guiW, double guiH) {
         if (pinned && !ServerConfig.getLootDisplayMode().isDetail()) {
             return;

@@ -16,8 +16,10 @@ import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureMark;
 import bid.yuanlu.seedmap4xaero.client.structure.ChestLootWidget;
+import bid.yuanlu.seedmap4xaero.client.structure.CustomStructureIcons;
 import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureIcons;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureInfo;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 
@@ -77,7 +79,7 @@ public class StructureOverlayMixin {
     private float xsm$bestDist;
 
     @Unique
-    private StructureType xsm$hoverType;
+    private StructureInfo xsm$hoverType;
 
     @Unique
     private int xsm$hoverBlockX, xsm$hoverBlockZ;
@@ -144,6 +146,13 @@ public class StructureOverlayMixin {
         final GpuTextureView texView = tex.getTextureView();
         final GpuSampler sampler = tex.getSampler();
         final TextureSetup setup = TextureSetup.singleTexture(texView, sampler);
+        // 数据包自定义结构: 动态 sheet (惰性构建; 无自定义结构时为 null 走原版路径)
+        CustomStructureIcons.ensureLoaded();
+        final var customTex = CustomStructureIcons.texture();
+        final TextureSetup customSetup = customTex != null
+                ? TextureSetup.singleTexture(customTex.getTextureView(), customTex.getSampler())
+                : null;
+        final int customSheetWidth = CustomStructureIcons.sheetWidth();
         final Matrix3x2f basePose = new Matrix3x2f(guiGraphics.pose());
 
         final double invScale = 1.0 / screenScale;
@@ -177,23 +186,31 @@ public class StructureOverlayMixin {
                 xsm$hoverBlockZ = blockZ;
                 xsm$hoverGuiX = guiX;
                 xsm$hoverGuiZ = guiZ;
-                String hover = I18n.get(type.translationKey());
-                String vk = type.variantTranslationKey(variant);
-                if (vk != null)
-                    hover += " (" + I18n.get(vk) + ")";
+                String hover = type.localizedName();
+                if (!type.getVariants().isEmpty()) {
+                    String vk = type.variantTranslationKey(variant);
+                    if (vk != null)
+                        hover += " (" + I18n.get(vk) + ")";
+                }
                 xsm$hoverText = hover;
                 xsm$buildHoverLines(type, blockX, blockZ, mark);
             }
 
             final int idx = type.getSpriteIndex(variant);
-            final float u0 = (float) (idx * ICON_SIZE) / StructureType.SPRITESHEET_WIDTH;
-            final float u1 = u0 + (float) ICON_SIZE / StructureType.SPRITESHEET_WIDTH;
+            // 自定义结构走动态 sheet (UV 同公式, 宽度/纹理不同)
+            final boolean custom = type.isCustom();
+            final TextureSetup iconSetup = custom ? customSetup : setup;
+            final float sheetW = custom ? customSheetWidth : StructureType.SPRITESHEET_WIDTH;
+            if (iconSetup == null)
+                return; // 自定义 sheet 尚未就绪 (下一帧恢复)
+            final float u0 = (float) (idx * ICON_SIZE) / sheetW;
+            final float u1 = u0 + (float) ICON_SIZE / sheetW;
 
             final Matrix3x2f pose = new Matrix3x2f(basePose)
                     .translate((float) guiX, (float) guiZ)
                     .scale(iconScale, iconScale);
             guiRenderState.addBlitToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED,
-                    setup, pose, -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
+                    iconSetup, pose, -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
                     u0, u1, 0.0F, 1.0F, -1, null));
             // 组色遮罩: 同 UV 第二次 blit, 顶点色乘法混合 → 只染色非透明像素;
             // alpha=0 (透明度 100%) 跳过。无 mark 记录 (= 未分组) 也按未分组组色解析,
@@ -202,7 +219,7 @@ public class StructureOverlayMixin {
                     ? defaultTint : StructureGroups.colorOf(doc, mark.group());
             if ((tint & 0xFF000000) != 0) {
                 guiRenderState.addBlitToCurrentLayer(new BlitRenderState(
-                        RenderPipelines.GUI_TEXTURED, setup, pose,
+                        RenderPipelines.GUI_TEXTURED, iconSetup, pose,
                         -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
                         u0, u1, 0.0F, 1.0F, tint, null));
             }
@@ -217,12 +234,17 @@ public class StructureOverlayMixin {
         }
     }
 
-    /** 组装 hover 的多行内容: 标题 (白) + 访问状态 (灰) + 分组 (组色)。 */
+    /** 组装 hover 的多行内容: 标题 (白) + 访问状态 (灰) + 分组 (组色);
+     * 自定义结构额外标注预测语义与完整数据包 id。 */
     @Unique
-    private void xsm$buildHoverLines(StructureType type, int blockX, int blockZ,
+    private void xsm$buildHoverLines(StructureInfo type, int blockX, int blockZ,
             @Nullable StructureMark mark) {
         xsm$hoverLines.clear();
         xsm$hoverLines.add(new HoverLine(xsm$hoverText, 0xFFFFFFFF));
+        if (type.isCustom()) {
+            xsm$hoverLines.add(new HoverLine(
+                    I18n.get("xsm.hover.datapack_predicted", type.key()), 0xFF70A0C8));
+        }
         xsm$hoverLines.add(new HoverLine(I18n.get(mark != null && mark.visited()
                 ? "xsm.hover.visited" : "xsm.hover.unvisited",
                 mark == null ? 0 : mark.minDist()), 0xFFA0A0A8));

@@ -110,6 +110,30 @@ XSM_API int32_t xsmGetStructureConfig(
 /// @brief 获取结构类型数量(枚举最大值)
 XSM_API int32_t xsmGetStructFEATURE_NUM(void);
 
+/* 数据包自定义结构 (路线 A: 结构位置预测)
+ *
+ * ID 约定: [XSM_CUSTOM_STRUCT_MIN_ID, XSM_CUSTOM_STRUCT_MAX_ID) 为数据包
+ * 自定义结构保留, 与 cubiomes 枚举 (0..FEATURE_NUM) 不冲突。
+ * 预测算法 = vanilla random_spread 网格 + (多结构集合时) setLargeFeatureSeed
+ * 加权掷骰取首选; 不做 biome tag 校验 (已知假阳性, 见 doc/datapak.md)。
+ */
+#define XSM_CUSTOM_STRUCT_MIN_ID 100
+#define XSM_CUSTOM_STRUCT_MAX_ID 1000
+
+/// @brief 设置/清除数据包自定义结构集 (世界切换时由 Java 重注入)
+/// @param sets 集合数组, 每组 7 个 int32 (连续存放):
+///   [salt, spacing, separation, spreadType(0=linear/1=triangular),
+///    dim(0=主世界/-1=下界/1=末地), firstEntry, entryCount]
+/// @param nSets 集合数量 (0 = 清除全部)
+/// @param entries 条目数组, 按集合分组连续存放(与 sets 的
+///   firstEntry/entryCount 对应), 每组 2 个 int32:
+///   [id ∈ [100,1000) 且全局唯一, weight >= 1]
+/// @param nEntries 条目总数
+/// @return false: 参数异常 (越界/权重非法/分组不连续等)
+/// @note 与 setGameVersion 同款协议: 变更后需重设世界/清缓存 (Java 侧负责)
+XSM_API bool xsmSetCustomStructures(const int32_t* sets, int32_t nSets,
+                                    const int32_t* entries, int32_t nEntries);
+
 /* 结构变种位码 (仅作为查询输出的变种码, 语义按结构类型定义; 无变种类型恒为 0):
  *
  * End_City         bit0 (1) 含末地船(鞘翅)

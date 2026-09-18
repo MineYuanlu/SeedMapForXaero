@@ -9,6 +9,7 @@
 --include-function hello
 --include-function xsmGetStructureConfig
 --include-function xsmGetStructFEATURE_NUM
+--include-function xsmSetCustomStructures
 --include-function queryRegionStructuresGrid
 --include-function queryStrongholdsRange
 --include-function querySparseStructures

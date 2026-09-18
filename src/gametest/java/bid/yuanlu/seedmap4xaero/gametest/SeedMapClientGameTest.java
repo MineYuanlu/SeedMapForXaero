@@ -5,6 +5,7 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache.CellKey;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
@@ -15,8 +16,10 @@ import bid.yuanlu.seedmap4xaero.client.gui.SeedMapPanel;
 import bid.yuanlu.seedmap4xaero.client.mixin.SeedMapMixin;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.HighlightHudRenderer;
+import bid.yuanlu.seedmap4xaero.client.structure.CustomStructureType;
 import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureTypes;
 
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
@@ -73,6 +76,12 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             assertMapActivated();
             assertCellCachePopulated(context);
             assertStructureCachePopulated(context);
+
+            // 数据包自定义结构 (路线 A): 模拟 DatapackStructures.reload 注入
+            // (gametest 世界无数据包, 直接注入合成表), 验证 Java 注册表 →
+            // getStructureTypeSet → StructureCache → REGIONS 全链路。
+            // 面板截图顺带人工验收类型列表中的自定义行。
+            assertCustomStructuresInjected(context);
 
             context.takeScreenshot("seed-map-final");
 
@@ -180,6 +189,56 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     private static void assertStructureCachePopulated(ClientGameTestContext context) {
         context.waitFor(client -> !StructureCache.REGIONS.isEmpty(), 200);
         LOGGER.info("StructureCache types = {}", StructureCache.REGIONS.keySet());
+    }
+
+    /**
+     * 数据包自定义结构链路 (路线 A):
+     * <ol>
+     * <li>模拟 {@code DatapackStructures.reload}: C 表注入 + Java 注册表 +
+     *     缓存失效 (gametest 世界无数据包, 注入 Terralith regular 同款合成表)</li>
+     * <li>直查 {@code Xsm.queryRegionStructuresGrid} 有确定位置</li>
+     * <li>等 REGIONS 收录自定义 id (getStructureTypeSet → updateStructuresInArea 全链路)</li>
+     * <li>清理: 清空 C 表 + 注册表 + 缓存</li>
+     * </ol>
+     */
+    private static void assertCustomStructuresInjected(ClientGameTestContext context) {
+        final int customId = 100;
+        context.runOnClient(client -> {
+            // 1. 注入: 2 等权结构, spacing=27/separation=15 (Terralith regular 同款)
+            int[] sets = { 2358902, 27, 15, 0, 0, 0, 2 };
+            int[] entries = { customId, 1, customId + 1, 1 };
+            if (!Xsm.setCustomStructures(sets, entries)) {
+                throw new AssertionError("Xsm.setCustomStructures rejected the table");
+            }
+            var types = new java.util.ArrayList<CustomStructureType>();
+            var config = new StructureType.Config(2358902, 27, 12, 0, 0f);
+            types.add(new CustomStructureType(customId, "gametest:alpha", "Alpha", config, 1, null, false));
+            types.add(new CustomStructureType(customId + 1, "gametest:beta", "Beta", config, 1, null, false));
+            StructureTypes.setCustomTypes(types);
+            CacheHelper.invalidateAll();
+        });
+
+        // 2. 直查: 单机种子下 3×3 region 至少一个候选 (网格恒产出, 无 biome 校验)
+        context.waitFor(client -> {
+            final boolean[] hit = { false };
+            Xsm.queryRegionStructuresGrid(customId, -1, -1, 2, 2, 0, 0, 0, 0,
+                    (rx, rz, found, bx, bz, variant) -> {
+                        if (found)
+                            hit[0] = true;
+                    });
+            return hit[0];
+        }, 50);
+
+        // 3. 全链路: REGIONS 收录自定义 id
+        context.waitFor(client -> StructureCache.REGIONS.containsKey(customId), 200);
+        LOGGER.info("custom structure id={} visible in REGIONS", customId);
+
+        // 4. 清理 (不污染后续断言)
+        context.runOnClient(client -> {
+            Xsm.setCustomStructures(new int[0], new int[0]);
+            StructureTypes.setCustomTypes(java.util.List.of());
+            CacheHelper.invalidateAll();
+        });
     }
 
     /** 要高亮的真实结构位置。 */

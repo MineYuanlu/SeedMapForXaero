@@ -42,7 +42,7 @@ public final class StructureIcons {
      */
     @FunctionalInterface
     public interface VisibleIconSink {
-        void accept(StructureType type, int variant, int blockX, int blockZ,
+        void accept(StructureInfo type, int variant, int blockX, int blockZ,
                 double guiX, double guiZ, @Nullable StructureMark mark);
     }
 
@@ -75,9 +75,11 @@ public final class StructureIcons {
         // 组过滤/组色: 每帧只解析一次标记表 (激活数据为 null 时零开销)
         final var dimData = StructureDataConfig.activeDimData();
 
-        for (var entry : StructureCache.REGIONS.entrySet()) {
-            StructureType type = entry.getKey();
-            final int typeId = type.id;
+        for (var entry : StructureCache.REGIONS.int2ObjectEntrySet()) {
+            final int typeId = entry.getIntKey();
+            final StructureInfo type = StructureTypes.byId(typeId);
+            if (type == null)
+                continue; // 自定义表刚被整体替换的瞬态, 跳过
             for (StructurePos rp : entry.getValue()) {
                 if (!rp.loaded())
                     continue;

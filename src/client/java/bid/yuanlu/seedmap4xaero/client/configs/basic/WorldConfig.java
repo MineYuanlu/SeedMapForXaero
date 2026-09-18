@@ -11,7 +11,9 @@ import org.jetbrains.annotations.Nullable;
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlag;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlagView;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureInfo;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureTypes;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 
 /**
@@ -44,14 +46,14 @@ public class WorldConfig {
 
     /** 设置结构整体的可见性 (false=整类禁用) */
     public void setStructureEnabled(int type, boolean visible) {
-        StructureType.byId(type);// check
+        Objects.requireNonNull(StructureTypes.byId(type), "unknown structure id: " + type);
         disabledStructure.setStructure(type, !visible);
         main.makeDirty();
     }
 
     /** 设置某个变种的可见性 (false=该变种禁用) */
     public void setVariantEnabled(int type, int variant, boolean visible) {
-        StructureType.byId(type);// check
+        Objects.requireNonNull(StructureTypes.byId(type), "unknown structure id: " + type);
         disabledStructure.setVariant(type, variant, !visible);
         main.makeDirty();
     }
@@ -62,10 +64,10 @@ public class WorldConfig {
 
     /** 结构整体可见的类型集合, 供生成/渲染层按类型过滤 */
     public BitSetView getStructureTypeSet() {
-        BitSet set = new BitSet(StructureType.FEATURE_NUM);
-        for (StructureType t : StructureType.values()) {
-            if (!disabledStructure.isStructureSet(t.id))
-                set.set(t.id);
+        BitSet set = new BitSet(StructureTypes.capacity());
+        for (StructureInfo t : StructureTypes.all()) {
+            if (!disabledStructure.isStructureSet(t.id()))
+                set.set(t.id());
         }
         return new BitSetView(set);
     }

@@ -8,6 +8,7 @@ import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.command.Sm4xCommand;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.datapack.DatapackStructures;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
 import bid.yuanlu.seedmap4xaero.client.render.HighlightHudRenderer;
@@ -38,6 +39,7 @@ public class XaeroSeedMapClient implements ClientModInitializer {
             HighlightedStructures.clear();
             ServerConfig.deactivate();
             StructureDataConfig.deactivate();
+            DatapackStructures.clear();
         });
     }
 }

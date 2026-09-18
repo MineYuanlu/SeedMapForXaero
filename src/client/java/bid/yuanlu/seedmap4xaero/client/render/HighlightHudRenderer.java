@@ -16,7 +16,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
+import bid.yuanlu.seedmap4xaero.client.structure.CustomStructureIcons;
 import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureInfo;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 
 /**
@@ -80,6 +82,12 @@ public final class HighlightHudRenderer {
         final GpuTextureView texView = tex.getTextureView();
         final GpuSampler sampler = tex.getSampler();
         final TextureSetup setup = TextureSetup.singleTexture(texView, sampler);
+        // 数据包自定义结构的动态 sheet (与地图叠加/面板同源)
+        CustomStructureIcons.ensureLoaded();
+        final var customTex = CustomStructureIcons.texture();
+        final TextureSetup customSetup = customTex != null
+                ? TextureSetup.singleTexture(customTex.getTextureView(), customTex.getSampler())
+                : null;
         final Matrix3x2f basePose = new Matrix3x2f(graphics.pose());
         final int half = ICON_SIZE / 2;
 
@@ -98,11 +106,14 @@ public final class HighlightHudRenderer {
             final float sx = s[0];
             final float sy = s[1];
 
+            // 自定义结构走动态 sheet; 未就绪回退原版 slot 0
+            final boolean custom = key.type().isCustom() && customSetup != null;
             final float[] uv = spriteUv(key.type(), key.variant());
+            final TextureSetup iconSetup = custom ? customSetup : setup;
             // 浮点屏幕坐标经 pose 承载 → 亚像素平滑移动 (整数截断会让移动时每帧跳格)
             final Matrix3x2f pose = new Matrix3x2f(basePose).translate(sx, sy);
             guiRenderState.addBlitToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED,
-                    setup, pose, -half, -half, half, half, uv[0], uv[1], 0.0F, 1.0F,
+                    iconSetup, pose, -half, -half, half, half, uv[0], uv[1], 0.0F, 1.0F,
                     ICON_ALPHA, null));
             lastFrameHighlightBlits++;
 
@@ -128,11 +139,14 @@ public final class HighlightHudRenderer {
         return new float[] { sx, sy };
     }
 
-    /** 结构类型 + 变种 → 精灵图归一化 UV 区间 (源贴图每格 {@value #SOURCE_CELL}px)。 */
-    static float[] spriteUv(StructureType type, int variant) {
+    /** 结构类型 + 变种 → 精灵图归一化 UV 区间 (源贴图每格 {@value #SOURCE_CELL}px;
+     * 自定义结构用动态 sheet 宽度)。 */
+    static float[] spriteUv(StructureInfo type, int variant) {
         final int idx = type.getSpriteIndex(variant);
-        final float u0 = (float) (idx * SOURCE_CELL) / StructureType.SPRITESHEET_WIDTH;
-        final float u1 = u0 + (float) SOURCE_CELL / StructureType.SPRITESHEET_WIDTH;
+        final float sheetW = type.isCustom() && CustomStructureIcons.sheetWidth() > 0
+                ? CustomStructureIcons.sheetWidth() : StructureType.SPRITESHEET_WIDTH;
+        final float u0 = (float) (idx * SOURCE_CELL) / sheetW;
+        final float u1 = u0 + (float) SOURCE_CELL / sheetW;
         return new float[] { u0, u1 };
     }
 }

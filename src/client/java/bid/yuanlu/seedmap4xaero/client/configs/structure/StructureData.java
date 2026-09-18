@@ -12,8 +12,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xCodec;
-import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 /**
@@ -282,30 +282,22 @@ public class StructureData {
         }
     }
 
-    /** 单维度标记表: typeId → (key → mark)。 */
+    /** 单维度标记表: typeId → (key → mark)。typeId 可为数据包自定义结构 id。 */
     public static final class DimData {
         private final StructureData owner;
-        private final Long2ObjectOpenHashMap<StructureMark>[] types;
+        private final Int2ObjectOpenHashMap<Long2ObjectOpenHashMap<StructureMark>> types;
 
-        @SuppressWarnings("unchecked")
         DimData(SeedData ownerSeed) {
             this.owner = ownerSeed.owner;
-            types = new Long2ObjectOpenHashMap[StructureType.FEATURE_NUM];
+            types = new Int2ObjectOpenHashMap<>();
         }
 
         private Long2ObjectOpenHashMap<StructureMark> map(int typeId) {
-            var m = types[typeId];
-            if (m == null) {
-                m = new Long2ObjectOpenHashMap<>();
-                types[typeId] = m;
-            }
-            return m;
+            return types.computeIfAbsent(typeId, k -> new Long2ObjectOpenHashMap<>());
         }
 
         public @Nullable StructureMark getMark(int typeId, long key) {
-            if (typeId < 0 || typeId >= types.length)
-                return null;
-            var m = types[typeId];
+            var m = types.get(typeId);
             return m == null ? null : m.get(key);
         }
 
@@ -348,13 +340,10 @@ public class StructureData {
         public int countGroup(String group, BitSetView enabledTypes) {
             int count = 0;
             synchronized (this) {
-                for (int id = 0; id < types.length; id++) {
-                    if (!enabledTypes.get(id))
+                for (var e : types.int2ObjectEntrySet()) {
+                    if (!enabledTypes.get(e.getIntKey()))
                         continue;
-                    var m = types[id];
-                    if (m == null)
-                        continue;
-                    for (var mark : m.values()) {
+                    for (var mark : e.getValue().values()) {
                         if (mark.group().equals(group))
                             count++;
                     }
@@ -367,9 +356,8 @@ public class StructureData {
         int recordCount() {
             int n = 0;
             synchronized (this) {
-                for (var m : types)
-                    if (m != null)
-                        n += m.size();
+                for (var m : types.values())
+                    n += m.size();
             }
             return n;
         }
@@ -378,9 +366,7 @@ public class StructureData {
         int accumulateStats(java.util.Set<String> groups) {
             int n = 0;
             synchronized (this) {
-                for (var m : types) {
-                    if (m == null)
-                        continue;
+                for (var m : types.values()) {
                     n += m.size();
                     for (var mark : m.values()) {
                         if (!mark.group().isEmpty())
@@ -398,9 +384,7 @@ public class StructureData {
         boolean reassignGroup(String from, String to) {
             boolean changed = false;
             synchronized (this) {
-                for (var m : types) {
-                    if (m == null)
-                        continue;
+                for (var m : types.values()) {
                     var it = m.long2ObjectEntrySet().iterator();
                     while (it.hasNext()) {
                         var e = it.next();
@@ -421,24 +405,25 @@ public class StructureData {
         }
 
         private void write(DataOutputStream out) throws IOException {
-            out.writeInt(0);
+            // version 1: typeId 由 byte 扩为 int (数据包自定义结构 id > 255)
+            out.writeInt(1);
             synchronized (this) {
                 int typeCount = 0;
-                for (var m : types)
-                    if (m != null && !m.isEmpty())
+                for (var m : types.values())
+                    if (!m.isEmpty())
                         typeCount++;
                 out.writeInt(typeCount);
-                for (int id = 0; id < types.length; id++) {
-                    var m = types[id];
+                for (var e : types.int2ObjectEntrySet()) {
+                    var m = e.getValue();
                     if (m == null || m.isEmpty())
                         continue;
-                    out.writeByte(id);
+                    out.writeInt(e.getIntKey());
                     out.writeInt(m.size());
                     var eit = m.long2ObjectEntrySet().fastIterator();
                     while (eit.hasNext()) {
-                        var e = eit.next();
-                        out.writeLong(e.getLongKey());
-                        var mark = e.getValue();
+                        var me = eit.next();
+                        out.writeLong(me.getLongKey());
+                        var mark = me.getValue();
                         out.writeInt(mark.minDist());
                         out.writeUTF(mark.group());
                     }
@@ -448,16 +433,17 @@ public class StructureData {
 
         private static DimData read(SeedData ownerSeed, DataInputStream in) throws IOException {
             final var version = in.readInt();
-            if (version != 0)
+            if (version != 0 && version != 1)
                 throw new IOException("Unsupported StructureData.DimData version: " + version);
             var dd = new DimData(ownerSeed);
             int typeCount = in.readInt();
             for (int i = 0; i < typeCount; i++) {
-                int typeId = in.readUnsignedByte();
-                if (typeId < 0 || typeId >= dd.types.length)
+                // version 0: 无符号 byte (原版 id); version 1: int (含自定义结构 id)
+                int typeId = version == 0 ? in.readUnsignedByte() : in.readInt();
+                if (typeId < 0)
                     throw new IOException("Invalid structure type id: " + typeId);
                 int entryCount = in.readInt();
-                var m = dd.types[typeId] = new Long2ObjectOpenHashMap<>(entryCount);
+                var m = dd.types.computeIfAbsent(typeId, k -> new Long2ObjectOpenHashMap<>(entryCount));
                 for (int j = 0; j < entryCount; j++) {
                     long key = in.readLong();
                     int minDist = in.readInt();

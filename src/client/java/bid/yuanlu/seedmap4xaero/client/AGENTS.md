@@ -8,7 +8,7 @@
 | `SeedMapCursorMixin`    | `GuiMap.extractRenderState`          | Replace coords/biome text for unexplored areas  |
 | `SeedMapToggleMixin`    | `GuiMap.init`                        | "S" toggle button, state from config            |
 | `XsmMainPanelMixin`     | `GuiMap.init`                        | Settings panel button + mouse routing           |
-| `WorldSwitchMixin`      | `MapProcessor.checkForWorldUpdate`   | Detect world change → reload config             |
+| `WorldSwitchMixin`      | `MapProcessor.checkForWorldUpdate`   | Detect world change → reload config + datapack structures (see datapack/AGENTS.md) |
 | `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          |
 | `GuiMapVersionDropdownMixin` | `GuiMap.mouseClicked/mouseScrolled` | Route clicks/wheel to `VersionDropdown` (world MC version picker) |
 | `StructureOverlayMixin` | `GuiMap.extractRenderState`          | Structure icon overlay + hover tooltip          |

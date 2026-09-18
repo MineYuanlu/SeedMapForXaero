@@ -72,21 +72,23 @@ public final class StructureVisitTracker {
             if (wc == null)
                 return;
             final var enabled = wc.getStructureTypeSet();
-            for (int i = enabled.nextSetBit(0); 0 <= i && i < StructureType.FEATURE_NUM; i = enabled
+            for (int i = enabled.nextSetBit(0); 0 <= i && i < StructureTypes.capacity(); i = enabled
                     .nextSetBit(i + 1)) {
-                final var type = StructureType.byId(i);
-                if (type == StructureType.FEATURE)
+                final var type = StructureTypes.byId(i);
+                if (type == null)
+                    continue;
+                if (type.id() == StructureType.FEATURE.id)
                     continue;
                 final var cfg = type.config();
                 if (cfg == null)
                     continue;
-                if (type == StructureType.STRONGHOLD) {
+                if (type.id() == StructureType.STRONGHOLD.id) {
                     detectStrongholds(px, pz);
                     continue;
                 }
                 if (cfg.dim() != dim)
                     continue;
-                if (type.prob > 0)
+                if (type.prob() > 0)
                     detectSparse(type, px, pz);
                 else
                     detectRegion(type, px, pz);
@@ -97,14 +99,14 @@ public final class StructureVisitTracker {
     }
 
     /** 普通类型: 查玩家所在 region 的 3×3 邻域。 */
-    private static void detectRegion(StructureType type, int px, int pz) {
+    private static void detectRegion(StructureInfo type, int px, int pz) {
         final var cfg = type.config();
         if (cfg == null)
             return;
         final int blockPerRegion = cfg.regionSize() * 16;
         final int rx = Math.floorDiv(px, blockPerRegion);
         final int rz = Math.floorDiv(pz, blockPerRegion);
-        Xsm.queryRegionStructuresGrid(type.id, rx - 1, rz - 1, rx + 2, rz + 2, 0, 0, 0, 0,
+        Xsm.queryRegionStructuresGrid(type.id(), rx - 1, rz - 1, rx + 2, rz + 2, 0, 0, 0, 0,
                 (rrx, rrz, found, bx, bz, variant) -> {
                     if (!found)
                         return;
@@ -113,10 +115,10 @@ public final class StructureVisitTracker {
     }
 
     /** 稀疏类型: 查玩家所在 chunk 的 3×3 邻域。 */
-    private static void detectSparse(StructureType type, int px, int pz) {
+    private static void detectSparse(StructureInfo type, int px, int pz) {
         final int cx = (px >> 4) - 1;
         final int cz = (pz >> 4) - 1;
-        Xsm.querySparseStructures(type.id, cx, cz, cx + 3, cz + 3, 0, 0, 0, 0,
+        Xsm.querySparseStructures(type.id(), cx, cz, cx + 3, cz + 3, 0, 0, 0, 0,
                 -1, StructureType.MAX_SPARSE_HITS,
                 (bx, bz, variant) -> visit(type, bx, bz, px, pz));
     }
@@ -134,7 +136,7 @@ public final class StructureVisitTracker {
     }
 
     /** Chebyshev 距离在阈值内 → 记录历史最小访问距离。 */
-    private static void visit(StructureType type, int bx, int bz, int px, int pz) {
+    private static void visit(StructureInfo type, int bx, int bz, int px, int pz) {
         int dist = Math.max(Math.abs(px - bx), Math.abs(pz - bz));
         if (dist > THRESHOLD)
             return;

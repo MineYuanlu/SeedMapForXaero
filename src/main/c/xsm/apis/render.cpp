@@ -88,6 +88,56 @@ SurfaceNoise endSn{};
 bool gen_setGameVersion = false;  ///< 是否已经设置游戏版本
 bool gen_setWorld = false;        ///< 是否已经设置世界信息
 
+// ===== 数据包自定义结构 (见 render.h XSM_CUSTOM_STRUCT_*) =====
+
+/// 一个 structure_set (random_spread)
+struct CustomSetInfo {
+  int32_t salt;
+  int32_t spacing;       ///< 网格周期 (= StructureConfig.regionSize)
+  int32_t separation;
+  int32_t spread;        ///< 0=linear 1=triangular
+  int32_t dim;           ///< cubiomes 维度约定: 0=主世界 -1=下界 1=末地
+  int32_t first;         ///< entries 起始索引
+  int32_t count;         ///< entries 数量
+  int64_t totalWeight;
+};
+/// structure_set 中的一个被选结构
+struct CustomEntryInfo {
+  int32_t id;
+  int32_t weight;
+  int32_t setIdx;
+};
+/// 已注入的自定义结构表 (不可变, 由 xsmSetCustomStructures 整体替换)
+struct CustomStructTable {
+  std::vector<CustomSetInfo> sets;
+  std::vector<CustomEntryInfo> entries;
+  /// id - XSM_CUSTOM_STRUCT_MIN_ID -> entry 索引 (-1 = 无)
+  std::vector<int32_t> idToEntry;
+};
+/// 当前表; 写由 setting_mtx 保护, 读侧在查询入口持锁拷贝 shared_ptr
+std::shared_ptr<const CustomStructTable> customTable;
+
+/// random_spread 偏移 (vanilla RandomSpreadStructurePlacement.evaluateSpread)
+static inline int customEvaluateSpread(uint64_t* rng, int maxOffset,
+                                       int spread) {
+  if (spread == 0) return nextInt(rng, maxOffset);
+  // triangular: (nextInt(n) + nextInt(n)) / 2, 非负除 2 == 右移
+  return (nextInt(rng, maxOffset) + nextInt(rng, maxOffset)) >> 1;
+}
+
+/// 复刻 vanilla WeightedRandom: walk 条目直到权重预算变负
+/// @return 命中的 entries 下标 (相对 set->first)
+static inline int customPickEntry(const CustomSetInfo* set,
+                                  const std::vector<CustomEntryInfo>& entries,
+                                  int weightIndex) {
+  int i = 0;
+  for (; i < set->count; i++) {
+    weightIndex -= entries[set->first + i].weight;
+    if (weightIndex < 0) break;
+  }
+  return i < set->count ? i : set->count - 1;
+}
+
 #if DEBUG_TIMINGS
 /// gen 时间统计 (纳秒累计)
 std::atomic<uint64_t> timing_check{0};
@@ -306,6 +356,66 @@ XSM_API bool setBiomeDisabled(const uint8_t* const bitset, uint32_t size) {
     biomeColorDisabled[i] = bit;
   }
   if (bct_set) updateMaskedBiomeColorTable();
+  return true;
+}
+
+
+bool xsmSetCustomStructures(const int32_t* sets, int32_t nSets,
+                            const int32_t* entries, int32_t nEntries) {
+  std::lock_guard<xsm::mutex> lock(setting_mtx);
+  if (nSets < 0 || nEntries < 0) return false;
+  if (nSets == 0) {
+    customTable.reset();
+    return true;
+  }
+  if (sets == NULL || entries == NULL) return false;
+  if (nEntries == 0) return false;
+
+  auto table = std::make_shared<CustomStructTable>();
+  table->sets.resize(nSets);
+  table->entries.resize(nEntries);
+  table->idToEntry.assign(
+      XSM_CUSTOM_STRUCT_MAX_ID - XSM_CUSTOM_STRUCT_MIN_ID, -1);
+
+  int32_t expectFirst = 0;
+  for (int32_t s = 0; s < nSets; s++) {
+    const int32_t* in = sets + (size_t)s * 7;
+    CustomSetInfo& out = table->sets[s];
+    out.salt = in[0];
+    out.spacing = in[1];
+    out.separation = in[2];
+    out.spread = in[3];
+    out.dim = in[4];
+    out.first = in[5];
+    out.count = in[6];
+    // 分组必须按顺序连续覆盖 entries
+    if (out.first != expectFirst) return false;
+    if (out.count < 1 || out.first + out.count > nEntries) return false;
+    expectFirst += out.count;
+    if (out.spacing < 1) return false;
+    if (out.separation < 0 || out.separation >= out.spacing) return false;
+    if (out.spread != 0 && out.spread != 1) return false;
+    if (out.dim != DIM_OVERWORLD && out.dim != DIM_NETHER && out.dim != DIM_END)
+      return false;
+    out.totalWeight = 0;
+    for (int32_t e = 0; e < out.count; e++) {
+      const CustomEntryInfo ent = {entries[(size_t)(out.first + e) * 2],
+                                   entries[(size_t)(out.first + e) * 2 + 1], s};
+      if (ent.id < XSM_CUSTOM_STRUCT_MIN_ID ||
+          ent.id >= XSM_CUSTOM_STRUCT_MAX_ID)
+        return false;
+      if (ent.weight < 1) return false;
+      if (table->idToEntry[ent.id - XSM_CUSTOM_STRUCT_MIN_ID] >= 0)
+        return false;  // id 必须全局唯一
+      if (out.totalWeight > INT32_MAX - ent.weight) return false;
+      out.totalWeight += ent.weight;
+      table->idToEntry[ent.id - XSM_CUSTOM_STRUCT_MIN_ID] = out.first + e;
+      table->entries[out.first + e] = ent;
+    }
+  }
+  if (expectFirst != nEntries) return false;  // 所有条目必须归属某个集合
+
+  customTable = std::move(table);
   return true;
 }
 
@@ -569,6 +679,23 @@ int32_t xsmGetStructureConfig(
     int32_t* outSalt, int32_t* outRegionSize,
     int32_t* outChunkRange, int32_t* outDim, float* outRarity)
 {
+    // 数据包自定义结构: regionSize=spacing, chunkRange=spacing-separation
+    // (=maxOffset, 与 cubiomes 语义一致), rarity=0 (恒网格路径)
+    if (structureType >= XSM_CUSTOM_STRUCT_MIN_ID &&
+        structureType < XSM_CUSTOM_STRUCT_MAX_ID) {
+        std::lock_guard<xsm::mutex> lock(setting_mtx);
+        if (!customTable) return 0;
+        const int32_t e = customTable->idToEntry
+            [structureType - XSM_CUSTOM_STRUCT_MIN_ID];
+        if (e < 0) return 0;
+        const CustomSetInfo& s = customTable->sets[customTable->entries[e].setIdx];
+        *outSalt       = s.salt;
+        *outRegionSize = s.spacing;
+        *outChunkRange = s.spacing - s.separation;
+        *outDim        = s.dim;
+        *outRarity     = 0.0f;
+        return 1;
+    }
     StructureConfig sconf;
     if (!getStructureConfig(structureType, tn.g.mc, &sconf))
         return 0;
@@ -591,6 +718,74 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
                                    int32_t* outBlockX, int32_t* outBlockZ,
                                    int32_t* outVariant) {
   if (!gen_setWorld) return 0;
+  // 数据包自定义结构走独立算法 (random_spread + 加权掷骰, 无 biome 校验)
+  if (structureType >= XSM_CUSTOM_STRUCT_MIN_ID &&
+      structureType < XSM_CUSTOM_STRUCT_MAX_ID) {
+    std::shared_ptr<const CustomStructTable> table;
+    {
+      std::lock_guard<xsm::mutex> lock(setting_mtx);
+      table = customTable;
+    }
+    if (!table) return 0;
+    const int32_t e = table->idToEntry
+        [structureType - XSM_CUSTOM_STRUCT_MIN_ID];
+    if (e < 0) return 0;
+    const CustomEntryInfo& ent = table->entries[e];
+    const CustomSetInfo& s = table->sets[ent.setIdx];
+    if (s.dim != tn.g.dim) return 0;
+
+    uint32_t index = 0;
+    uint32_t cnt = 0;
+    for (int32_t x = rx0; x < rx1; x++) {
+      const bool inX = rx2 <= x && x < rx3;
+      for (int32_t z = rz0; z < rz1; z++) {
+        const bool inZ = rz2 <= z && z < rz3;
+        if (inX && inZ) continue;
+        const auto idx = index++;
+
+        // 1. random_spread 网格: region -> 候选 chunk
+        //    (vanilla getPotentialStructureChunk / cubiomes getFeaturePos)
+        uint64_t rng;
+        const int maxOffset = s.spacing - s.separation;
+        setSeed(&rng, tn.g.seed +
+            (uint64_t)(int64_t)x * 341873128712ULL +
+            (uint64_t)(int64_t)z * 132897987541ULL +
+            (uint64_t)(int64_t)s.salt);
+        const int chunkX = x * s.spacing +
+                           customEvaluateSpread(&rng, maxOffset, s.spread);
+        const int chunkZ = z * s.spacing +
+                           customEvaluateSpread(&rng, maxOffset, s.spread);
+
+        // 2. 多结构集合: setLargeFeatureSeed 加权掷骰取首选
+        //    (vanilla WeightedRandom; 单结构集合无掷骰)
+        if (s.count > 1) {
+          uint64_t sel;
+          setSeed(&sel, tn.g.seed);
+          const uint64_t a = nextLong(&sel);
+          const uint64_t b = nextLong(&sel);
+          setSeed(&sel, (uint64_t)(int64_t)chunkX * a ^
+                        (uint64_t)(int64_t)chunkZ * b ^ tn.g.seed);
+          const int pick = customPickEntry(
+              &s, table->entries,
+              nextInt(&sel, (int)s.totalWeight));
+          if (table->entries[s.first + pick].id != structureType) {
+            outFound[idx] = 0;
+            if (outVariant) outVariant[idx] = 0;
+            continue;
+          }
+        }
+
+        // 3. 不做 biome tag 校验 (已知假阳性, 见 doc/datapak.md)
+        outFound[idx] = 1;
+        outBlockX[idx] = chunkX << 4;
+        outBlockZ[idx] = chunkZ << 4;
+        if (outVariant) outVariant[idx] = 0;
+        ++cnt;
+      }
+    }
+    return cnt;
+  }
+
   {
     StructureConfig sconf;
     if (!getStructureConfig(structureType, tn.g.mc, &sconf)) return 0;

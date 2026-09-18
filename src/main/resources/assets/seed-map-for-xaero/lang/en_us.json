@@ -112,6 +112,8 @@
   "xsm.hover.visited": "Visited (within %dm)",
   "xsm.hover.unvisited": "Not visited",
   "xsm.hover.group": "Group: %s",
+  "xsm.hover.datapack_predicted": "Datapack structure %s — predicted position (not biome-validated)",
+  "xsm.structure.custom": "Datapack Structure",
 
   "xsm.command.help": "Usage: /sm4x history seed list [page] | /sm4x history structure list [page] | /sm4x history structure remove <seed>",
   "xsm.command.empty": "No data yet.",

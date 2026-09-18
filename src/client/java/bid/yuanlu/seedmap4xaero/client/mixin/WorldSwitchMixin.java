@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.datapack.DatapackStructures;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
 import xaero.map.MapProcessor;
@@ -43,9 +44,11 @@ public class WorldSwitchMixin {
             ServerConfig.activate((MapProcessor) (Object) this);
             StructureDataConfig.activate((MapProcessor) (Object) this);
             Xsm.setBiomeColorTable(BiomeColorTable.resolveProvider());
+            DatapackStructures.reload();
         } else {
             ServerConfig.deactivate();
             StructureDataConfig.deactivate();
+            DatapackStructures.clear();
         }
     }
 }
