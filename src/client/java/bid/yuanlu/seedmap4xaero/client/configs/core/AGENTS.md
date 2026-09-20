@@ -1,28 +1,41 @@
-# core — 通用 .sm4x 配置框架
+# core — 通用配置文件 IO（类型无关、无 MC 依赖）
 
-类型无关、无 Minecraft 依赖的配置文件 IO，可被任意新增配置文件复用。
+## 现行格式：JSON（`JsonCodec` + `JsonConfigFile`）
 
-## Classes
+- `JsonCodec<T>` — 一个 JSON 配置文档的编解码器：`write(data) → JsonObject` /
+  `read(JsonObject) → T`。基于 Gson 树模型手工读写（**不用反射映射**）：
+  读端缺失字段落默认值、未知字段忽略 → 双向前向兼容，文档内部无需版本分支
+  （`version` 字段仅作记录）。实现只写文档体，文件级布局由 JsonConfigFile 处理；
+  实现内部把 RuntimeException 包成 IOException（结构损坏 → 回退链）。
+- `JsonConfigFile` — 磁盘 IO（全 static）：
+  - `pathsFor(base, mainId, jsonName, legacyName)` → `Paths(target, tmp, old, legacy, legacyOld)`
+  - `save(paths, data, codec, rotate)`：写 `.tmp` → （rotate 且正本存在：正本→`.old`）
+    → `ATOMIC_MOVE` 提交。**纯 JSON 文本**（pretty + disableHtmlEscaping，非 ASCII 组名可读）
+  - `load(paths, fallback, jsonCodec, legacyCodec?)`：回退链
+    `.json` → `.json.old` → `.sm4x`（legacy 读出即迁移落盘）→ `.sm4x.old` → fallback
+  - `retireLegacy(paths)`：legacy 改名 `*.sm4x.legacy` / `*.sm4x.old.legacy` 退出回退链
+  - `writeJson` / `readJson`：单文件读写（read 用 lenient Gson，容忍手工编辑）
 
-- `Sm4xCodec<T>` — 一个配置文档的编解码器接口：`write(data, out)` / `read(in)`。
-  实现只写数据体，magic 信封由 `Sm4xFile` 统一包装，实现类内部不要再写 magic word。
-  数据体布局完全由实现自定（是否用版本号、版本号的位置与含义都是文档内部细节，框架不感知）。
-  推荐惯例：`write` 开头写一个 version int，`read` 先读它再按历史版本分发，
-  不支持的版本抛 `IOException`，历史版本保持 prefix-compatible 读取。
-- `Sm4xFile` — 磁盘 IO（全 static）：
-  - `MAGIC_WORD`（"SEEDMAP4XAERO"，全仓库唯一持有处）
-  - `pathsFor(baseDir, mainId, fileName)` → `Sm4xPaths(target, tmp, old)`，目录按 `baseDir/<mainId>/` 平铺
-  - `save(paths, data, codec, rotate?=true)`：写 `.tmp` → 主文件轮替到 `.old`
-    → `ATOMIC_MOVE` 提交；`rotate=false` 跳过轮替
-  - `load(paths, fallback, codec)`：主文件 → 损坏删主文件回退 `.old` → 都不行返回 `fallback`
-  - `writeFrame` / `readFrame`：单帧读写（magic + version + body + magic）
+## 轮替契约（调用点手动保证，框架不追踪状态）
 
-## 新增一个 .sm4x 配置文件（如 structures.sm4x）
+> 写出 `.tmp` → 正本移动到 `.old` → `.tmp` 移动到正本；
+> **在重新读取之前的写出，跳过 `.old` 步骤**直接 `.tmp` 覆盖正本。
 
-1. 新建包 `configs/<name>/`（不要混入 `basic/`）。
-2. 写数据类 + 实现 `Sm4xCodec<T>`（参照 `basic.ConfigData.CODEC`；布局自定，
-   推荐开头写 version int 以便升级）。
-3. 文件名常量 + `Sm4xFile.pathsFor(base, mainId, "<name>.sm4x")` 生成路径；
-   保存时用脏标志 CAS 控制（参照 `basic.ServerConfig.save`），在
-   `ServerConfig.activate`/`deactivate` 的生命周期钩子处加载/刷脏（可按需加注册表）。
-4. 单测直接用 `Sm4xFile.writeFrame/readFrame` + `@TempDir`，无需启动 MC。
+- `rotate=true` **仅用于"数据源自磁盘读取验证"的生命周期保存**（世界切换 deactivate）。
+- 会话内主动刷写 / 周期刷盘必须 `rotate=false`——只有经过读取验证的数据才适合
+  覆盖 `.old`，否则会话内快速多次写出会用未经验证的数据覆盖可能有用的 `.old` 备份
+  （`.old` 恒为上次生命周期检查点）。
+- 调用点格局：门面的 `save()`（lifecycle）= true；`flush()`（会话/周期）= false。
+
+## legacy：`.sm4x` 二进制（frozen）
+
+- `Sm4xCodec<T>` / `Sm4xFile`（magic 信封 + DataStream、版本分支读取）——**冻结格式**，
+  仅用于旧文件迁移读取与测试 fixture 生成，新数据一律走 JSON。
+- 历史版本读兼容已固化：ConfigData v0/v1、WorldConfig v0/v1/v2（basic 包内），
+  StructureData v0/v1（structure 包 `StructureDataLegacy` 中性快照）。
+- 迁移语义：读出即写新格式 + `retireLegacy`，**只自动向上升级**。
+
+## 单测
+
+`JsonConfigFile` 不依赖 MC：直接 `@TempDir` + `writeJson/readJson/save/load` 即测，
+含回退链与轮替语义（见 `ServerConfigTest` 的回退/轮替/迁移用例）。

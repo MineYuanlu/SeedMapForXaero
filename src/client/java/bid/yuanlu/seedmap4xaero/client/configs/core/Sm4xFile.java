@@ -67,8 +67,11 @@ public final class Sm4xFile {
      * <li>将 {@code .tmp} 移动到主文件（ATOMIC_MOVE，尽力原子）
      * </ol>
      * <p>
-     * {@code rotate=false} 跳过轮替、主文件直接被替换——用于游玩中的主动刷写：
-     * 高频刷写不应滚动覆盖 {@code .old}，让 .old 始终保留"上次世界切换时的完整备份"。
+     * <b>轮替契约（调用点手动保证）</b>：{@code rotate=true} 仅用于"数据源自磁盘
+     * 读取验证"的生命周期保存（如世界切换 deactivate）；会话内的主动刷写 /
+     * 周期保存必须 {@code rotate=false}——只有经过读取验证的数据才适合覆盖
+     * {@code .old}，否则会话内快速多次写出会用未经验证的数据覆盖可能有用的
+     * {@code .old} 备份（.old 恒为上次生命周期检查点）。
      */
     public static <T> void save(Sm4xPaths paths, T data, Sm4xCodec<T> codec,
             boolean rotate) throws IOException {

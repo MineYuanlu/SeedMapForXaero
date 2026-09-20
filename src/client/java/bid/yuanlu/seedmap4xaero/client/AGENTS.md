@@ -9,13 +9,17 @@
 | `SeedMapToggleMixin`    | `GuiMap.init`                        | "S" toggle button, state from config            |
 | `XsmMainPanelMixin`     | `GuiMap.init`                        | Settings panel button + mouse routing           |
 | `WorldSwitchMixin`      | `MapProcessor.checkForWorldUpdate`   | Detect world change → reload config             |
-| `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          |
-| `GuiMapVersionDropdownMixin` | `GuiMap.mouseClicked/mouseScrolled` | Route clicks/wheel to `VersionDropdown` (world MC version picker) |
+| `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          || `GuiMapVersionDropdownMixin` | `GuiMap.mouseClicked/mouseScrolled` | Route clicks/wheel to `VersionDropdown` (world MC version picker) |
 | `StructureOverlayMixin` | `GuiMap.extractRenderState`          | Structure icon overlay + hover tooltip          |
 | `StructureClickMixin`   | `GuiMap.mouseClicked` + `mapClicked` | Right-click structure icon → combined Xaero menu + appended (waypoint / highlight) |
 | `DropDownWidgetTitleMixin` | `DropDownWidget.drawSlot` (XaeroLib) | Title rows in right-click menu use `selectedBackground` grey via `@ModifyArg` on `fill(IIIII)V` |
 
 `BiomeColorSchemeMixin` was removed — color scheme switching is now handled through the `SeedMapPanel` side panel.
+
+## Config persistence
+
+- JSON v2: `server_config.json` + `structure_settings.json` + `marks/` region shards (see configs/AGENTS.md); legacy `.sm4x` auto-migrates on load
+- Save cadence: world switch = `save()` (rotate=true, lifecycle checkpoint); in-session ops & 60s periodic flush (`XaeroSeedMapClient` END_CLIENT_TICK) = `flush()` (rotate=false) — rotation contract in configs/core/AGENTS.md
 
 ## Rendering flow
 

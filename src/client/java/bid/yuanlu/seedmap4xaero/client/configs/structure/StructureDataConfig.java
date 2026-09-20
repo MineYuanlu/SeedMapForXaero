@@ -1,6 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.configs.structure;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -10,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.core.JsonConfigFile;
 import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import net.minecraft.client.Minecraft;
@@ -17,16 +19,24 @@ import net.minecraft.client.Minecraft;
 import xaero.map.MapProcessor;
 
 /**
- * structure_data.sm4x 持久标记的门面类，镜像 {@link ServerConfig} 的生命周期：
- * activate/deactivate/save + 原子写 + 损坏回退，磁盘 IO 全部复用 {@link Sm4xFile}。
- * <p>
+ * 结构持久化门面，镜像 {@link ServerConfig} 的生命周期：
+ * activate/deactivate/save/flush，磁盘 IO 分两份——
+ * <ul>
+ * <li>{@code structure_settings.json}：组可见性 + 用户组（{@link StructureData}）
+ * <li>{@code marks/<seed>/<mwId>/r.<x>.<z>.json}：结构标记分片（{@link MarksStore}）
+ * </ul>
  * 标记与 (seed, mwId, 结构类型, key) 绑定；key = 结构方块坐标
  * （cubiomes 结构为 2D，同类型下方块坐标唯一），见 {@link #keyOf}。
+ * <p>
+ * 旧版单文件 {@code structure_data.sm4x} 在加载链发现时自动向上迁移
+ * （{@link StructureDataLegacy} 解码 → 设置落盘 + 标记分片 → 改名 .legacy）。
  */
 public final class StructureDataConfig {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/StructureDataConfig");
-    private static final String CONFIG_FILE = "structure_data.sm4x";
+    private static final String SETTINGS_FILE = "structure_settings.json";
+    private static final String LEGACY_FILE = "structure_data.sm4x";
+    private static final String MARKS_DIR = "marks";
 
     /** 结构持久 key: (blockX<<32)|blockZ。cubiomes 结构只有 2D 坐标, 无 Y。 */
     public static long keyOf(int blockX, int blockZ) {
@@ -35,7 +45,8 @@ public final class StructureDataConfig {
 
     private static volatile @Nullable String activeMainId;
     private static volatile @Nullable MapProcessor activeMapProcessor;
-    private static volatile @Nullable StructureData activeData;
+    private static volatile @Nullable StructureData activeData; // 设置文档
+    private static volatile @Nullable MarksStore marksStore;
 
     private StructureDataConfig() {
     }
@@ -46,12 +57,12 @@ public final class StructureDataConfig {
                 .resolve("seed-map-for-xaero");
     }
 
-    private static Sm4xFile.Sm4xPaths pathsFor(Path base, String mainId) {
-        return Sm4xFile.pathsFor(base, mainId, CONFIG_FILE);
+    private static JsonConfigFile.Paths settingsPaths(Path base, String mainId) {
+        return JsonConfigFile.pathsFor(base, mainId, SETTINGS_FILE, LEGACY_FILE);
     }
 
     /**
-     * 激活与 {@code mp} 对应的结构标记文档。由 {@link ServerConfig} 相同的生命周期
+     * 激活与 {@code mp} 对应的结构持久化。由 {@link ServerConfig} 相同的生命周期
      * 钩子并排调用 (世界切换 / GuiMap init / 断开连接)。
      */
     public synchronized static void activate(@Nullable MapProcessor mp) {
@@ -70,6 +81,7 @@ public final class StructureDataConfig {
             LOGGER.info("activate: switching {} -> {}", activeMainId, mainId);
             activeMainId = mainId;
             activeData = load(baseDir(), mainId);
+            marksStore = new MarksStore(baseDir().resolve(mainId).resolve(MARKS_DIR));
         }
         activeMapProcessor = mp;
     }
@@ -80,8 +92,13 @@ public final class StructureDataConfig {
         activeMainId = null;
         activeMapProcessor = null;
         activeData = null;
+        marksStore = null;
     }
 
+    /**
+     * 设置文档（组可见性/用户组）——{@code StructureGroups.colorOf} 等消费者用。
+     * 标记查询请走 {@link #activeDimData()} / {@link #getMark}。
+     */
     public static @Nullable StructureData getActiveData() {
         return activeData;
     }
@@ -94,19 +111,15 @@ public final class StructureDataConfig {
 
     /** 当前种子 (复用 {@link ServerConfig#resolveSeed})；null = 未知。 */
     public static @Nullable Long activeSeed() {
-        return activeData != null ? ServerConfig.resolveSeed() : null;
+        return activeMainId != null ? ServerConfig.resolveSeed() : null;
     }
 
+    /** 生命周期保存（rotate=true，仅世界切换等读取验证场景调用）。 */
     public synchronized static void save() {
         saveCurrent(true);
     }
 
-    /**
-     * 主动刷写: 用户设置分组等关键操作后立即落盘。
-     * <p>
-     * 跳过 {@code .old} 轮替 ({@code rotate=false})——高频刷写不滚动覆盖 .old，
-     * 让 .old 始终保留"上次世界切换时的完整备份"。
-     */
+    /** 会话内主动刷写（rotate=false，不轮替 .old）。 */
     public synchronized static void flush() {
         saveCurrent(false);
     }
@@ -114,58 +127,82 @@ public final class StructureDataConfig {
     private synchronized static void saveCurrent(boolean rotate) {
         final var mainId = activeMainId;
         final var data = activeData;
+        final var marks = marksStore;
         if (mainId == null)
             return;
-        if (data == null || !data.dirty.compareAndSet(true, false))
-            return;
-        try {
-            Sm4xFile.save(pathsFor(baseDir(), mainId), data, StructureData.CODEC, rotate);
-        } catch (IOException e) {
-            LOGGER.error("Failed to save structure data for {}", mainId, e);
+        // 设置文档: CAS-claim, 写盘失败恢复脏标志
+        if (data != null && data.dirty.compareAndSet(true, false)) {
+            try {
+                JsonConfigFile.save(settingsPaths(baseDir(), mainId), data,
+                        StructureData.JSON_CODEC, rotate);
+            } catch (IOException e) {
+                LOGGER.error("Failed to save structure settings for {}", mainId, e);
+                data.dirty.set(true);
+            }
         }
+        // 标记分片: 仅写脏 region (内部按成功与否保持脏标志)
+        if (marks != null)
+            marks.flush(rotate);
     }
 
-    /** base 参数独立注入以便单元测试。 */
+    /**
+     * 加载设置文档（含 legacy structure_data.sm4x 自动向上迁移：
+     * 设置落盘 + 标记经 {@link MarksStore#importSnapshot} 分片 + legacy 改名 .legacy）。
+     * base 参数独立注入以便单元测试。
+     */
     static StructureData load(Path base, String mainId) {
-        return Sm4xFile.load(pathsFor(base, mainId), new StructureData(), StructureData.CODEC);
+        var paths = settingsPaths(base, mainId);
+        migrateLegacyIfNeeded(base, mainId, paths);
+        return JsonConfigFile.load(paths, new StructureData(), StructureData.JSON_CODEC, null);
+    }
+
+    private static void migrateLegacyIfNeeded(Path base, String mainId, JsonConfigFile.Paths paths) {
+        Path legacy = null;
+        if (Files.exists(paths.legacy()))
+            legacy = paths.legacy();
+        else if (Files.exists(paths.legacyOld()))
+            legacy = paths.legacyOld();
+        if (legacy == null)
+            return;
+        try {
+            var snap = Sm4xFile.readFrame(legacy, StructureDataLegacy.LEGACY_CODEC);
+            var settings = new StructureData();
+            for (String g : snap.hiddenGroups())
+                settings.setGroupHidden(g, true);
+            for (StructureData.UserGroup ug : snap.userGroups()) {
+                if (StructureGroups.isBuiltin(ug.name()))
+                    settings.setGroupColor(ug.name(), ug.color()); // 内置组 = 颜色覆盖条目
+                else
+                    settings.addGroup(ug.name(), ug.color()); // 用户组 = 新建条目
+            }
+            settings.dirty.set(false); // 刚构造, 迁移写出后再由保存流程管理
+            JsonConfigFile.save(paths, settings, StructureData.JSON_CODEC, false);
+            new MarksStore(base.resolve(mainId).resolve(MARKS_DIR)).importSnapshot(snap);
+            JsonConfigFile.retireLegacy(paths);
+            LOGGER.info("Migrated legacy structure data {} -> {} + marks/", legacy, paths.target());
+        } catch (IOException e) {
+            LOGGER.error("Failed to migrate legacy structure data {}", legacy, e);
+        }
     }
 
     // ─── 单测辅助 (包私有, 不触碰 Minecraft) ────────────────────
 
-    static void saveLoadForTest(Path base, String mainId, StructureData data) throws IOException {
-        Sm4xFile.save(pathsFor(base, mainId), data, StructureData.CODEC);
-    }
-
-    static Path targetPathForTest(Path base, String mainId) {
-        return pathsFor(base, mainId).target();
-    }
-
-    /** 模拟主动刷写 (rotate=false)，供单测验证 .old 不被轮替。 */
-    static void flushForTest(Path base, String mainId, StructureData data) throws IOException {
-        Sm4xFile.save(pathsFor(base, mainId), data, StructureData.CODEC, false);
-    }
-
-    static Sm4xFile.Sm4xPaths pathsForTest(Path base, String mainId) {
-        return pathsFor(base, mainId);
+    static JsonConfigFile.Paths settingsPathsForTest(Path base, String mainId) {
+        return settingsPaths(base, mainId);
     }
 
     // ─── 便捷访问 (基于当前激活的 seed + mwId) ───────────────────
 
-    private static @Nullable StructureData.SeedData activeSeedData() {
-        final var data = activeData;
+    /** 当前 (seed, mwId) 的维度标记表；未激活返回 null（惰性加载分片）。 */
+    public static @Nullable MarksStore.DimData activeDimData() {
+        final var marks = marksStore;
         final var seed = activeSeed();
-        if (data == null || seed == null)
+        if (marks == null || seed == null)
             return null;
         final var mwId = activeMwId();
         if (mwId == null)
             return null;
-        return data.getSeed(seed);
-    }
-
-    /** 当前 (seed, mwId) 的维度标记表；未激活/无记录返回 null。 */
-    public static @Nullable StructureData.DimData activeDimData() {
-        var sd = activeSeedData();
-        return sd == null ? null : sd.getDim(activeMwId());
+        return marks.doc(seed, mwId);
     }
 
     /** 查询当前 (seed, mwId) 下某结构的标记；无记录/未激活返回 null。 */
@@ -176,22 +213,22 @@ public final class StructureDataConfig {
 
     /** 记录访问 (历史最小距离)；未激活/种子未知时忽略。 */
     public static void markVisited(StructureType type, long key, int dist) {
-        final var data = activeData;
+        final var marks = marksStore;
         final var seed = activeSeed();
         final var mwId = activeMwId();
-        if (data == null || seed == null || mwId == null)
+        if (marks == null || seed == null || mwId == null)
             return;
-        data.getOrCreateSeed(seed).getOrCreateDim(mwId).markVisited(type.id, key, dist);
+        marks.doc(seed, mwId).markVisited(type.id, key, dist);
     }
 
     /** 设置分组 ({@code null}/默认组 = 清除记录)；未激活/种子未知时忽略。 */
     public static void setGroup(StructureType type, long key, @Nullable String group) {
-        final var data = activeData;
+        final var marks = marksStore;
         final var seed = activeSeed();
         final var mwId = activeMwId();
-        if (data == null || seed == null || mwId == null)
+        if (marks == null || seed == null || mwId == null)
             return;
-        data.getOrCreateSeed(seed).getOrCreateDim(mwId).setGroup(type.id, key, group);
+        marks.doc(seed, mwId).setGroup(type.id, key, group);
     }
 
     /** 组是否被隐藏 (面板 checkbox)；未激活返回 false。 */
@@ -246,11 +283,14 @@ public final class StructureDataConfig {
         return true;
     }
 
-    /** 重命名用户组 (同步重写全部标记引用); false = 名称非法/重名/未激活。 */
+    /** 重命名用户组 (同步重写全部标记引用, 跨全部分片); false = 名称非法/重名/未激活。 */
     public synchronized static boolean renameGroup(String from, String to) {
         var data = activeData;
         if (data == null || !data.renameGroup(from, to))
             return false;
+        var marks = marksStore;
+        if (marks != null)
+            marks.rewriteGroupRefs(from, to);
         flush();
         return true;
     }
@@ -260,6 +300,9 @@ public final class StructureDataConfig {
         var data = activeData;
         if (data == null || !data.removeGroup(name))
             return false;
+        var marks = marksStore;
+        if (marks != null)
+            marks.rewriteGroupRefs(name, StructureGroups.DEFAULT);
         flush();
         return true;
     }
@@ -272,21 +315,30 @@ public final class StructureDataConfig {
 
     // ─── /sm4x 命令入口 ─────────────────────────────────────────
 
+    /** 有标记数据的种子快照（升序）；未激活返回空。 */
+    public static long[] seedsSnapshot() {
+        var marks = marksStore;
+        return marks != null ? marks.seedsSnapshot() : new long[0];
+    }
+
+    /** 某种子的统计（组数/记录数）；无数据返回 null。 */
+    public static @Nullable MarksStore.SeedStats stats(long seed) {
+        var marks = marksStore;
+        return marks != null ? marks.stats(seed) : null;
+    }
+
     /**
-     * 删除某种子的全部历史数据并立即落盘（不轮替 .old）。
+     * 删除某种子的全部历史标记并立即落盘（不轮替 .old）。
      *
      * @return 删除的记录数; -1 = 该种子正在使用中（拒绝删除）; 0 = 无数据
      */
     public synchronized static int removeSeedForCommand(long seed) {
-        final var data = activeData;
-        if (data == null)
+        var marks = marksStore;
+        if (marks == null)
             return 0;
         final var active = activeSeed();
         if (active != null && active == seed)
             return -1;
-        int n = data.removeSeed(seed);
-        if (n > 0)
-            flush();
-        return n;
+        return marks.removeSeed(seed);
     }
 }

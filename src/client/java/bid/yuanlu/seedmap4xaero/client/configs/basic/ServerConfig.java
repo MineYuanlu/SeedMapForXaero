@@ -7,8 +7,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
-import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile.Sm4xPaths;
+import bid.yuanlu.seedmap4xaero.client.configs.core.JsonConfigFile;
+import bid.yuanlu.seedmap4xaero.client.configs.core.JsonConfigFile.Paths;
 import bid.yuanlu.seedmap4xaero.client.mixin.WorldSwitchMixin;
 
 import java.io.IOException;
@@ -25,18 +25,18 @@ import xaero.map.MapProcessor;
  * <li>维护当前活动的 {@code mainId}（即 XWM 的世界根标识，如 {@code Multiplayer_192.168.1.1}）
  * <li>懒加载对应的 {@link ConfigData} 并缓存
  * <li>提供 {@link #resolveSeed} 等方法与各配置项的便捷读写
- * <li>通过 {@link Sm4xFile} 原子写入
- * {@code gameDir/xaero/seed-map-for-xaero/&lt;mainId&gt;/server_config.sm4x}
+ * <li>通过 {@link JsonConfigFile} 原子写入
+ * {@code gameDir/xaero/seed-map-for-xaero/&lt;mainId&gt;/server_config.json}
  * </ul>
  * <p>
- * 磁盘 IO（magic/版本帧、.tmp/.old 轮替、损坏回退）在 {@code core.Sm4xFile}；
- * 本类只保留 basic 文档的文件名与生命周期。新增其他 .sm4x 配置文件时新建自己的包，
- * 复用 {@code Sm4xCodec} + {@code Sm4xFile} 即可。
+ * 磁盘 IO（JSON 读写、.tmp/.old 轮替、损坏回退、legacy .sm4x 迁移）在
+ * {@code core.JsonConfigFile}；本类只保留 basic 文档的文件名与生命周期。
  */
 public final class ServerConfig {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/ServerConfig");
-    private static final String CONFIG_FILE = "server_config.sm4x";
+    private static final String CONFIG_FILE = "server_config.json";
+    private static final String LEGACY_FILE = "server_config.sm4x";
 
     private static volatile @Nullable String activeMainId;
     private static volatile @Nullable MapProcessor activeMapProcessor;
@@ -52,8 +52,8 @@ public final class ServerConfig {
                 .resolve("seed-map-for-xaero");
     }
 
-    private static Sm4xPaths paths(Path base, String mainId) {
-        return Sm4xFile.pathsFor(base, mainId, CONFIG_FILE);
+    private static Paths paths(Path base, String mainId) {
+        return JsonConfigFile.pathsFor(base, mainId, CONFIG_FILE, LEGACY_FILE);
     }
 
     public static @Nullable String activeMainId() {
@@ -208,9 +208,24 @@ public final class ServerConfig {
     }
 
     /**
-     * 立即将当前配置原子写入磁盘（仅脏时）。流程见 {@link Sm4xFile#save}。
+     * 生命周期保存：将当前配置原子写入磁盘（仅脏时，{@code rotate=true}）。
+     * <p>
+     * 仅在世界切换 deactivate 等"数据源自磁盘读取验证"的场景调用；
+     * 会话内请用 {@link #flush()}（轮替契约见 {@link JsonConfigFile#save}）。
      */
     public synchronized static void save() {
+        saveCurrent(true);
+    }
+
+    /**
+     * 会话内主动刷写（仅脏时，{@code rotate=false}，不轮替 .old）——
+     * .old 恒为上次生命周期检查点。
+     */
+    public synchronized static void flush() {
+        saveCurrent(false);
+    }
+
+    private synchronized static void saveCurrent(boolean rotate) {
         final var mainId = activeMainId;
         final var cfg = activeConfig;
         if (mainId == null)
@@ -218,18 +233,24 @@ public final class ServerConfig {
         if (cfg == null || !cfg.dirty.compareAndSet(true, false)) {
             return;
         }
-        saveConfig(baseDir(), mainId, cfg);
+        if (!saveConfig(baseDir(), mainId, cfg, rotate)) {
+            cfg.dirty.set(true); // 写盘失败恢复脏标志, 本轮变更不丢
+        }
     }
 
     /**
-     * 将 {@code cfg} 原子写入 {@code base/<mainId>/server_config.sm4x}。
+     * 将 {@code cfg} 原子写入 {@code base/<mainId>/server_config.json}。
      * base 参数独立注入以便单元测试 (不依赖 Minecraft 客户端)。
+     *
+     * @return 是否写入成功
      */
-    static void saveConfig(Path base, String mainId, ConfigData cfg) {
+    static boolean saveConfig(Path base, String mainId, ConfigData cfg, boolean rotate) {
         try {
-            Sm4xFile.save(paths(base, mainId), cfg, ConfigData.CODEC);
+            JsonConfigFile.save(paths(base, mainId), cfg, ConfigData.JSON_CODEC, rotate);
+            return true;
         } catch (IOException e) {
             LOGGER.error("Failed to save config for {}", mainId, e);
+            return false;
         }
     }
 
@@ -237,16 +258,18 @@ public final class ServerConfig {
 
     /**
      * 从磁盘加载配置，文件不存在时返回空配置。
+     * 回退链 {@code .json → .json.old → .sm4x(迁移) → .sm4x.old(迁移) → 新建}。
      */
     private static ConfigData load(String mainId) {
         return loadConfig(baseDir(), mainId);
     }
 
     /**
-     * 从 {@code base/&lt;mainId>} 加载配置: 主文件 → 损坏则删主文件回退 {@code .old} →
-     * 损坏或不存在则新建。base 参数独立注入以便单元测试。
+     * 从 {@code base/<mainId>} 加载配置（含 legacy .sm4x 自动向上迁移）。
+     * base 参数独立注入以便单元测试。
      */
     static ConfigData loadConfig(Path base, String mainId) {
-        return Sm4xFile.load(paths(base, mainId), new ConfigData(), ConfigData.CODEC);
+        return JsonConfigFile.load(paths(base, mainId), new ConfigData(),
+                ConfigData.JSON_CODEC, ConfigData.LEGACY_CODEC);
     }
 }

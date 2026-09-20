@@ -12,7 +12,7 @@ import com.mojang.brigadier.arguments.LongArgumentType;
 
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ConfigData;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
-import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureData;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.MarksStore;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
@@ -117,16 +117,13 @@ public final class Sm4xCommand {
     // ─── history structure list ──────────────────────────────
 
     private static void listStructureData(FabricClientCommandSource src, int page) {
-        var data = StructureDataConfig.getActiveData();
-        record Row(long seed, StructureData.SeedStats stats) {
+        record Row(long seed, MarksStore.SeedStats stats) {
         }
         List<Row> rows = new ArrayList<>();
-        if (data != null) {
-            for (long seed : data.seedsSnapshot()) {
-                var st = data.stats(seed);
-                if (st != null && st.structures() > 0)
-                    rows.add(new Row(seed, st));
-            }
+        for (long seed : StructureDataConfig.seedsSnapshot()) {
+            var st = StructureDataConfig.stats(seed);
+            if (st != null && st.structures() > 0)
+                rows.add(new Row(seed, st));
         }
         if (rows.isEmpty()) {
             src.sendFeedback(Component.translatable("xsm.command.empty"));

@@ -184,6 +184,6 @@ public final class VersionDropdown {
         if (mwId == null)
             return;
         cfg.getOrCreateWorld(mwId).mcVersion(version);
-        ServerConfig.save();
+        ServerConfig.flush(); // 会话内刷写: 不轮替 .old (见 JsonConfigFile 轮替契约)
     }
 }

@@ -16,7 +16,9 @@ public class StructureBitFlag implements StructureBitFlagView {
      * value, bit 0: 整体标记
      * value, bit 1+: 每个variant标记
      * <p>
-     * 由于variant目前最大为12, 小于int的32位, 故使用int[]存储;
+     * variant 码有效范围 0..30（bit 1..bit 31；31 会使 {@code 1 << (variant+1)}
+     * 回卷污染 bit 0，setter 必须拒绝）；目前 variant 最大为 12, 小于 int 的 32 位,
+     * 故使用 int[] 存储;
      * 如果后续演进>=31且<63, 可以使用long[]存储;
      * 最后可以使用BitSet[]/boolean[][]存储
      */
@@ -59,24 +61,24 @@ public class StructureBitFlag implements StructureBitFlagView {
     public boolean isVariantSet(int structureId, int variant) {
         if (structureId < 0 || structureId >= flags.length)
             return false; // structure id out of range
-        if (variant < 0 || variant >= 32)
-            return false; // variant out of range
+        if (variant < 0 || variant > 30)
+            return false; // variant out of range (31 会使位移回卷到 bit 0)
         return (flags[structureId] & (1 << (variant + 1))) != 0; // bit 1+ variant
     }
 
     /** 翻转结构某个variant的标记 */
     public synchronized void flipVariant(int structureId, int variant) {
         ensureCapacity(structureId);
-        if (variant < 0 || variant >= 32)
-            throw new IllegalArgumentException("variant must be non-negative and less than 32: " + variant);
+        if (variant < 0 || variant > 30)
+            throw new IllegalArgumentException("variant must be non-negative and less than 31: " + variant);
         flags[structureId] ^= 1 << (variant + 1);
     }
 
     /** 设置结构某个variant的标记 */
     public synchronized void setVariant(int structureId, int variant, boolean enabled) {
         ensureCapacity(structureId);
-        if (variant < 0 || variant >= 32)
-            throw new IllegalArgumentException("variant must be non-negative and less than 32: " + variant);
+        if (variant < 0 || variant > 30)
+            throw new IllegalArgumentException("variant must be non-negative and less than 31: " + variant);
         if (enabled) {
             flags[structureId] |= 1 << (variant + 1);
         } else {
@@ -87,6 +89,29 @@ public class StructureBitFlag implements StructureBitFlagView {
     /** 用另一个 flag 的位覆盖本对象 (用于反序列化) */
     public synchronized void setAll(StructureBitFlag other) {
         flags = Arrays.copyOf(other.flags, other.flags.length);
+    }
+
+    /** 容量（可安全下标的 id 上界；JSON 导出/诊断遍历用）。 */
+    public synchronized int capacity() {
+        return flags.length;
+    }
+
+    /**
+     * 原始位布局：bit 0 = 整类位，bit (1+v) = 变种 v 位（导出/诊断用）。
+     * 越界 id 返回 0。
+     */
+    public synchronized int rawFlags(int structureId) {
+        if (structureId < 0 || structureId >= flags.length)
+            return 0;
+        return flags[structureId];
+    }
+
+    /** 按原始位布局写入（导入用，位含义同 {@link #rawFlags}）；0 为无操作。 */
+    public synchronized void setRawFlags(int structureId, int raw) {
+        if (raw == 0)
+            return;
+        ensureCapacity(structureId);
+        flags[structureId] = raw;
     }
 
     private void ensureCapacity(int structureId) {

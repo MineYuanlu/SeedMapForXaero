@@ -8,20 +8,29 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import bid.yuanlu.seedmap4xaero.client.configs.core.JsonConfigFile;
 import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 class StructureDataTest {
 
     @TempDir
     Path tmp;
+
+    private static long key(int x, int z) {
+        return MarksStore.keyOf(x, z);
+    }
 
     private static BitSetView enabled(int... ids) {
         var bs = new java.util.BitSet();
@@ -30,12 +39,19 @@ class StructureDataTest {
         return new BitSetView(bs);
     }
 
-    // ─── 标记语义 ───────────────────────────────────────────
+    private static JsonConfigFile.Paths settingsPaths(Path base, String mainId) {
+        return JsonConfigFile.pathsFor(base, mainId, "structure_settings.json", "structure_data.sm4x");
+    }
+
+    private static Path regionFile(Path marksDir, long seed, String mwId, String name) {
+        return marksDir.resolve(Long.toHexString(seed)).resolve(mwId).resolve(name);
+    }
+
+    // ─── 标记语义 (DimData) ─────────────────────────────────
 
     @Test
     void markVisitedKeepsMinDistance() {
-        var data = new StructureData();
-        var dim = data.getOrCreateSeed(42L).getOrCreateDim("Multiplayer_a");
+        var dim = new MarksStore.DimData();
         dim.markVisited(StructureType.VILLAGE.id, 100L, 8);
         assertEquals(8, dim.getMark(StructureType.VILLAGE.id, 100L).minDist());
         dim.markVisited(StructureType.VILLAGE.id, 100L, 3);
@@ -46,8 +62,7 @@ class StructureDataTest {
 
     @Test
     void markVisitedPreservesGroup() {
-        var data = new StructureData();
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
+        var dim = new MarksStore.DimData();
         dim.setGroup(StructureType.VILLAGE.id, 7L, StructureGroups.DONE);
         dim.markVisited(StructureType.VILLAGE.id, 7L, 5);
         var mark = dim.getMark(StructureType.VILLAGE.id, 7L);
@@ -57,8 +72,7 @@ class StructureDataTest {
 
     @Test
     void setGroupDefaultRemovesMark() {
-        var data = new StructureData();
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
+        var dim = new MarksStore.DimData();
         dim.setGroup(StructureType.MANSION.id, 9L, StructureGroups.SPECIAL);
         assertNotNull(dim.getMark(StructureType.MANSION.id, 9L));
         // 默认组 = 删除组: 清除整条记录 (含访问记录)
@@ -69,8 +83,7 @@ class StructureDataTest {
 
     @Test
     void setGroupCreatesUnvisitedMark() {
-        var data = new StructureData();
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
+        var dim = new MarksStore.DimData();
         dim.setGroup(StructureType.MANSION.id, 9L, StructureGroups.HIDDEN);
         var mark = dim.getMark(StructureType.MANSION.id, 9L);
         assertFalse(mark.visited());
@@ -78,27 +91,8 @@ class StructureDataTest {
     }
 
     @Test
-    void dirtyFlagOnlyOnRealChange() {
-        var data = new StructureData();
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
-        dim.markVisited(StructureType.VILLAGE.id, 1L, 5);
-        data.dirty.set(false);
-        dim.markVisited(StructureType.VILLAGE.id, 1L, 9); // 更远 → 无变化
-        assertFalse(data.dirty.get());
-        dim.markVisited(StructureType.VILLAGE.id, 1L, 2);
-        assertTrue(data.dirty.get());
-        data.dirty.set(false);
-        dim.setGroup(StructureType.VILLAGE.id, 1L, StructureGroups.DONE);
-        assertTrue(data.dirty.get());
-        data.dirty.set(false);
-        dim.setGroup(StructureType.VILLAGE.id, 1L, StructureGroups.DONE); // 同组 → 无变化
-        assertFalse(data.dirty.get());
-    }
-
-    @Test
     void countGroupFiltersByEnabledTypes() {
-        var data = new StructureData();
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
+        var dim = new MarksStore.DimData();
         dim.setGroup(StructureType.VILLAGE.id, 1L, StructureGroups.DONE);
         dim.setGroup(StructureType.VILLAGE.id, 2L, StructureGroups.DONE);
         dim.setGroup(StructureType.MANSION.id, 3L, StructureGroups.DONE);
@@ -109,7 +103,32 @@ class StructureDataTest {
         assertEquals(0, dim.countGroup(StructureGroups.DONE, enabled()));
     }
 
-    // ─── 组可见性 ───────────────────────────────────────────
+    @Test
+    void mutationsMarkExactlyOneRegionDirty() {
+        var dim = new MarksStore.DimData();
+        dim.markVisited(StructureType.VILLAGE.id, key(100, 200), 5); // region (0,0)
+        assertArrayEquals(new long[] { MarksStore.regionIdxOf(key(100, 200)) },
+                dim.dirtyRegionsForTest());
+        // 无变化不标脏
+        dim.markVisited(StructureType.VILLAGE.id, key(100, 200), 9);
+        assertEquals(1, dim.dirtyRegionsForTest().length);
+        // 跨 region 边界 → 第二个脏 region
+        dim.setGroup(StructureType.MANSION.id, key(1024, 0), StructureGroups.DONE); // region (1,0)
+        assertEquals(2, dim.dirtyRegionsForTest().length);
+        // 删除也标脏
+        dim.setGroup(StructureType.MANSION.id, key(1024, 0), null);
+        assertEquals(2, dim.dirtyRegionsForTest().length);
+    }
+
+    @Test
+    void keyOfPacksBlockCoords() {
+        assertEquals(0x12345678_9ABCDEF0L, StructureDataConfig.keyOf(0x12345678, 0x9ABCDEF0));
+        assertEquals(-1L >>> 32, StructureDataConfig.keyOf(0, -1));
+        // 负坐标不串位
+        assertTrue(StructureDataConfig.keyOf(-1, -2) != StructureDataConfig.keyOf(-2, -1));
+    }
+
+    // ─── 组可见性 (设置文档) ────────────────────────────────
 
     @Test
     void hiddenGroupsToggle() {
@@ -123,185 +142,32 @@ class StructureDataTest {
         assertFalse(data.isGroupHidden(StructureGroups.HIDDEN));
     }
 
-    // ─── 序列化 ─────────────────────────────────────────────
+    // ─── 设置文档 JSON roundtrip ────────────────────────────
 
-    private StructureData sample() {
+    @Test
+    void settingsJsonRoundTrip() throws IOException {
         var data = new StructureData();
-        var dim = data.getOrCreateSeed(123456789L).getOrCreateDim("Multiplayer_127.0.0.1");
-        dim.markVisited(StructureType.VILLAGE.id, 100L, 7);
-        dim.setGroup(StructureType.MANSION.id, 200L, StructureGroups.SPECIAL);
-        var dim2 = data.getOrCreateSeed(123456789L).getOrCreateDim("Multiplayer_127.0.0.1$dim%-1");
-        dim2.setGroup(StructureType.FORTRESS.id, 300L, StructureGroups.DONE);
-        data.getOrCreateSeed(-1L).getOrCreateDim("solo").markVisited(
-                StructureType.TREASURE.id, 400L, 2);
         data.setGroupHidden(StructureGroups.HIDDEN, true);
         data.setGroupHidden(StructureGroups.DEFAULT, true);
         data.addGroup("mines", 0xFF00AAFF);
         data.setGroupColor(StructureGroups.DONE, 0xFF22CC44);
-        return data;
+
+        var paths = settingsPaths(tmp, "srv");
+        Files.createDirectories(paths.target().getParent());
+        JsonConfigFile.save(paths, data, StructureData.JSON_CODEC, true);
+        StructureData read = JsonConfigFile.readJson(paths.target(), StructureData.JSON_CODEC);
+
+        assertTrue(read.isGroupHidden(StructureGroups.HIDDEN));
+        assertTrue(read.isGroupHidden(StructureGroups.DEFAULT));
+        // "mines" 用户组 + DONE 内置组颜色覆盖 = 2 条
+        assertEquals(2, read.userGroups().size());
+        assertEquals("mines", read.userGroups().get(0).name());
+        assertEquals(0xFF00AAFF, read.userGroups().get(0).color());
+        assertEquals(0xFF22CC44, read.colorOf(StructureGroups.DONE));
+
+        String text = Files.readString(paths.target(), StandardCharsets.UTF_8);
+        assertTrue(text.contains("mines"), "非 ASCII/自定义组名可读 (disableHtmlEscaping)");
     }
-
-    private void assertEq(StructureData expect, StructureData actual) {
-        for (long seed : new long[] { 123456789L, -1L }) {
-            for (String mwId : new String[] { "Multiplayer_127.0.0.1",
-                    "Multiplayer_127.0.0.1$dim%-1", "solo" }) {
-                for (StructureType type : StructureType.values()) {
-                    if (type == StructureType.FEATURE)
-                        continue;
-                    for (long key : new long[] { 100L, 200L, 300L, 400L }) {
-                        var e = expect.getSeed(seed) == null ? null
-                                : expect.getSeed(seed).getDim(mwId);
-                        var a = actual.getSeed(seed) == null ? null
-                                : actual.getSeed(seed).getDim(mwId);
-                        if (e == null) {
-                            assertNull(a);
-                            continue;
-                        }
-                        assertNotNull(a);
-                        assertEquals(e.getMark(type.id, key), a.getMark(type.id, key),
-                                () -> seed + "/" + mwId + "/" + type.id + "/" + key);
-                    }
-                }
-            }
-        }
-        for (String g : StructureGroups.BUILTIN)
-            assertEquals(expect.isGroupHidden(g), actual.isGroupHidden(g));
-        assertEquals(expect.userGroups(), actual.userGroups());
-        for (String g : StructureGroups.BUILTIN)
-            assertEquals(expect.colorOf(g), actual.colorOf(g));
-    }
-
-    @Test
-    void binaryRoundTrip() throws IOException {
-        StructureData data = sample();
-        Path file = tmp.resolve("sub/structure_data.sm4x");
-        Files.createDirectories(file.getParent());
-
-        Sm4xFile.writeFrame(file, data, StructureData.CODEC);
-        StructureData read = Sm4xFile.readFrame(file, StructureData.CODEC);
-        assertEq(data, read);
-    }
-
-    @Test
-    void saveLoadFallbackChain() throws IOException {
-        StructureData data = sample();
-        Path base = tmp.resolve("base");
-        StructureDataConfig.saveLoadForTest(base, "srv", data);
-
-        StructureData read = StructureDataConfig.load(base, "srv");
-        assertEq(data, read);
-
-        // 主文件损坏 → 回退 .old (需先保存两次, 让第一份数据轮替到 .old)
-        StructureData first = new StructureData();
-        first.getOrCreateSeed(7L).getOrCreateDim("w")
-                .setGroup(StructureType.VILLAGE.id, 1L, StructureGroups.DONE);
-        StructureDataConfig.saveLoadForTest(base, "srv2", first);
-        StructureDataConfig.saveLoadForTest(base, "srv2", new StructureData());
-        Files.writeString(StructureDataConfig.targetPathForTest(base, "srv2"), "corrupt");
-
-        StructureData readOld = StructureDataConfig.load(base, "srv2");
-        assertEquals(StructureGroups.DONE,
-                readOld.getSeed(7L).getDim("w").getMark(StructureType.VILLAGE.id, 1L).group());
-
-        // 全部损坏 → 空文档
-        Files.writeString(StructureDataConfig.targetPathForTest(base, "srv2").resolveSibling(
-                StructureDataConfig.targetPathForTest(base, "srv2").getFileName() + ".old"),
-                "corrupt");
-        StructureData fresh = StructureDataConfig.load(base, "srv2");
-        assertNull(fresh.getSeed(7L));
-    }
-
-    @Test
-    void saveWithoutRotationKeepsOldFile() throws IOException {
-        var data = sample();
-        Path base = tmp.resolve("rot");
-        StructureDataConfig.saveLoadForTest(base, "srv", data); // rotate=true, 无 .old 产生
-        var paths = StructureDataConfig.pathsForTest(base, "srv");
-        assertFalse(Files.exists(paths.old()));
-
-        // 主动刷写 (rotate=false): .old 不被创建/覆盖
-        var next = new StructureData();
-        next.getOrCreateSeed(1L).getOrCreateDim("w").markVisited(
-                StructureType.VILLAGE.id, 1L, 3);
-        StructureDataConfig.flushForTest(base, "srv", next);
-        assertFalse(Files.exists(paths.old()));
-        assertEquals(3, StructureDataConfig.load(base, "srv")
-                .getSeed(1L).getDim("w").getMark(StructureType.VILLAGE.id, 1L).minDist());
-
-        // 已有 .old 时刷写同样不覆盖它
-        StructureDataConfig.saveLoadForTest(base, "srv", data);
-        StructureDataConfig.saveLoadForTest(base, "srv", data); // 轮替 → .old 出现
-        assertTrue(Files.exists(paths.old()));
-        byte[] oldBytes = Files.readAllBytes(paths.old());
-        StructureDataConfig.flushForTest(base, "srv", next);
-        assertArrayEquals(oldBytes, Files.readAllBytes(paths.old()));
-    }
-
-    @Test
-    void perSeedIsolation() {
-        var data = new StructureData();
-        data.getOrCreateSeed(1L).getOrCreateDim("w")
-                .setGroup(StructureType.VILLAGE.id, 1L, StructureGroups.DONE);
-        assertNull(data.getSeed(2L));
-        assertNotNull(data.getSeed(1L));
-    }
-
-    @Test
-    void keyOfPacksBlockCoords() {
-        assertEquals(0x12345678_9ABCDEF0L, StructureDataConfig.keyOf(0x12345678, 0x9ABCDEF0));
-        assertEquals(-1L >>> 32, StructureDataConfig.keyOf(0, -1));
-        // 负坐标不串位
-        assertEquals(StructureDataConfig.keyOf(-1, -2), StructureDataConfig.keyOf(-1, -2));
-        assertTrue(StructureDataConfig.keyOf(-1, -2) != StructureDataConfig.keyOf(-2, -1));
-    }
-
-    // ─── 种子级统计与删除 (二阶段: /sm4x history) ──────────────
-
-    @Test
-    void seedStatsCountsGroupsAndStructures() {
-        var data = new StructureData();
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
-        dim.markVisited(StructureType.VILLAGE.id, 1L, 5); // 仅访问
-        dim.setGroup(StructureType.VILLAGE.id, 2L, StructureGroups.DONE); // 仅分组
-        dim.markVisited(StructureType.MANSION.id, 3L, 2);
-        dim.setGroup(StructureType.MANSION.id, 3L, StructureGroups.DONE); // 访问+分组 = 1 条
-        data.getOrCreateSeed(1L).getOrCreateDim("nether")
-                .setGroup(StructureType.FORTRESS.id, 4L, StructureGroups.SPECIAL);
-
-        var stats = data.stats(1L);
-        assertNotNull(stats);
-        assertEquals(2, stats.groups()); // done + special (跨维度去重)
-        assertEquals(4, stats.structures()); // 4 条记录 (第 3 条只算一次)
-        assertNull(data.stats(2L));
-    }
-
-    @Test
-    void removeSeedRemovesAllDimsAndCounts() {
-        var data = new StructureData();
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
-        dim.markVisited(StructureType.VILLAGE.id, 1L, 5);
-        dim.setGroup(StructureType.MANSION.id, 2L, StructureGroups.DONE);
-        data.getOrCreateSeed(1L).getOrCreateDim("nether")
-                .setGroup(StructureType.FORTRESS.id, 3L, StructureGroups.SPECIAL);
-        data.getOrCreateSeed(2L).getOrCreateDim("w")
-                .markVisited(StructureType.VILLAGE.id, 9L, 1);
-
-        assertEquals(3, data.removeSeed(1L));
-        assertNull(data.getSeed(1L));
-        assertNotNull(data.getSeed(2L));
-        assertEquals(0, data.removeSeed(1L)); // 幂等
-    }
-
-    @Test
-    void seedsSnapshotSortedAscending() {
-        var data = new StructureData();
-        data.getOrCreateSeed(30L).getOrCreateDim("w");
-        data.getOrCreateSeed(-10L).getOrCreateDim("w");
-        data.getOrCreateSeed(20L).getOrCreateDim("w");
-        assertArrayEquals(new long[] { -10L, 20L, 30L }, data.seedsSnapshot());
-    }
-
-    // ─── 用户组 (三阶段) ────────────────────────────────────────
 
     @Test
     void userGroupCrudValidation() {
@@ -334,59 +200,319 @@ class StructureDataTest {
     }
 
     @Test
-    void renameGroupRewritesAllRefs() {
+    void settingsRenameAndRemoveOnlyTouchGroupTable() {
+        // 设置文档的 rename/remove 只改组表+隐藏表; 标记引用重写在 MarksStore (由门面编排)
         var data = new StructureData();
-        assertTrue(data.addGroup("mines", 0xFF00AAFF));
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
-        dim.setGroup(StructureType.VILLAGE.id, 1L, "mines");
-        dim.markVisited(StructureType.MANSION.id, 2L, 6);
-        dim.setGroup(StructureType.MANSION.id, 2L, "mines");
-        data.getOrCreateSeed(2L).getOrCreateDim("nether")
-                .setGroup(StructureType.FORTRESS.id, 3L, "mines");
+        data.addGroup("mines", 0xFF00AAFF);
         data.setGroupHidden("mines", true);
-
         assertTrue(data.renameGroup("mines", "矿组"));
-        assertEquals(1, data.userGroups().size());
         assertEquals("矿组", data.userGroups().get(0).name());
-        assertEquals(0xFF00AAFF, data.colorOf("矿组"));
-        assertEquals("矿组", dim.getMark(StructureType.VILLAGE.id, 1L).group());
-        assertEquals("矿组", dim.getMark(StructureType.MANSION.id, 2L).group());
-        assertEquals("矿组", data.getSeed(2L).getDim("nether")
-                .getMark(StructureType.FORTRESS.id, 3L).group());
         assertTrue(data.isGroupHidden("矿组"));
         assertFalse(data.isGroupHidden("mines"));
-        // 内置组不可改名; 目标重名/默认组名拒绝
-        assertFalse(data.renameGroup(StructureGroups.DONE, "x"));
-        assertFalse(data.renameGroup("矿组", StructureGroups.DONE));
+        assertFalse(data.renameGroup(StructureGroups.DONE, "x")); // 内置拒绝
         assertFalse(data.renameGroup("ghost", "x"));
+        assertTrue(data.removeGroup("矿组"));
+        assertTrue(data.userGroups().isEmpty());
+        assertFalse(data.isGroupHidden("矿组"));
+        assertFalse(data.removeGroup(StructureGroups.SPECIAL)); // 内置拒绝
+    }
+
+    // ─── marks 分片 ─────────────────────────────────────────
+
+    @Test
+    void regionShardRoundTrip() throws IOException {
+        var marksDir = tmp.resolve("marks");
+        var store = new MarksStore(marksDir);
+        var dd = store.doc(42L, "w");
+        dd.markVisited(StructureType.VILLAGE.id, key(100, 200), 7);
+        dd.setGroup(StructureType.MANSION.id, key(-300, 400), StructureGroups.SPECIAL);
+        store.flush(true);
+
+        assertTrue(Files.exists(regionFile(marksDir, 42L, "w", "r.0.0.json")),
+                "hex(42)=2a, block(100,200) → region (0,0)");
+        String text = Files.readString(regionFile(marksDir, 42L, "w", "r.0.0.json"),
+                StandardCharsets.UTF_8);
+        assertTrue(text.contains("\"minecraft:village\""), "key 形态带 minecraft: 前缀:\n" + text);
+
+        // 新 store (同目录) 惰性加载读回
+        var store2 = new MarksStore(marksDir);
+        var dd2 = store2.doc(42L, "w");
+        assertEquals(7, dd2.getMark(StructureType.VILLAGE.id, key(100, 200)).minDist());
+        assertEquals(StructureGroups.SPECIAL,
+                dd2.getMark(StructureType.MANSION.id, key(-300, 400)).group());
     }
 
     @Test
-    void removeGroupKeepsVisitClearsGroup() {
-        var data = new StructureData();
-        data.addGroup("mines", 0xFF00AAFF);
-        var dim = data.getOrCreateSeed(1L).getOrCreateDim("w");
-        dim.setGroup(StructureType.VILLAGE.id, 1L, "mines"); // 纯分组 → 整条删
-        dim.markVisited(StructureType.MANSION.id, 2L, 6);
-        dim.setGroup(StructureType.MANSION.id, 2L, "mines"); // 访问+分组 → 保留访问
-        data.setGroupHidden("mines", true);
+    void regionBoundarySeparatesFiles() {
+        var marksDir = tmp.resolve("marksB");
+        var store = new MarksStore(marksDir);
+        var dd = store.doc(7L, "w");
+        dd.markVisited(StructureType.VILLAGE.id, key(1023, 0), 1); // region (0,0)
+        dd.markVisited(StructureType.VILLAGE.id, key(1024, 0), 2); // region (1,0)
+        dd.markVisited(StructureType.VILLAGE.id, key(-1, 0), 3); // region (-1,0)
+        store.flush(true);
 
-        assertTrue(data.removeGroup("mines"));
-        assertNull(dim.getMark(StructureType.VILLAGE.id, 1L));
-        var kept = dim.getMark(StructureType.MANSION.id, 2L);
+        assertTrue(Files.exists(regionFile(marksDir, 7L, "w", "r.0.0.json")));
+        assertTrue(Files.exists(regionFile(marksDir, 7L, "w", "r.1.0.json")));
+        assertTrue(Files.exists(regionFile(marksDir, 7L, "w", "r.-1.0.json")));
+    }
+
+    @Test
+    void regionFileRotationContract() throws IOException {
+        var marksDir = tmp.resolve("marksR");
+        var store = new MarksStore(marksDir);
+        var dd = store.doc(9L, "w");
+        dd.markVisited(StructureType.VILLAGE.id, key(0, 0), 1);
+        store.flush(true); // 首次: 无正本可轮替
+
+        // 变更 (markVisited 距离不变时不标脏, 用 setGroup 驱动)
+        dd.setGroup(StructureType.VILLAGE.id, key(0, 0), StructureGroups.DONE);
+        store.flush(true); // 轮替: .old = dist 1 / 默认组
+
+        var old = JsonConfigFile.readJson(
+                regionFile(marksDir, 9L, "w", "r.0.0.json.old"), MarksStore.REGION_CODEC);
+        assertEquals(1, old.marks().get("minecraft:village").get(0).minDist());
+        assertEquals("", old.marks().get("minecraft:village").get(0).group());
+
+        // 会话刷写 (rotate=false): .old 不被覆盖
+        dd.setGroup(StructureType.VILLAGE.id, key(0, 0), StructureGroups.SPECIAL);
+        store.flush(false);
+        byte[] oldBytes = Files.readAllBytes(regionFile(marksDir, 9L, "w", "r.0.0.json.old"));
+        dd.setGroup(StructureType.VILLAGE.id, key(0, 0), StructureGroups.HIDDEN);
+        store.flush(false);
+        assertArrayEquals(oldBytes, Files.readAllBytes(regionFile(marksDir, 9L, "w", "r.0.0.json.old")));
+    }
+
+    @Test
+    void emptyRegionFileDeleted() throws IOException {
+        var marksDir = tmp.resolve("marksE");
+        var store = new MarksStore(marksDir);
+        var dd = store.doc(5L, "w");
+        dd.setGroup(StructureType.VILLAGE.id, key(10, 10), StructureGroups.DONE);
+        store.flush(true);
+        assertTrue(Files.exists(regionFile(marksDir, 5L, "w", "r.0.0.json")));
+
+        // 记录删除 (默认组) → region 变空 → 文件删除
+        dd.setGroup(StructureType.VILLAGE.id, key(10, 10), null);
+        store.flush(true);
+        assertFalse(Files.exists(regionFile(marksDir, 5L, "w", "r.0.0.json")));
+        // .tmp 也不残留
+        assertFalse(Files.exists(regionFile(marksDir, 5L, "w", "r.0.0.json.tmp")));
+    }
+
+    @Test
+    void corruptRegionSkippedOthersLoad() throws IOException {
+        var marksDir = tmp.resolve("marksC");
+        var store = new MarksStore(marksDir);
+        var dd = store.doc(3L, "w");
+        dd.markVisited(StructureType.VILLAGE.id, key(0, 0), 1); // r.0.0
+        dd.markVisited(StructureType.VILLAGE.id, key(1024, 0), 2); // r.1.0
+        store.flush(true);
+
+        Files.writeString(regionFile(marksDir, 3L, "w", "r.0.0.json"), "{corrupt");
+
+        var store2 = new MarksStore(marksDir);
+        var dd2 = store2.doc(3L, "w");
+        assertNull(dd2.getMark(StructureType.VILLAGE.id, key(0, 0)), "损坏 region 被跳过");
+        assertEquals(2, dd2.getMark(StructureType.VILLAGE.id, key(1024, 0)).minDist(),
+                "其余 region 不受影响");
+    }
+
+    @Test
+    void orphanStructureKeysPreserved() throws IOException {
+        var marksDir = tmp.resolve("marksO");
+        var p = regionFile(marksDir, 11L, "w", "r.0.0.json");
+        Files.createDirectories(p.getParent());
+        Files.writeString(p, """
+                {
+                  "version": 1,
+                  "marks": {
+                    "terralith:volcanic_peak": [[12, 34, 56, "done"]],
+                    "futuremod:castle": [[1, 2, -1, ""]]
+                  }
+                }
+                """);
+
+        var store = new MarksStore(marksDir);
+        var dd = store.doc(11L, "w");
+        // 未知 key 无法归位 (不产生可查标记), 但 flush 后原样保留
+        assertNull(dd.getMark(StructureType.VILLAGE.id, key(12, 34)));
+        store.flush(true);
+
+        String out = Files.readString(p, StandardCharsets.UTF_8);
+        assertTrue(out.contains("terralith:volcanic_peak"), out);
+        assertTrue(out.contains("futuremod:castle"), out);
+    }
+
+    @Test
+    void mwIdEmptyMapsToDefaultDir() throws IOException {
+        var marksDir = tmp.resolve("marksM");
+        var store = new MarksStore(marksDir);
+        store.doc(6L, "").markVisited(StructureType.VILLAGE.id, key(1, 1), 9);
+        store.flush(true);
+        assertTrue(Files.exists(regionFile(marksDir, 6L, "default", "r.0.0.json")),
+                "空 mwId (单机默认) → default 目录");
+    }
+
+    // ─── 种子级统计与删除 (/sm4x 命令) ──────────────────────
+
+    @Test
+    void seedStatsCountsGroupsAndStructures() {
+        var store = new MarksStore(tmp.resolve("marksS"));
+        var dim = store.doc(1L, "w");
+        dim.markVisited(StructureType.VILLAGE.id, 1L, 5); // 仅访问
+        dim.setGroup(StructureType.VILLAGE.id, 2L, StructureGroups.DONE); // 仅分组
+        dim.markVisited(StructureType.MANSION.id, 3L, 2);
+        dim.setGroup(StructureType.MANSION.id, 3L, StructureGroups.DONE); // 访问+分组 = 1 条
+        store.doc(1L, "nether").setGroup(StructureType.FORTRESS.id, 4L, StructureGroups.SPECIAL);
+
+        var stats = store.stats(1L);
+        assertNotNull(stats);
+        assertEquals(2, stats.groups()); // done + special (跨维度去重)
+        assertEquals(4, stats.structures()); // 4 条记录
+        assertNull(store.stats(2L));
+    }
+
+    @Test
+    void seedsSnapshotSortedAscending() {
+        var marksDir = tmp.resolve("marksN");
+        var store = new MarksStore(marksDir);
+        store.doc(30L, "w").markVisited(StructureType.VILLAGE.id, key(1, 1), 1);
+        store.doc(-10L, "w").markVisited(StructureType.VILLAGE.id, key(1, 1), 1);
+        store.doc(20L, "w").markVisited(StructureType.VILLAGE.id, key(1, 1), 1);
+        store.flush(true); // 快照基于磁盘目录 (有标记才存在)
+        assertArrayEquals(new long[] { -10L, 20L, 30L }, store.seedsSnapshot());
+    }
+
+    @Test
+    void removeSeedRemovesAllDimsAndCounts() {
+        var marksDir = tmp.resolve("marksD");
+        var store = new MarksStore(marksDir);
+        store.doc(1L, "w").markVisited(StructureType.VILLAGE.id, 1L, 5);
+        store.doc(1L, "w").setGroup(StructureType.MANSION.id, 2L, StructureGroups.DONE);
+        store.doc(1L, "nether").setGroup(StructureType.FORTRESS.id, 3L, StructureGroups.SPECIAL);
+        store.doc(2L, "w").markVisited(StructureType.VILLAGE.id, 9L, 1);
+        store.flush(true);
+
+        assertEquals(3, store.removeSeed(1L));
+        assertFalse(Files.exists(marksDir.resolve(Long.toHexString(1L))), "种子目录删除");
+        assertEquals(0, store.removeSeed(1L)); // 幂等
+        // 其他种子不受影响
+        var store2 = new MarksStore(marksDir);
+        assertNotNull(store2.doc(2L, "w").getMark(StructureType.VILLAGE.id, 9L));
+    }
+
+    // ─── 组引用重写 (跨全部分片) ────────────────────────────
+
+    @Test
+    void renameGroupRewritesCachedDocs() throws IOException {
+        var marksDir = tmp.resolve("marksG");
+        var store = new MarksStore(marksDir);
+        store.doc(1L, "w").setGroup(StructureType.VILLAGE.id, key(1, 1), "mines");
+        store.doc(1L, "w").markVisited(StructureType.MANSION.id, key(2, 2), 6);
+        store.doc(1L, "w").setGroup(StructureType.MANSION.id, key(2, 2), "mines");
+        store.doc(2L, "nether").setGroup(StructureType.FORTRESS.id, key(3, 3), "mines");
+
+        store.rewriteGroupRefs("mines", "矿组"); // 缓存文档: 内存重写 + 标脏
+        store.flush(true);
+
+        var store2 = new MarksStore(marksDir);
+        assertEquals("矿组", store2.doc(1L, "w")
+                .getMark(StructureType.VILLAGE.id, key(1, 1)).group());
+        assertEquals("矿组", store2.doc(1L, "w")
+                .getMark(StructureType.MANSION.id, key(2, 2)).group());
+        assertEquals("矿组", store2.doc(2L, "nether")
+                .getMark(StructureType.FORTRESS.id, key(3, 3)).group());
+    }
+
+    @Test
+    void renameGroupRewritesUncachedShardsOnDisk() throws IOException {
+        var marksDir = tmp.resolve("marksH");
+        var store = new MarksStore(marksDir);
+        store.doc(4L, "w").setGroup(StructureType.VILLAGE.id, key(1, 1), "mines");
+        store.flush(true);
+
+        // 全新 store (无缓存): 直接改写磁盘分片
+        var store2 = new MarksStore(marksDir);
+        store2.rewriteGroupRefs("mines", "矿组");
+
+        var store3 = new MarksStore(marksDir);
+        assertEquals("矿组", store3.doc(4L, "w")
+                .getMark(StructureType.VILLAGE.id, key(1, 1)).group());
+    }
+
+    @Test
+    void removeGroupKeepsVisitClearsGroupAcrossShards() throws IOException {
+        var marksDir = tmp.resolve("marksI");
+        var store = new MarksStore(marksDir);
+        store.doc(1L, "w").setGroup(StructureType.VILLAGE.id, key(1, 1), "mines"); // 纯分组 → 整条删
+        store.doc(1L, "w").markVisited(StructureType.MANSION.id, key(2, 2), 6);
+        store.doc(1L, "w").setGroup(StructureType.MANSION.id, key(2, 2), "mines"); // 访问+分组 → 保留访问
+        store.flush(true);
+
+        store.rewriteGroupRefs("mines", StructureGroups.DEFAULT);
+        store.flush(true);
+
+        var store2 = new MarksStore(marksDir);
+        assertNull(store2.doc(1L, "w").getMark(StructureType.VILLAGE.id, key(1, 1)),
+                "无访问的纯分组记录整条删除");
+        var kept = store2.doc(1L, "w").getMark(StructureType.MANSION.id, key(2, 2));
         assertNotNull(kept);
         assertTrue(kept.visited());
         assertEquals(6, kept.minDist());
         assertEquals(StructureGroups.DEFAULT, kept.group());
-        assertFalse(data.isGroupHidden("mines"));
-        assertTrue(data.userGroups().isEmpty());
-        assertFalse(data.removeGroup("mines")); // 幂等
-        assertFalse(data.removeGroup(StructureGroups.SPECIAL)); // 内置拒绝
+    }
+
+    // ─── legacy structure_data.sm4x 迁移 ────────────────────
+
+    @Test
+    void legacyMigrationSplitsSettingsAndMarks() throws IOException {
+        var overworldDim = new StructureDataLegacy.LegacyDim(Map.of(
+                StructureType.VILLAGE.id,
+                List.of(new StructureDataLegacy.LegacyMark(100L, 4, StructureGroups.DONE))));
+        var netherDim = new StructureDataLegacy.LegacyDim(Map.of(
+                StructureType.FORTRESS.id,
+                List.of(new StructureDataLegacy.LegacyMark(key(1024, 0), 2, StructureGroups.SPECIAL))));
+        var seed = new StructureDataLegacy.LegacySeed(Map.of(
+                "w", overworldDim,
+                "nether", netherDim));
+        var snap = new StructureDataLegacy.Snapshot(
+                List.of(StructureGroups.HIDDEN),
+                List.of(new StructureData.UserGroup("mines", 0xFF00AAFF)),
+                new Long2ObjectOpenHashMap<>(Map.of(7L, seed)));
+
+        Path base = tmp.resolve("base");
+        var paths = settingsPaths(base, "srv");
+        Files.createDirectories(paths.legacy().getParent());
+        Sm4xFile.writeFrame(paths.legacy(), snap, StructureDataLegacy.LEGACY_CODEC);
+
+        StructureData settings = StructureDataConfig.load(base, "srv");
+        assertTrue(settings.isGroupHidden(StructureGroups.HIDDEN));
+        assertEquals(1, settings.userGroups().size());
+        assertEquals("mines", settings.userGroups().get(0).name());
+
+        // legacy 改名退出回退链; 设置 json + marks 分片生成
+        assertFalse(Files.exists(paths.legacy()));
+        assertTrue(Files.exists(paths.target()));
+        assertTrue(Files.exists(base.resolve("srv/marks/7/w/r.0.0.json")));
+
+        // 分片可读回 (含跨 region 边界的旧标记)
+        var store = new MarksStore(base.resolve("srv/marks"));
+        assertEquals(4, store.doc(7L, "w")
+                .getMark(StructureType.VILLAGE.id, 100L).minDist());
+        assertEquals(StructureGroups.DONE,
+                store.doc(7L, "w").getMark(StructureType.VILLAGE.id, 100L).group());
+        assertEquals(StructureGroups.SPECIAL,
+                store.doc(7L, "nether").getMark(StructureType.FORTRESS.id, key(1024, 0)).group());
+
+        // 二次加载: 直接走 json, 幂等
+        StructureData again = StructureDataConfig.load(base, "srv");
+        assertTrue(again.isGroupHidden(StructureGroups.HIDDEN));
     }
 
     @Test
     void readsLegacyV0WithoutUserGroups() throws IOException {
-        // 手工构造 v0 帧: MAGIC + [ver=0, hiddenGroups, seeds] + MAGIC
+        // 手工构造 v0 帧: MAGIC + [ver=0, hiddenGroups, seeds] + MAGIC (无 userGroups 段)
         var bos = new java.io.ByteArrayOutputStream();
         var out = new java.io.DataOutputStream(bos);
         out.write(Sm4xFile.MAGIC_WORD);
@@ -409,12 +535,12 @@ class StructureDataTest {
         Path file = tmp.resolve("legacy.sm4x");
         Files.write(file, bos.toByteArray());
 
-        StructureData read = Sm4xFile.readFrame(file, StructureData.CODEC);
-        var mark = read.getSeed(7L).getDim("w").getMark(StructureType.VILLAGE.id, 100L);
-        assertNotNull(mark);
+        var snap = Sm4xFile.readFrame(file, StructureDataLegacy.LEGACY_CODEC);
+        var mark = snap.seeds().get(7L).dims().get("w").types()
+                .get(StructureType.VILLAGE.id).get(0);
         assertEquals(4, mark.minDist());
         assertEquals(StructureGroups.DONE, mark.group());
-        assertTrue(read.userGroups().isEmpty());
-        assertTrue(read.isGroupHidden(StructureGroups.HIDDEN));
+        assertTrue(snap.userGroups().isEmpty());
+        assertEquals(List.of(StructureGroups.HIDDEN), snap.hiddenGroups());
     }
 }

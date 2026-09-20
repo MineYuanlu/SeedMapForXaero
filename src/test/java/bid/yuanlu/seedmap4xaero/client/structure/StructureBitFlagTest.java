@@ -124,13 +124,45 @@ class StructureBitFlagTest {
         assertFalse(f.isStructureSet(StructureType.FEATURE_NUM + 100));
         assertFalse(f.isVariantSet(0, -1));
         assertFalse(f.isVariantSet(0, 32));
+        assertFalse(f.isVariantSet(0, 31), "variant 31 会使位移回卷到 bit0, 必须判 false");
     }
 
     @Test
     void badVariantThrowsOnWrite() {
         StructureBitFlag f = new StructureBitFlag();
         assertThrows(IllegalArgumentException.class, () -> f.setVariant(0, -1, true));
+        assertThrows(IllegalArgumentException.class, () -> f.setVariant(0, 31, true), "31 回卷污染整类位");
         assertThrows(IllegalArgumentException.class, () -> f.setVariant(0, 32, true));
         assertThrows(IllegalArgumentException.class, () -> f.flipVariant(0, 33));
+    }
+
+    @Test
+    void variant30BoundaryDoesNotPolluteStructureBit() {
+        // 边界: variant 30 → bit31 (合法的最大位), 不得影响 bit0 (整类位)
+        StructureBitFlag f = new StructureBitFlag();
+        f.setVariant(StructureType.VILLAGE.id, 30, true);
+        assertTrue(f.isVariantSet(StructureType.VILLAGE.id, 30));
+        assertFalse(f.isStructureSet(StructureType.VILLAGE.id), "variant30 不得污染整类位");
+        assertFalse(f.isVariantSet(StructureType.VILLAGE.id, 0));
+        f.setVariant(StructureType.VILLAGE.id, 30, false);
+        assertFalse(f.isVariantSet(StructureType.VILLAGE.id, 30));
+    }
+
+    @Test
+    void rawFlagsRoundTripViaJsonBoundary() {
+        // JSON 导出/导入走 raw 位布局 (WorldConfig 用)
+        StructureBitFlag f = new StructureBitFlag();
+        f.setStructure(StructureType.VILLAGE.id, true);
+        f.setVariant(StructureType.VILLAGE.id, 3, true);
+        f.setVariant(StructureType.IGLOO.id, 30, true);
+
+        StructureBitFlag g = new StructureBitFlag();
+        for (int id = 0; id < f.capacity(); id++) {
+            int raw = f.rawFlags(id);
+            if (raw != 0)
+                g.setRawFlags(id, raw);
+        }
+        assertEquals(f, g);
+        assertTrue(g.isVariantSet(StructureType.IGLOO.id, 30));
     }
 }

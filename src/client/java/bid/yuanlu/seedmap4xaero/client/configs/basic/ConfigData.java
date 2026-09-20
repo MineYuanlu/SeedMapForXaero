@@ -14,7 +14,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import bid.yuanlu.seedmap4xaero.client.configs.core.JsonCodec;
 import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xCodec;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
 /**
  * basic 配置文档（{@code server_config.sm4x}）的数据体：服务器级设置 + worlds 表 + 种子历史。
@@ -170,8 +174,105 @@ public class ConfigData {
         }
     }
 
-    /** basic 文档的编解码器，配合 {@code Sm4xFile} 使用；版本号是内部细节。 */
-    public static final Sm4xCodec<ConfigData> CODEC = new Sm4xCodec<>(){
+    // ─── JSON 持久化 (现行格式) ─────────────────────────────────
+
+    /** 写出文档体（不含文件级布局；{@code null} 字段省略）。 */
+    private synchronized JsonObject writeJson() {
+        var json = new JsonObject();
+        json.addProperty("version", 1);
+        if (theme != null)
+            json.addProperty("theme", theme);
+        json.addProperty("invisibleBiomes", invisibleBiomes);
+        json.addProperty("invisibleStructures", invisibleStructures);
+        json.addProperty("structureIconSize", structureIconSize);
+        json.addProperty("lootPreview", lootPreview);
+        json.addProperty("lootDisplayMode", lootDisplayMode.name());
+
+        var worldsJson = new JsonObject();
+        for (final var worldEntry : worlds.entrySet()) {
+            worldsJson.add(worldEntry.getKey(), worldEntry.getValue().writeJson());
+        }
+        json.add("worlds", worldsJson);
+
+        synchronized (allSeeds) {
+            var history = new JsonArray();
+            for (final var seedEntry : allSeeds) {
+                var o = new JsonObject();
+                o.addProperty("seed", seedEntry.seed);
+                o.addProperty("lastUsed", seedEntry.lastUsed());
+                history.add(o);
+            }
+            json.add("seedHistory", history);
+        }
+        return json;
+    }
+
+    /** 从文档体读取：缺失字段落默认值，未知字段忽略（双向前向兼容）。 */
+    private static ConfigData readJson(JsonObject json) throws IOException {
+        try {
+            final var config = new ConfigData();
+            if (json.has("theme") && !json.get("theme").isJsonNull())
+                config.theme = json.get("theme").getAsString();
+            if (json.has("invisibleBiomes"))
+                config.invisibleBiomes = json.get("invisibleBiomes").getAsBoolean();
+            if (json.has("invisibleStructures"))
+                config.invisibleStructures = json.get("invisibleStructures").getAsBoolean();
+            if (json.has("structureIconSize"))
+                config.structureIconSize = json.get("structureIconSize").getAsFloat();
+            if (json.has("lootPreview"))
+                config.lootPreview = json.get("lootPreview").getAsBoolean();
+            if (json.has("lootDisplayMode")) {
+                try {
+                    config.lootDisplayMode = LootDisplayMode.valueOf(json.get("lootDisplayMode").getAsString());
+                } catch (IllegalArgumentException unknownName) {
+                    config.lootDisplayMode = LootDisplayMode.QUICK_PEEK; // 单字段容错, 不整体回退
+                }
+            }
+
+            if (json.has("worlds")) {
+                var worldsJson = json.getAsJsonObject("worlds");
+                for (final var e : worldsJson.entrySet()) {
+                    config.worlds.put(e.getKey(), WorldConfig.readJson(config, e.getValue().getAsJsonObject()));
+                }
+            }
+
+            if (json.has("seedHistory")) {
+                synchronized (config.allSeeds) {
+                    for (JsonElement el : json.getAsJsonArray("seedHistory")) {
+                        var o = el.getAsJsonObject();
+                        long seed = o.get("seed").getAsLong();
+                        String lastUsed = o.has("lastUsed") && !o.get("lastUsed").isJsonNull()
+                                ? o.get("lastUsed").getAsString()
+                                : Instant.now().toString();
+                        config.allSeeds.add(new SeedEntry(seed, lastUsed));
+                    }
+                    while (config.allSeeds.size() > MAX_SEEDS)
+                        config.allSeeds.removeLast();
+                }
+            }
+            return config;
+        } catch (RuntimeException e) {
+            throw new IOException("Malformed server config", e);
+        }
+    }
+
+    /** basic 配置文档的 JSON 编解码器，配合 {@code JsonConfigFile} 使用。 */
+    public static final JsonCodec<ConfigData> JSON_CODEC = new JsonCodec<>() {
+        @Override
+        public JsonObject write(ConfigData data) {
+            return data.writeJson();
+        }
+
+        @Override
+        public ConfigData read(JsonObject json) throws IOException {
+            return ConfigData.readJson(json);
+        }
+    };
+
+    // ─── legacy .sm4x 二进制 (frozen: 仅旧格式迁移读取与测试 fixture) ───
+
+    /** basic 文档的 legacy 二进制编解码器；仅旧格式迁移读取与测试 fixture 使用。 */
+    public static final Sm4xCodec<ConfigData> LEGACY_CODEC = new Sm4xCodec<>(){
         @Override
         public void write(ConfigData data, DataOutputStream out) throws IOException {
             data.write(out);

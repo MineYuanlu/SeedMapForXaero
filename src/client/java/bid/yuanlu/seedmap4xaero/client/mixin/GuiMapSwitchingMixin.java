@@ -58,7 +58,7 @@ public class GuiMapSwitchingMixin {
         if (mw == null)
             return;
         cfg.getOrCreateWorld(mw).seed(seed);
-        ServerConfig.save();
+        ServerConfig.flush(); // 会话内刷写: 不轮替 .old (见 JsonConfigFile 轮替契约)
     }
 
     @Inject(method = "init", at = @At("TAIL"), remap = false)

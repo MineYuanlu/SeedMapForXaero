@@ -16,6 +16,7 @@ import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureVisitTracker;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 
 /** 种子地图客户端入口。 */
@@ -39,5 +40,18 @@ public class XaeroSeedMapClient implements ClientModInitializer {
             ServerConfig.deactivate();
             StructureDataConfig.deactivate();
         });
+
+        // 周期刷盘 (rotate=false, 只写脏数据): 崩溃最多丢 FLUSH_INTERVAL_TICKS 的访问记录。
+        // .old 恒为上次世界切换检查点 (轮替契约见 JsonConfigFile)。
+        final long[] tickCounter = {0};
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (++tickCounter[0] % FLUSH_INTERVAL_TICKS != 0)
+                return;
+            ServerConfig.flush();
+            StructureDataConfig.flush();
+        });
     }
+
+    /** 周期刷盘间隔: 1200 tick = 60s (20tps)。 */
+    private static final long FLUSH_INTERVAL_TICKS = 1200;
 }

@@ -74,6 +74,9 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             assertCellCachePopulated(context);
             assertStructureCachePopulated(context);
 
+            // 配置系统 v2: JSON 文件真实落盘 + key 形态 + marks region 分片
+            assertJsonConfigOnDisk(context);
+
             context.takeScreenshot("seed-map-final");
 
             assertPanelScreenshots(context, singleplayer);
@@ -180,6 +183,71 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     private static void assertStructureCachePopulated(ClientGameTestContext context) {
         context.waitFor(client -> !StructureCache.REGIONS.isEmpty(), 200);
         LOGGER.info("StructureCache types = {}", StructureCache.REGIONS.keySet());
+    }
+
+    /**
+     * 配置系统 v2 落盘验证：
+     * <ol>
+     * <li>server_config.json 为纯 JSON（设置变更 → flush → 内容可读回）</li>
+     * <li>marks/&lt;seedHex&gt;/&lt;mwId&gt;/r.&lt;x&gt;.&lt;z&gt;.json region 分片
+     *     （markVisited → flush → 文件生成；清除 → flush → 文件删除）</li>
+     * </ol>
+     */
+    private static void assertJsonConfigOnDisk(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var mainId = ServerConfig.activeMainId();
+            if (mainId == null)
+                throw new AssertionError("config not activated");
+            var base = client.gameDirectory.toPath()
+                    .resolve("xaero").resolve("seed-map-for-xaero").resolve(mainId);
+
+            // 1. server_config.json: 设置变更 → flush → 纯 JSON 可读
+            var cfg = ServerConfig.getActiveConfig();
+            if (cfg == null)
+                throw new AssertionError("active config missing");
+            cfg.setInvisibleBiomes(true);
+            ServerConfig.flush();
+            var jsonPath = base.resolve("server_config.json");
+            if (!java.nio.file.Files.exists(jsonPath))
+                throw new AssertionError("server_config.json not created");
+            try {
+                String text = java.nio.file.Files.readString(jsonPath);
+                if (!text.strip().startsWith("{"))
+                    throw new AssertionError("server_config.json is not plain JSON: " + text);
+                if (!text.contains("\"invisibleBiomes\": true"))
+                    throw new AssertionError("setting change not persisted:\n" + text);
+            } catch (java.io.IOException e) {
+                throw new AssertionError("failed to read server_config.json", e);
+            }
+            cfg.setInvisibleBiomes(false); // 还原
+
+            // 2. marks region 分片: (12345,-5432) → region (12,-6); 单机 mwId "" → default/
+            StructureDataConfig.markVisited(StructureType.VILLAGE,
+                    StructureDataConfig.keyOf(12345, -5432), 42);
+            StructureDataConfig.flush();
+            var region = base.resolve("marks")
+                    .resolve(Long.toHexString(KNOWN_SEED))
+                    .resolve("default")
+                    .resolve("r.12.-6.json");
+            if (!java.nio.file.Files.exists(region))
+                throw new AssertionError("marks region file not created: " + region);
+            try {
+                String text = java.nio.file.Files.readString(region);
+                if (!text.contains("\"minecraft:village\""))
+                    throw new AssertionError("region file missing structure key:\n" + text);
+            } catch (java.io.IOException e) {
+                throw new AssertionError("failed to read region file", e);
+            }
+
+            // 3. 清除标记 → region 变空 → 文件删除 (清理测试环境)
+            StructureDataConfig.setGroup(StructureType.VILLAGE,
+                    StructureDataConfig.keyOf(12345, -5432), null);
+            StructureDataConfig.flush();
+            if (java.nio.file.Files.exists(region))
+                throw new AssertionError("empty region file should be deleted");
+            LOGGER.info("json config E2E assertions passed (server_config.json + marks shard)");
+        });
+        context.waitTick();
     }
 
     /** 要高亮的真实结构位置。 */
