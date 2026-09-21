@@ -1,16 +1,25 @@
 {
   "schema": 1,
-  "generated": "2026-09-14T08:51:04Z",
+  "generated": "2026-09-21T08:52:41Z",
   "minMinecraft": "26.1",
   "versions": [
+    {
+      "id": "26.3",
+      "java": 25,
+      "loomPlugin": null,
+      "xaeroArtifactLine": "26.3",
+      "xaeroOldest": "1.46.2",
+      "xaeroNewest": "1.46.4",
+      "fabricApi": "0.161.0+26.3"
+    },
     {
       "id": "26.2",
       "java": 25,
       "loomPlugin": null,
       "xaeroArtifactLine": "26.2",
       "xaeroOldest": "1.41.0",
-      "xaeroNewest": "1.46.0",
-      "fabricApi": "0.160.0+26.2"
+      "xaeroNewest": "1.46.1",
+      "fabricApi": "0.161.0+26.2"
     },
     {
       "id": "26.1.2",
