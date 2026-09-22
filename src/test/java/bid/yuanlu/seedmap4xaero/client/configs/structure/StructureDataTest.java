@@ -617,4 +617,54 @@ class StructureDataTest {
             });
         }
     }
+    /**
+     * v0.6.1 原版 writer 产出的真实 legacy 字节迁移（数据与合成 golden 同语义）。
+     */
+    @Test
+    void realV061WriterFileMigrates() throws IOException {
+        Path base = tmp.resolve("baseR");
+        var paths = StructureDataConfig.settingsPathsForTest(base, "srv");
+        Files.createDirectories(paths.legacy().getParent());
+        try (var in = getClass().getResourceAsStream("/legacy/real/structure_data.sm4x")) {
+            Files.copy(in, paths.legacy());
+        }
+
+        StructureData settings = StructureDataConfig.load(base, "srv");
+        assertTrue(settings.isGroupHidden(StructureGroups.HIDDEN));
+        assertEquals(0xFF00AAFF, settings.colorOf("矿队⚡"));
+        assertEquals(0x80FF5555, settings.colorOf(StructureGroups.DONE));
+
+        var store = new MarksStore(base.resolve("srv/marks"));
+        var village = store.doc(7L, "w").getMark(StructureType.VILLAGE.id, 100L);
+        assertEquals(4, village.minDist());
+        assertEquals(StructureGroups.DONE, village.group());
+        assertEquals("矿队⚡", store.doc(7L, "w").getMark(StructureType.MANSION.id, key(2, 2)).group());
+        assertEquals("done2", store.doc(7L, "").getMark(StructureType.STRONGHOLD.id, key(1024, 0)).group());
+        assertEquals(2, store.doc(Long.MIN_VALUE, "w").getMark(StructureType.FORTRESS.id, key(-1024, 512)).minDist());
+        assertFalse(Files.exists(paths.legacy()));
+    }
+
+    /**
+     * v0.6.1 E2E 真实运行残留的 legacy 字节：仅一个用户组颜色 + 一个空维度表。
+     * 验证稀疏/接近空的真实文件迁移不崩溃、颜色覆盖保留、空维度不产生垃圾分片。
+     */
+    @Test
+    void realV061OrganicSparseFileMigrates() throws IOException {
+        Path base = tmp.resolve("baseO");
+        var paths = StructureDataConfig.settingsPathsForTest(base, "srv");
+        Files.createDirectories(paths.legacy().getParent());
+        try (var in = getClass().getResourceAsStream("/legacy/real/structure_data_organic.sm4x")) {
+            Files.copy(in, paths.legacy());
+        }
+
+        StructureData settings = StructureDataConfig.load(base, "srv");
+        // E2E 创建的用户组 "Group1" (色 0x80FF5555) 完整保留
+        assertEquals(0x80FF5555, settings.colorOf("Group1"));
+        assertFalse(settings.isGroupHidden(StructureGroups.HIDDEN));
+
+        // 种子 123456789 的维度表为空 → 不产生任何 region 分片
+        var marksDir = base.resolve("srv/marks/75bcd15");
+        assertFalse(Files.exists(marksDir), "空维度迁移不应产生 marks 目录: " + marksDir);
+        assertFalse(Files.exists(paths.legacy()));
+    }
 }

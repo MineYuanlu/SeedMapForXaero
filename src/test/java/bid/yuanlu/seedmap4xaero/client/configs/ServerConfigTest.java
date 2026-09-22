@@ -513,4 +513,39 @@ class ServerConfigTest {
         assertEquals(4, again.getSeedHistory().size());
         assertEquals("Vanilla", again.getTheme());
     }
+    /**
+     * v0.6.1 原版 writer（发布代码本身）产出的真实 legacy 字节迁移。
+     * 数据与合成 golden 相同语义, 证明合成 fixture 与真实发布格式无偏差。
+     */
+    @Test
+    void realV061WriterFileMigrates() throws IOException {
+        var p = paths(tmp, "real");
+        Files.createDirectories(p.legacy().getParent());
+        try (var in = getClass().getResourceAsStream("/legacy/real/server_config.sm4x")) {
+            Files.copy(in, p.legacy());
+        }
+
+        ConfigData loaded = ServerConfig.loadConfig(tmp, "real");
+        var wc = loaded.getWorld("Multiplayer_127.0.0.1");
+        assertNotNull(wc);
+        assertEquals(-7341002910123456789L, wc.seed());
+        assertEquals("26.1", wc.mcVersion());
+        assertTrue(wc.getDisabledStructures().isStructureSet(StructureType.VILLAGE.id));
+        assertTrue(wc.getDisabledStructures().isVariantSet(StructureType.IGLOO.id, 30));
+        assertTrue(wc.getDisabledBiomes().get(177));
+        assertEquals("Vanilla", loaded.getTheme());
+        assertTrue(loaded.isLootPreview());
+        var hist = loaded.getSeedHistory();
+        assertEquals(4, hist.size());
+        assertEquals(-1L, hist.get(0).seed());
+        assertEquals(-7341002910123456789L, hist.get(3).seed());
+
+        assertFalse(Files.exists(p.legacy()));
+        assertTrue(Files.exists(p.legacy().resolveSibling("server_config.sm4x.legacy")));
+
+        // JSON 再落盘重读无损
+        ServerConfig.saveConfig(tmp, "real", loaded, true);
+        ConfigData again = ServerConfig.loadConfig(tmp, "real");
+        assertWorldEq(wc, again.getWorld("Multiplayer_127.0.0.1"));
+    }
 }
