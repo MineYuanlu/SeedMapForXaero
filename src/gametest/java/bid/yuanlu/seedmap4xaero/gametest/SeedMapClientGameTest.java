@@ -25,6 +25,7 @@ import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.HighlightHudRenderer;
 import bid.yuanlu.seedmap4xaero.client.structure.CustomStructureType;
 import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
+import bid.yuanlu.seedmap4xaero.client.structure.StructureInfo;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureTypes;
 
@@ -386,10 +387,15 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             StructureTypes.setCustomTypes(java.util.List.of());
             CacheHelper.invalidateAll();
         });
+        // invalidateAll 清空了含 REGIONS 的全部缓存; 等渲染帧重查回填到
+        // "能找到最近结构" 的程度, 否则后续面板截图步骤断言失败
+        // (注: REGIONS 可能残留清理后的自定义 id 条目, 不能只判 isEmpty)
+        context.waitFor(client -> nearestStructure(client) != null, 200);
+        LOGGER.info("custom structure injection test passed, REGIONS repopulated");
     }
 
     /** 要高亮的真实结构位置。 */
-    private record StructureTarget(int blockX, int blockZ, StructureType type, int variant) {
+    private record StructureTarget(int blockX, int blockZ, StructureInfo type, int variant) {
     }
 
     /**
@@ -516,13 +522,17 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         StructureTarget nearest = null;
         double best = Double.MAX_VALUE;
         for (var entry : StructureCache.REGIONS.entrySet()) {
+            // REGIONS key = 结构 id; 清理后的自定义 id 残留可能已不在注册表
+            var type = StructureTypes.byId(entry.getKey());
+            if (type == null)
+                continue;
             for (var pos : entry.getValue()) {
                 if (!pos.loaded())
                     continue;
                 double d = Math.hypot(pos.blockX() + 0.5 - px, pos.blockZ() + 0.5 - pz);
                 if (d < best) {
                     best = d;
-                    nearest = new StructureTarget(pos.blockX(), pos.blockZ(), entry.getKey(), pos.getVariant());
+                    nearest = new StructureTarget(pos.blockX(), pos.blockZ(), type, pos.getVariant());
                 }
             }
         }

@@ -25,8 +25,8 @@ import com.google.gson.JsonObject;
 import bid.yuanlu.seedmap4xaero.client.configs.core.JsonCodec;
 import bid.yuanlu.seedmap4xaero.client.configs.core.JsonConfigFile;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureKeys;
-import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
@@ -59,7 +59,11 @@ public final class MarksStore {
 
     /** 一个种子维度内的标记文档（typeId → posKey → mark），原 StructureData.DimData。 */
     public static final class DimData {
-        private final Long2ObjectOpenHashMap<StructureMark>[] types;
+        /**
+         * typeId → (posKey → mark)。typeId 可为数据包自定义结构 id
+         * （[100,1000)，见 {@code CustomStructureType}），故用 int 索引 map 而非定长数组。
+         */
+        private final Int2ObjectOpenHashMap<Long2ObjectOpenHashMap<StructureMark>> types = new Int2ObjectOpenHashMap<>();
         /** 自上次落盘后有变更的 region（打包坐标）。 */
         private final LongOpenHashSet dirtyRegions = new LongOpenHashSet();
         /** 未注册结构 key 的标记（region 文件读入时无法归位者），写出时按 region 并回。 */
@@ -68,31 +72,21 @@ public final class MarksStore {
         record OrphanMark(String structureKey, long key, int minDist, String group) {
         }
 
-        @SuppressWarnings("unchecked")
-        DimData() {
-            types = new Long2ObjectOpenHashMap[StructureType.FEATURE_NUM];
-        }
-
         private Long2ObjectOpenHashMap<StructureMark> map(int typeId) {
-            var m = types[typeId];
-            if (m == null) {
-                m = new Long2ObjectOpenHashMap<>();
-                types[typeId] = m;
-            }
-            return m;
+            return types.computeIfAbsent(typeId, k -> new Long2ObjectOpenHashMap<>());
         }
 
         public @Nullable StructureMark getMark(int typeId, long key) {
-            if (typeId < 0 || typeId >= types.length)
+            if (typeId < 0)
                 return null;
-            var m = types[typeId];
+            var m = types.get(typeId);
             return m == null ? null : m.get(key);
         }
 
         /** 记录一次访问, 取历史最小距离; 无变化不标脏。 */
         public void markVisited(int typeId, long key, int dist) {
-            var m = map(typeId);
             synchronized (this) {
+                var m = map(typeId);
                 var cur = m.get(key);
                 var next = cur == null ? new StructureMark(dist, StructureGroups.DEFAULT)
                         : cur.withVisit(dist);
@@ -108,8 +102,8 @@ public final class MarksStore {
          * (默认组 = 删除组)。记录不存在时若设置非默认组则新建 (未访问仅分组)。
          */
         public void setGroup(int typeId, long key, @Nullable String group) {
-            var m = map(typeId);
             synchronized (this) {
+                var m = map(typeId);
                 if (group == null || group.equals(StructureGroups.DEFAULT)) {
                     if (m.remove(key) != null)
                         dirtyRegions.add(MarksStore.regionIdxOf(key));
@@ -128,13 +122,10 @@ public final class MarksStore {
         public int countGroup(String group, BitSetView enabledTypes) {
             int count = 0;
             synchronized (this) {
-                for (int id = 0; id < types.length; id++) {
-                    if (!enabledTypes.get(id))
+                for (var e : types.int2ObjectEntrySet()) {
+                    if (!enabledTypes.get(e.getIntKey()))
                         continue;
-                    var m = types[id];
-                    if (m == null)
-                        continue;
-                    for (var mark : m.values()) {
+                    for (var mark : e.getValue().values()) {
                         if (mark.group().equals(group))
                             count++;
                     }
@@ -147,9 +138,8 @@ public final class MarksStore {
         int recordCount() {
             int n = 0;
             synchronized (this) {
-                for (var m : types)
-                    if (m != null)
-                        n += m.size();
+                for (var m : types.values())
+                    n += m.size();
             }
             return n;
         }
@@ -158,9 +148,7 @@ public final class MarksStore {
         int accumulateStats(java.util.Set<String> groups) {
             int n = 0;
             synchronized (this) {
-                for (var m : types) {
-                    if (m == null)
-                        continue;
+                for (var m : types.values()) {
                     n += m.size();
                     for (var mark : m.values()) {
                         if (!mark.group().isEmpty())
@@ -178,9 +166,7 @@ public final class MarksStore {
         boolean reassignGroup(String from, String to) {
             boolean changed = false;
             synchronized (this) {
-                for (var m : types) {
-                    if (m == null)
-                        continue;
+                for (var m : types.values()) {
                     var it = m.long2ObjectEntrySet().iterator();
                     while (it.hasNext()) {
                         var e = it.next();
@@ -214,12 +200,9 @@ public final class MarksStore {
         }
 
         private void markAllRegionsDirty() {
-            for (var m : types) {
-                if (m == null)
-                    continue;
+            for (var m : types.values())
                 for (var e : m.long2ObjectEntrySet())
                     dirtyRegions.add(MarksStore.regionIdxOf(e.getLongKey()));
-            }
             if (orphans != null)
                 for (var o : orphans)
                     dirtyRegions.add(MarksStore.regionIdxOf(o.key()));
@@ -383,7 +366,8 @@ public final class MarksStore {
                 int typeId = StructureKeys.resolveId(e.getKey());
                 for (MarkEntry m : e.getValue()) {
                     long key = keyOf(m.x(), m.z());
-                    if (typeId >= 0 && typeId < StructureType.FEATURE_NUM) {
+                    // typeId < 0 = 未注册 key (含未注入的自定义结构) → orphan 原样保留
+                    if (typeId >= 0) {
                         dd.map(typeId).put(key, new StructureMark(m.minDist(), m.group()));
                     } else {
                         dd.addOrphan(new DimData.OrphanMark(e.getKey(), key, m.minDist(), m.group()));
@@ -397,18 +381,18 @@ public final class MarksStore {
     private static RegionDoc collectRegion(DimData dd, long regionIdx) {
         var marks = new LinkedHashMap<String, List<MarkEntry>>();
         synchronized (dd) {
-            for (int typeId = 0; typeId < dd.types.length; typeId++) {
-                var m = dd.types[typeId];
-                if (m == null || m.isEmpty())
+            for (var e : dd.types.int2ObjectEntrySet()) {
+                var m = e.getValue();
+                if (m.isEmpty())
                     continue;
-                String structureKey = StructureKeys.persistedKey(typeId);
-                for (var e : m.long2ObjectEntrySet()) {
-                    long key = e.getLongKey();
+                String structureKey = StructureKeys.persistedKey(e.getIntKey());
+                for (var me : m.long2ObjectEntrySet()) {
+                    long key = me.getLongKey();
                     if (regionIdxOf(key) != regionIdx)
                         continue;
                     marks.computeIfAbsent(structureKey, k -> new ArrayList<>())
                             .add(new MarkEntry((int) (key >> 32), (int) key,
-                                    e.getValue().minDist(), e.getValue().group()));
+                                    me.getValue().minDist(), me.getValue().group()));
                 }
             }
             if (dd.orphans != null) {

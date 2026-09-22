@@ -31,6 +31,7 @@ golden fixture（`src/test/resources/legacy/server_config.sm4x`）端到端守�
 ```
 - 只存**被禁用**的条目（缺省 = 全可见，天然前向兼容）。
 - `disabledStructures`：bit0=整类（`whole`），bit(1+v)=变种码 v（0..30）。
+  数据包自定义结构以完整 id 作 key（`terralith:xxx`）；注入前加载时无法归位 → orphan 保留。
 - `disabledBiomes`：注册表未覆盖的 id 用 `id:N` 数字占位（往返无损）。
 - null 值字段省略（seed/mcVersion/theme）。
 

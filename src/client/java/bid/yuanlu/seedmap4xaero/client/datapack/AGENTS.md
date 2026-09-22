@@ -24,7 +24,9 @@
 - 维度归类：structure JSON 的 `biomes` → tag 递归展开（栈合并，`replace:true`
   清空低层）→ 全 nether 群系 = -1 / 全 end = 1 / 其余 0；缺失定义按主世界。
 - id 分配：全部结构按 id 字典序从 `CustomStructureType.MIN_ID`(100) 顺序分配
-  —— 重扫描稳定，structure_data 持久标记跨会话可复现。
+  —— 重扫描稳定。**id 稳定性只影响 C 表注入与会话内位标志**；持久层
+  （marks 分片 / disabledStructures JSON）存稳定 key（完整 id），不依赖 id 分配
+  （见 `configs/AGENTS.md`），未注入时未归位 key 走 orphan。
 - `c:` 元数据：`c:worldgen/structure_icons.json`（图标物品，M3 用）、
   `c:tags/worldgen/structure/hide_from_map.json`（隐藏——仍注入 C 表保证同集合
   掷骰正确，但不进 `StructureTypes.all()` 即不查询不渲染）。

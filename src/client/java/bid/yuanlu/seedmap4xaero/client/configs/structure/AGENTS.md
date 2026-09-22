@@ -13,8 +13,9 @@
 只支持自动向上升级。
 
 标记与 **(seed, mwId, 结构类型, key)** 绑定；key = (blockX<<32)|blockZ（结构为 2D）。
-**标记持久化为稳定结构 key**（`minecraft:village`；转换边界 `StructureKeys`），
-未注册 key 以 orphan 原样保留（数据包结构移除后数据不丢）。
+**标记持久化为稳定结构 key**（`minecraft:village`；自定义结构为完整 id 如
+`terralith:spire`；转换边界 `StructureKeys`），未注册 key 以 orphan 原样保留
+（数据包结构移除后数据不丢，恢复后自动重挂）。
 
 ## Classes
 
@@ -28,6 +29,8 @@
 - `MarksStore` — 标记分片存储：
   - region = 64×64 区块（1024 方块），文件 `r.<regionX>.<regionZ>.json`；
     文档按 (seed, mwId) **惰性加载**后驻留（region 文件小，无淘汰）。
+  - 内存 `DimData.types` 为 **int 索引 map**（非定长数组）——typeId 可为数据包
+    自定义结构 id（[100,1000)，`CustomStructureType`），注册表未注入时按 orphan 处理。
   - **脏粒度 = region**：`markVisited`/`setGroup` 标脏所在 region；`flush(rotate)` 只写脏 region
     （写放大从全量文档降到单 region）；region 变空 → 删除文件。
   - 损坏隔离：单个 region 文件损坏仅跳过该 region，其余照常加载。
