@@ -152,21 +152,34 @@ public final class StructureDataConfig {
      */
     static StructureData load(Path base, String mainId) {
         var paths = settingsPaths(base, mainId);
-        migrateLegacyIfNeeded(base, mainId, paths);
+        var preloaded = migrateLegacyIfNeeded(base, mainId, paths);
+        if (preloaded != null)
+            return preloaded;
         return JsonConfigFile.load(paths, new StructureData(), StructureData.JSON_CODEC, null);
     }
 
-    private static void migrateLegacyIfNeeded(Path base, String mainId, JsonConfigFile.Paths paths) {
+    /**
+     * 发现 legacy 文件则迁移；返回解码出的设置（供本次会话直接使用），无 legacy
+     * 或 legacy 损坏返回 null（继续正常加载链）。
+     * <p>
+     * 失败语义与 {@code JsonConfigFile.tryLegacy} 一致：解码失败（损坏）返回
+     * null 回退链；<b>落盘/分片失败不丢数据</b>——仍返回解码出的设置供会话使用，
+     * legacy 不改名，下次启动重试迁移。
+     */
+    private static @Nullable StructureData migrateLegacyIfNeeded(Path base, String mainId,
+            JsonConfigFile.Paths paths) {
         Path legacy = null;
         if (Files.exists(paths.legacy()))
             legacy = paths.legacy();
         else if (Files.exists(paths.legacyOld()))
             legacy = paths.legacyOld();
         if (legacy == null)
-            return;
+            return null;
+        final StructureDataLegacy.Snapshot snap;
+        final StructureData settings;
         try {
-            var snap = Sm4xFile.readFrame(legacy, StructureDataLegacy.LEGACY_CODEC);
-            var settings = new StructureData();
+            snap = Sm4xFile.readFrame(legacy, StructureDataLegacy.LEGACY_CODEC);
+            settings = new StructureData();
             for (String g : snap.hiddenGroups())
                 settings.setGroupHidden(g, true);
             for (StructureData.UserGroup ug : snap.userGroups()) {
@@ -176,13 +189,20 @@ public final class StructureDataConfig {
                     settings.addGroup(ug.name(), ug.color()); // 用户组 = 新建条目
             }
             settings.dirty.set(false); // 刚构造, 迁移写出后再由保存流程管理
+        } catch (IOException e) {
+            LOGGER.error("Failed to load legacy structure data {}", legacy, e);
+            return null;
+        }
+        try {
             JsonConfigFile.save(paths, settings, StructureData.JSON_CODEC, false);
             new MarksStore(base.resolve(mainId).resolve(MARKS_DIR)).importSnapshot(snap);
             JsonConfigFile.retireLegacy(paths);
             LOGGER.info("Migrated legacy structure data {} -> {} + marks/", legacy, paths.target());
         } catch (IOException e) {
-            LOGGER.error("Failed to migrate legacy structure data {}", legacy, e);
+            LOGGER.error("Legacy structure data {} decoded but persisting failed; "
+                    + "keeping legacy file for retry, using decoded data this session", legacy, e);
         }
+        return settings;
     }
 
     // ─── 单测辅助 (包私有, 不触碰 Minecraft) ────────────────────

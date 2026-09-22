@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -542,5 +543,78 @@ class StructureDataTest {
         assertEquals(StructureGroups.DONE, mark.group());
         assertTrue(snap.userGroups().isEmpty());
         assertEquals(List.of(StructureGroups.HIDDEN), snap.hiddenGroups());
+    }
+    // ─── golden fixture: 真实 legacy 字节的端到端迁移 ───────────
+
+    @Test
+    void goldenLegacyFileMigratesAllFields() throws IOException {
+        Path base = tmp.resolve("base");
+        var paths = StructureDataConfig.settingsPathsForTest(base, "srv");
+        Files.createDirectories(paths.legacy().getParent());
+        byte[] legacyBytes;
+        try (var in = getClass().getResourceAsStream("/legacy/structure_data.sm4x")) {
+            legacyBytes = in.readAllBytes();
+            Files.write(paths.legacy(), legacyBytes);
+        }
+
+        StructureData settings = StructureDataConfig.load(base, "srv");
+
+        // 设置: 隐藏组 + unicode 用户组 + 内置组颜色覆盖
+        assertTrue(settings.isGroupHidden(StructureGroups.HIDDEN));
+        assertEquals(3, settings.userGroups().size(), "矿队⚡ + done2 + DONE 覆盖");
+        assertEquals(0xFF00AAFF, settings.colorOf("矿队⚡"));
+        assertEquals(0x11223344, settings.colorOf("done2"));
+        assertEquals(0x80FF5555, settings.colorOf(StructureGroups.DONE), "内置组颜色覆盖");
+
+        // 标记: 跨 (seed, mwId, region) 全维度
+        var store = new MarksStore(base.resolve("srv/marks"));
+        var village = store.doc(7L, "w").getMark(StructureType.VILLAGE.id, 100L);
+        assertNotNull(village);
+        assertEquals(4, village.minDist());
+        assertEquals(StructureGroups.DONE, village.group());
+        var mansion = store.doc(7L, "w").getMark(StructureType.MANSION.id, key(2, 2));
+        assertNotNull(mansion);
+        assertFalse(mansion.visited(), "纯分组标记");
+        assertEquals("矿队⚡", mansion.group());
+        // orphan: 注册表外结构 id 250 → id:250 key 保留在 region 文档
+        String region0 = Files.readString(base.resolve("srv/marks/7/w/r.0.0.json"));
+        assertTrue(region0.contains("id:250"), region0);
+        // 空 mwId → default 目录
+        var stronghold = store.doc(7L, "").getMark(StructureType.STRONGHOLD.id, key(1024, 0));
+        assertNotNull(stronghold);
+        assertEquals(1, stronghold.minDist());
+        assertEquals("done2", stronghold.group());
+        assertTrue(Files.exists(base.resolve("srv/marks/7/default/r.1.0.json")));
+        // 负种子 (Long.MIN_VALUE) + 跨 region 边界 (blockX -1024 → region -1)
+        var fortress = store.doc(Long.MIN_VALUE, "w").getMark(StructureType.FORTRESS.id, key(-1024, 512));
+        assertNotNull(fortress);
+        assertEquals(2, fortress.minDist());
+        assertTrue(Files.exists(base.resolve("srv/marks/8000000000000000/w/r.-1.0.json")));
+
+        // legacy 改名退出回退链
+        assertFalse(Files.exists(paths.legacy()));
+
+        // 幂等: 模拟 crash (settings/marks 产物全删 + legacy 复原) → 重迁移逐字节一致
+        String settingsJsonFirst = Files.readString(paths.target());
+        byte[] region0First = region0.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Files.delete(paths.target());
+        deleteRecursively(base.resolve("srv/marks"));
+        Files.write(paths.legacy(), legacyBytes);
+        StructureDataConfig.load(base, "srv");
+        assertEquals(settingsJsonFirst, Files.readString(paths.target()), "settings 重迁移一致");
+        assertEquals(new String(region0First, java.nio.charset.StandardCharsets.UTF_8),
+                Files.readString(base.resolve("srv/marks/7/w/r.0.0.json")), "region 重迁移一致");
+    }
+
+    private static void deleteRecursively(Path dir) throws IOException {
+        try (var stream = Files.walk(dir)) {
+            stream.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        }
     }
 }

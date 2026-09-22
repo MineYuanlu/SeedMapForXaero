@@ -55,6 +55,11 @@ public class ConfigData {
     ConfigData() {
     }
 
+    /** 公开工厂：供外部（E2E fixture 等）构造空配置；常规运行时访问一律经 {@code ServerConfig}。 */
+    public static ConfigData empty() {
+        return new ConfigData();
+    }
+
     void makeDirty() {
         this.dirty.set(true);
     }

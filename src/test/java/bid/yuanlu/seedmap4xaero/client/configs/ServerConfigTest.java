@@ -463,4 +463,54 @@ class ServerConfigTest {
         assertEquals(9L, read.seed());
         assertNull(read.mcVersion(), "v1 record has no mcVersion → follow client");
     }
+    // ─── golden fixture: 真实 legacy 字节的端到端迁移 ───────────
+
+    @Test
+    void goldenLegacyFileMigratesAllFields() throws IOException {
+        var p = paths(tmp, "golden");
+        Files.createDirectories(p.legacy().getParent());
+        try (var in = getClass().getResourceAsStream("/legacy/server_config.sm4x")) {
+            Files.copy(in, p.legacy());
+        }
+
+        ConfigData loaded = ServerConfig.loadConfig(tmp, "golden");
+        var wc = loaded.getWorld("Multiplayer_127.0.0.1");
+        assertNotNull(wc, "world entry preserved");
+        assertEquals(-7341002910123456789L, wc.seed(), "负种子无损");
+        assertEquals("26.1", wc.mcVersion());
+
+        // 结构禁用: 整类 + 变种边界 0/30, 未禁用的变种/类型不受影响
+        var flags = wc.getDisabledStructures();
+        assertTrue(flags.isStructureSet(StructureType.VILLAGE.id), "village 整类禁用");
+        assertTrue(flags.isVariantSet(StructureType.IGLOO.id, 0), "变种 0");
+        assertTrue(flags.isVariantSet(StructureType.IGLOO.id, 30), "变种 30 (1<<31 边界)");
+        assertFalse(flags.isVariantSet(StructureType.IGLOO.id, 1));
+        assertFalse(flags.isStructureSet(StructureType.IGLOO.id));
+
+        assertTrue(wc.getDisabledBiomes().get(177), "超出注册表的群系 id → id:177 保留");
+
+        // 顶层设置 + 种子历史 (含负种子, MRU 序)
+        assertEquals("Vanilla", loaded.getTheme());
+        assertTrue(loaded.isInvisibleBiomes());
+        assertEquals(1.5f, loaded.getStructureIconSize());
+        assertTrue(loaded.isLootPreview());
+        var hist = loaded.getSeedHistory();
+        // legacy 文件本身 4 条: useSeed(42/999/-1) + WorldConfig.seed(世界种子, 末尾)
+        assertEquals(4, hist.size());
+        assertEquals(-1L, hist.get(0).seed());
+        assertEquals(999L, hist.get(1).seed());
+        assertEquals(42L, hist.get(2).seed());
+        assertEquals(-7341002910123456789L, hist.get(3).seed());
+
+        // legacy 改名退出回退链
+        assertFalse(Files.exists(p.legacy()));
+        assertTrue(Files.exists(p.legacy().resolveSibling("server_config.sm4x.legacy")));
+
+        // JSON 再落盘 + 重读: 无损 roundtrip
+        ServerConfig.saveConfig(tmp, "golden", loaded, true);
+        ConfigData again = ServerConfig.loadConfig(tmp, "golden");
+        assertWorldEq(wc, again.getWorld("Multiplayer_127.0.0.1"));
+        assertEquals(4, again.getSeedHistory().size());
+        assertEquals("Vanilla", again.getTheme());
+    }
 }

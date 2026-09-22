@@ -2,6 +2,13 @@ package bid.yuanlu.seedmap4xaero.gametest;
 
 import java.util.Objects;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ConfigData;
+import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureData;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataLegacy;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,6 +71,9 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
 
             assertSeedResolved(context, singleplayer);
 
+            // 配置系统 v2: 预置 legacy .sm4x → 开图激活时真实迁移
+            seedLegacyConfigs(context);
+
             openWorldMap(context);
             context.waitForScreen(GuiMap.class);
 
@@ -74,7 +84,8 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             assertCellCachePopulated(context);
             assertStructureCachePopulated(context);
 
-            // 配置系统 v2: JSON 文件真实落盘 + key 形态 + marks region 分片
+            // 配置系统 v2: 迁移产物 + JSON 落盘 + marks region 分片
+            assertLegacyMigrated(context);
             assertJsonConfigOnDisk(context);
 
             context.takeScreenshot("seed-map-final");
@@ -186,11 +197,85 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     }
 
     /**
+     * 开图前预置 legacy {@code .sm4x}（v0.6.x 二进制格式，由冻结的 legacy writer
+     * 生成）：activate 加载时走真实迁移链路。标记放在当前单机 (seed=KNOWN_SEED,
+     * mwId="") 下 (12345,-5432) 供后续断言。
+     */
+    private static void seedLegacyConfigs(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var session = WorldMapSession.getCurrentSession();
+            if (session == null || !session.isUsable()) {
+                throw new AssertionError("session not usable before map open");
+            }
+            var mp = session.getMapProcessor();
+            String mainId = mp.getCurrentWorldId();
+            if (mainId == null && mp.getMapWorld() != null) {
+                mainId = mp.getMapWorld().getMainId();
+            }
+            if (mainId == null) {
+                throw new AssertionError("mainId unavailable before map open");
+            }
+            var base = client.gameDirectory.toPath()
+                    .resolve("xaero").resolve("seed-map-for-xaero").resolve(mainId);
+            try {
+                java.nio.file.Files.createDirectories(base);
+                Sm4xFile.writeFrame(base.resolve("server_config.sm4x"), ConfigData.empty(),
+                        ConfigData.LEGACY_CODEC);
+                var dim = new StructureDataLegacy.LegacyDim(java.util.Map.of(
+                        StructureType.VILLAGE.id,
+                        java.util.List.of(new StructureDataLegacy.LegacyMark(
+                                StructureDataConfig.keyOf(12345, -5432), 7, "e2e组"))));
+                var snap = new StructureDataLegacy.Snapshot(
+                        java.util.List.of(),
+                        java.util.List.of(new StructureData.UserGroup("e2e组", 0xFF00AAFF)),
+                        new Long2ObjectOpenHashMap<>(java.util.Map.of(
+                                KNOWN_SEED, new StructureDataLegacy.LegacySeed(java.util.Map.of("", dim)))));
+                Sm4xFile.writeFrame(base.resolve("structure_data.sm4x"), snap,
+                        StructureDataLegacy.LEGACY_CODEC);
+            } catch (java.io.IOException e) {
+                throw new AssertionError("failed to seed legacy configs", e);
+            }
+            LOGGER.info("legacy configs seeded at {}", base);
+        });
+        context.waitTick();
+    }
+
+    /** 开图后断言 legacy → JSON 迁移产物：改名 + json + 会话内可见（设置 + 标记）。 */
+    private static void assertLegacyMigrated(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var base = client.gameDirectory.toPath()
+                    .resolve("xaero").resolve("seed-map-for-xaero").resolve(ServerConfig.activeMainId());
+            if (!java.nio.file.Files.exists(base.resolve("server_config.sm4x.legacy"))) {
+                throw new AssertionError("server_config.sm4x not migrated/renamed");
+            }
+            if (!java.nio.file.Files.exists(base.resolve("structure_data.sm4x.legacy"))) {
+                throw new AssertionError("structure_data.sm4x not migrated/renamed");
+            }
+            if (java.nio.file.Files.exists(base.resolve("server_config.sm4x"))
+                    || java.nio.file.Files.exists(base.resolve("structure_data.sm4x"))) {
+                throw new AssertionError("legacy files must be retired after migration");
+            }
+
+            var settings = StructureDataConfig.getActiveData();
+            if (settings == null || settings.colorOf("e2e组") != 0xFF00AAFF) {
+                throw new AssertionError("user group from legacy not visible in session");
+            }
+            var mark = StructureDataConfig.getMark(StructureType.VILLAGE,
+                    StructureDataConfig.keyOf(12345, -5432));
+            if (mark == null || mark.minDist() != 7 || !"e2e组".equals(mark.group())) {
+                throw new AssertionError("migrated mark not visible in session: " + mark);
+            }
+            LOGGER.info("legacy migration E2E assertions passed");
+        });
+        context.waitTick();
+    }
+
+    /**
      * 配置系统 v2 落盘验证：
      * <ol>
      * <li>server_config.json 为纯 JSON（设置变更 → flush → 内容可读回）</li>
-     * <li>marks/&lt;seedHex&gt;/&lt;mwId&gt;/r.&lt;x&gt;.&lt;z&gt;.json region 分片
-     *     （markVisited → flush → 文件生成；清除 → flush → 文件删除）</li>
+     * <li>迁移标记的 region 分片存在且含结构 key + 用户组</li>
+     * <li>会话内新 markVisited → flush → 新 region 分片生成</li>
      * </ol>
      */
     private static void assertJsonConfigOnDisk(ClientGameTestContext context) {
@@ -221,31 +306,25 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             }
             cfg.setInvisibleBiomes(false); // 还原
 
-            // 2. marks region 分片: (12345,-5432) → region (12,-6); 单机 mwId "" → default/
-            StructureDataConfig.markVisited(StructureType.VILLAGE,
-                    StructureDataConfig.keyOf(12345, -5432), 42);
-            StructureDataConfig.flush();
-            var region = base.resolve("marks")
+            // 2. 迁移标记的 region 分片 (12345,-5432) → region (12,-6); mwId "" → default/
+            var marksDir = base.resolve("marks")
                     .resolve(Long.toHexString(KNOWN_SEED))
-                    .resolve("default")
-                    .resolve("r.12.-6.json");
-            if (!java.nio.file.Files.exists(region))
-                throw new AssertionError("marks region file not created: " + region);
+                    .resolve("default");
             try {
-                String text = java.nio.file.Files.readString(region);
-                if (!text.contains("\"minecraft:village\""))
-                    throw new AssertionError("region file missing structure key:\n" + text);
+                String text = java.nio.file.Files.readString(marksDir.resolve("r.12.-6.json"));
+                if (!text.contains("\"minecraft:village\"") || !text.contains("e2e组"))
+                    throw new AssertionError("region file missing structure key/group:\n" + text);
             } catch (java.io.IOException e) {
-                throw new AssertionError("failed to read region file", e);
+                throw new AssertionError("migrated marks region file missing: " + marksDir, e);
             }
 
-            // 3. 清除标记 → region 变空 → 文件删除 (清理测试环境)
-            StructureDataConfig.setGroup(StructureType.VILLAGE,
-                    StructureDataConfig.keyOf(12345, -5432), null);
+            // 3. 会话内新访问 → flush → 新 region 分片 (23456,-6789) → region (22,-7)
+            StructureDataConfig.markVisited(StructureType.FORTRESS,
+                    StructureDataConfig.keyOf(23456, -6789), 42);
             StructureDataConfig.flush();
-            if (java.nio.file.Files.exists(region))
-                throw new AssertionError("empty region file should be deleted");
-            LOGGER.info("json config E2E assertions passed (server_config.json + marks shard)");
+            if (!java.nio.file.Files.exists(marksDir.resolve("r.22.-7.json")))
+                throw new AssertionError("live markVisited region file not created");
+            LOGGER.info("json config E2E assertions passed (server_config.json + marks shards)");
         });
         context.waitTick();
     }

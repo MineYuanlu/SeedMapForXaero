@@ -3,6 +3,8 @@
 配置文档：`gameDir/xaero/seed-map-for-xaero/<mainId>/server_config.json`，
 每个多人服务器/单机世界根一个文件，按 Xaero 世界根 `mainId`（如 `Multiplayer_192.168.1.1`）隔离。
 现行格式为**纯 JSON**（pretty）；旧版 `server_config.sm4x` 在加载链自动向上迁移（改名 `.sm4x.legacy`）。
+golden fixture（`src/test/resources/legacy/server_config.sm4x`）端到端守护：负种子、mcVersion、
+变种 0/30 边界、`id:177` 群系、种子历史 MRU 序，迁移后 JSON 再落盘重读无损。
 
 ## Classes
 

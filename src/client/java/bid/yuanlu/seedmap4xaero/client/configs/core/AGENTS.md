@@ -34,8 +34,14 @@
 - 历史版本读兼容已固化：ConfigData v0/v1、WorldConfig v0/v1/v2（basic 包内），
   StructureData v0/v1（structure 包 `StructureDataLegacy` 中性快照）。
 - 迁移语义：读出即写新格式 + `retireLegacy`，**只自动向上升级**。
+  失败语义二分：**解码失败**（文件损坏）→ 返回 null 继续回退链；
+  **落盘失败**（磁盘满/只读）→ 仍返回解码数据供本会话使用（legacy 不改名，
+  下次启动重试迁移）。否则会话退到 fallback 后被生命周期保存写成 .json，
+  永久遮蔽 legacy 里的真实用户数据——此不变量由 `JsonConfigFileTest` 守护。
 
 ## 单测
 
-`JsonConfigFile` 不依赖 MC：直接 `@TempDir` + `writeJson/readJson/save/load` 即测，
-含回退链与轮替语义（见 `ServerConfigTest` 的回退/轮替/迁移用例）。
+`JsonConfigFile` 不依赖 MC：直接 `@TempDir` + `writeJson/readJson/save/load` 即测
+（`JsonConfigFileTest`：损坏矩阵、落盘失败数据保全、双重迁移幂等）。
+golden fixture 在 `src/test/resources/legacy/*.sm4x`（真实 legacy 字节，含负种子/
+变体边界/orphan/unicode 组名/空 mwId），由各配置包的迁移测试消费。

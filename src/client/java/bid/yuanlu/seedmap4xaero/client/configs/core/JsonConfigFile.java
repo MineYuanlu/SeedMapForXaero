@@ -131,22 +131,36 @@ public final class JsonConfigFile {
         return fallback;
     }
 
-    /** 读一个 legacy 候选并完成迁移（写新格式 + retire）；失败返回 null 继续回退链。 */
+    /**
+     * 读一个 legacy 候选并完成迁移（写新格式 + retire）。
+     * <p>
+     * 失败语义：<b>解码失败</b>（文件损坏）返回 {@code null} 继续回退链；
+     * <b>落盘失败</b>（磁盘满/只读等）不丢数据——仍返回解码出的配置供本次会话
+     * 使用（legacy 文件不改名，下次启动重试迁移）。否则落盘失败会让本会话
+     * 退到 fallback 配置，随后生命周期保存会用 fallback 数据生成 .json，
+     * 永久遮蔽 legacy 里的真实用户数据。
+     */
     private static <T> @Nullable T tryLegacy(Paths paths, JsonCodec<T> jsonCodec,
             Sm4xCodec<T> legacyCodec, Path legacyPath) {
         if (!Files.exists(legacyPath))
             return null;
+        final T data;
         try {
-            T data = Sm4xFile.readFrame(legacyPath, legacyCodec);
-            // 迁移落盘: rotate=false —— 正本不存在或已因损坏删除, .old 不受影响
-            save(paths, data, jsonCodec, false);
-            LOGGER.info("Migrated legacy config {} -> {}", legacyPath, paths.target());
-            retireLegacy(paths);
-            return data;
+            data = Sm4xFile.readFrame(legacyPath, legacyCodec);
         } catch (IOException e) {
             LOGGER.error("Failed to load legacy config {}", legacyPath, e);
             return null;
         }
+        try {
+            // 迁移落盘: rotate=false —— 正本不存在或已因损坏删除, .old 不受影响
+            save(paths, data, jsonCodec, false);
+            LOGGER.info("Migrated legacy config {} -> {}", legacyPath, paths.target());
+            retireLegacy(paths);
+        } catch (IOException e) {
+            LOGGER.error("Legacy config {} decoded but persisting JSON failed; "
+                    + "keeping legacy file for retry, using decoded data this session", legacyPath, e);
+        }
+        return data;
     }
 
     /**
