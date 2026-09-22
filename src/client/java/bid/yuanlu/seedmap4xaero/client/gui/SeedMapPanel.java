@@ -149,6 +149,11 @@ public class SeedMapPanel {
         groupCountCooldown = 0;
     }
 
+    /** 设置结构列表滚动偏移 (render 路径钳制到 size - visible; E2E 截图定位用)。 */
+    public void testScrollStructList(int offset) {
+        structScrollOff = Math.max(0, offset);
+    }
+
     /** 新建用户组并展开其编辑器; 返回组名 (失败 null)。 */
     public String testCreateGroup() {
         createGroup();

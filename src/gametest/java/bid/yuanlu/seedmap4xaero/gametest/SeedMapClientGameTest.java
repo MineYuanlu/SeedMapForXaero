@@ -74,6 +74,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             context.waitTick();
 
             assertSeedResolved(context, singleplayer);
+            context.takeScreenshot("1-world-before-map");
 
             // 配置系统 v2: 预置 legacy .sm4x → 开图激活时真实迁移
             seedLegacyConfigs(context);
@@ -87,6 +88,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             assertMapActivated();
             assertCellCachePopulated(context);
             assertStructureCachePopulated(context);
+            context.takeScreenshot("2-seed-map-baselines");
 
             // 配置系统 v2: 迁移产物 + JSON 落盘 + marks region 分片
             assertLegacyMigrated(context);
@@ -95,10 +97,10 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             // 数据包自定义结构 (路线 A): 模拟 DatapackStructures.reload 注入
             // (gametest 世界无数据包, 直接注入合成表), 验证 Java 注册表 →
             // getStructureTypeSet → StructureCache → REGIONS 全链路。
-            // 面板截图顺带人工验收类型列表中的自定义行。
+            // 过程截图人工验收: 地图上的琥珀菱形图标 + 面板类型列表自定义行。
             assertCustomStructuresInjected(context);
 
-            context.takeScreenshot("seed-map-final");
+            context.takeScreenshot("3-seed-map-final");
 
             assertPanelScreenshots(context, singleplayer);
 
@@ -346,20 +348,23 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
      *     缓存失效 (gametest 世界无数据包, 注入 Terralith regular 同款合成表)</li>
      * <li>直查 {@code Xsm.queryRegionStructuresGrid} 有确定位置</li>
      * <li>等 REGIONS 收录自定义 id (getStructureTypeSet → updateStructuresInArea 全链路)</li>
+     * <li>过程截图 3a/3b: 地图上的自定义结构图标 (琥珀菱形回退) +
+     *     面板类型列表自定义行 (Alpha/Beta)</li>
      * <li>清理: 清空 C 表 + 注册表 + 缓存</li>
      * </ol>
      */
     private static void assertCustomStructuresInjected(ClientGameTestContext context) {
         final int customId = 100;
         context.runOnClient(client -> {
-            // 1. 注入: 2 等权结构, spacing=27/separation=15 (Terralith regular 同款)
-            int[] sets = { 2358902, 27, 15, 0, 0, 0, 2 };
+            // 1. 注入: 2 个单条目集合 (无加权掷骰 → 每 region 两结构都有候选,
+            //    截图确定性可见), spacing=16 (256 格/region, 出生点视野必覆盖)
+            int[] sets = { 2358902, 16, 7, 0, 0, 0, 1, 2358903, 16, 7, 0, 0, 1, 1 };
             int[] entries = { customId, 1, customId + 1, 1 };
             if (!Xsm.setCustomStructures(sets, entries)) {
                 throw new AssertionError("Xsm.setCustomStructures rejected the table");
             }
             var types = new java.util.ArrayList<CustomStructureType>();
-            var config = new StructureType.Config(2358902, 27, 12, 0, 0f);
+            var config = new StructureType.Config(2358902, 16, 9, 0, 0f);
             types.add(new CustomStructureType(customId, "gametest:alpha", "Alpha", config, 1, null, false));
             types.add(new CustomStructureType(customId + 1, "gametest:beta", "Beta", config, 1, null, false));
             StructureTypes.setCustomTypes(types);
@@ -377,9 +382,49 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             return hit[0];
         }, 50);
 
-        // 3. 全链路: REGIONS 收录自定义 id
-        context.waitFor(client -> StructureCache.REGIONS.containsKey(customId), 200);
-        LOGGER.info("custom structure id={} visible in REGIONS", customId);
+        // 3. 全链路: REGIONS 收录自定义 id 且视口内有已加载候选 (图标才可见)
+        //    (REGIONS 集合恒含视口内全部 region 的占位条目, 仅判非空会假通过;
+        //     同时等 builtin 缓存重建回填, 面板截图才有最近结构可用)
+        context.waitFor(client -> anyLoadedCandidate(customId, customId + 1)
+                && nearestStructure(client) != null, 200);
+        context.waitTicks(5); // 等图标 overlay 帧渲染
+        LOGGER.info("custom structures visible in REGIONS");
+
+        // 3.5 过程截图 (注入仍在生效, 清理前): 地图图标 + 面板类型行
+        context.runOnClient(client -> {
+            for (int id : new int[] { customId, customId + 1 }) {
+                var positions = StructureCache.REGIONS.get(id);
+                if (positions == null)
+                    continue;
+                int shown = 0;
+                for (var pos : positions) {
+                    if (!pos.loaded())
+                        continue;
+                    LOGGER.info("custom structure id={} candidate at ({},{})",
+                            id, pos.blockX(), pos.blockZ());
+                    if (++shown >= 3)
+                        break;
+                }
+            }
+        });
+        context.takeScreenshot("3a-custom-structures-map");
+        context.runOnClient(client -> {
+            var panel = SeedMapPanel.activePanel();
+            if (panel == null)
+                throw new AssertionError("SeedMapPanel not registered during custom injection");
+            panel.toggleOpen();
+            panel.testExpandSections();
+            panel.testSelectStructTab(0);
+            panel.testScrollStructList(Integer.MAX_VALUE); // 自定义行在列表末尾, render 时钳制到底
+        });
+        context.waitTick();
+        context.takeScreenshot("3b-panel-custom-structures");
+        context.runOnClient(client -> {
+            var panel = SeedMapPanel.activePanel();
+            panel.toggleOpen(); // 还原关闭态
+            panel.testScrollStructList(0); // 还原滚动, 不污染后续面板截图
+        });
+        context.waitTick();
 
         // 4. 清理 (不污染后续断言)
         context.runOnClient(client -> {
@@ -406,10 +451,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     private static void assertPanelScreenshots(ClientGameTestContext context,
             TestSingleplayerContext singleplayer) {
         // 保证最近结构在地图视野内 (面板截图时背后可见)
-        StructureTarget target = context.computeOnClient(client -> nearestStructure(client));
-        if (target == null) {
-            throw new AssertionError("no loaded structure for panel mask screenshot");
-        }
+        StructureTarget target = waitForNearestStructure(context);
         if (context.computeOnClient(client -> Math.hypot(
                 client.player.getX() - (target.blockX() + 0.5),
                 client.player.getZ() - (target.blockZ() + 0.5)) > 400.0)) {
@@ -430,11 +472,11 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             panel.testExpandSections();
         });
         context.waitTick();
-        context.takeScreenshot("panel-types");
+        context.takeScreenshot("4-panel-types");
 
         setStructTab(context, 1);
         context.waitTick();
-        context.takeScreenshot("panel-groups");
+        context.takeScreenshot("5-panel-groups");
 
         context.runOnClient(client -> {
             if (SeedMapPanel.activePanel().testCreateGroup() == null) {
@@ -442,11 +484,11 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             }
         });
         context.waitTick();
-        context.takeScreenshot("panel-group-editor");
+        context.takeScreenshot("6-panel-group-editor");
 
         setStructTab(context, 2);
         context.waitTick();
-        context.takeScreenshot("panel-icons");
+        context.takeScreenshot("7-panel-icons");
 
         // 图标组色遮罩: 最近结构标为 done + 半透明红覆盖
         context.runOnClient(client -> {
@@ -457,7 +499,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             StructureDataConfig.setGroupColor(StructureGroups.DONE, 0x80FF5555);
         });
         context.waitTick();
-        context.takeScreenshot("icon-mask");
+        context.takeScreenshot("8-icon-mask");
 
         // 还原 (避免 run 目录的 structure_data 残留影响下次运行)
         context.runOnClient(client -> {
@@ -480,10 +522,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
      */
     private static void assertHighlightHudHiddenWhenBehind(ClientGameTestContext context,
             TestSingleplayerContext singleplayer) {
-        StructureTarget target = context.computeOnClient(client -> nearestStructure(client));
-        if (target == null) {
-            throw new AssertionError("no loaded structure in StructureCache.REGIONS to highlight");
-        }
+        StructureTarget target = waitForNearestStructure(context);
         LOGGER.info("highlight target = {} at ({},{})", target.type(), target.blockX(), target.blockZ());
 
         if (context.computeOnClient(client -> Math.hypot(
@@ -502,17 +541,54 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         context.runOnClient(client -> client.player.lookAt(EntityAnchorArgument.Anchor.EYES,
                 new Vec3(target.blockX() + 0.5, client.player.getEyeY(), target.blockZ() + 0.5)));
         context.waitFor(client -> HighlightHudRenderer.lastFrameHighlightBlits == 1, 100);
-        context.takeScreenshot("highlight-hud-facing");
+        context.takeScreenshot("9-highlight-hud-facing");
 
         context.runOnClient(client -> client.player.lookAt(EntityAnchorArgument.Anchor.EYES,
                 new Vec3(2.0 * client.player.getX() - (target.blockX() + 0.5),
                         client.player.getEyeY(),
                         2.0 * client.player.getZ() - (target.blockZ() + 0.5))));
         context.waitFor(client -> HighlightHudRenderer.lastFrameHighlightBlits == 0, 100);
-        context.takeScreenshot("highlight-hud-behind");
+        context.takeScreenshot("10-highlight-hud-behind");
 
         context.runOnClient(client -> HighlightedStructures.clear());
         LOGGER.info("highlight-hud E2E assertions passed");
+    }
+
+    /**
+     * 等待出现已加载结构并返回 (缓存逐帧异步重建, 单次立即查询有竞态)。
+     * 超时后 dump REGIONS 内容辅助诊断。
+     */
+    private static StructureTarget waitForNearestStructure(ClientGameTestContext context) {
+        for (int i = 0; i < 200; i++) {
+            var t = context.computeOnClient(SeedMapClientGameTest::nearestStructure);
+            if (t != null)
+                return t;
+            context.waitTick();
+        }
+        context.runOnClient(client -> {
+            LOGGER.warn("REGIONS dump: {} types", StructureCache.REGIONS.size());
+            for (var e : StructureCache.REGIONS.entrySet()) {
+                int loaded = 0;
+                for (var p : e.getValue())
+                    if (p.loaded())
+                        loaded++;
+                LOGGER.warn("  id={} total={} loaded={}", e.getKey(), e.getValue().size(), loaded);
+            }
+        });
+        throw new AssertionError("no loaded structure for panel mask screenshot");
+    }
+
+    /** REGIONS 中给定结构 id 是否有已加载候选 (占位条目不算, 图标可见的前提)。 */
+    private static boolean anyLoadedCandidate(int... ids) {
+        for (int id : ids) {
+            var c = StructureCache.REGIONS.get(id);
+            if (c == null)
+                continue;
+            for (var p : c)
+                if (p.loaded())
+                    return true;
+        }
+        return false;
     }
 
     /** REGIONS 中离玩家最近且已加载的结构。 */
