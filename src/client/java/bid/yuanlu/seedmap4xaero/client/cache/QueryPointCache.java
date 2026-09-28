@@ -41,7 +41,7 @@ public record QueryPointCache(@NotNull String biomeName, int height) {
         final var chunkHeights = CHUNK_HEIGHT_CACHE.computeIfAbsent(keyChunk, k -> {
             int[] heights = new int[CHUNK_HEIGHT_LENGTH];
             Arrays.fill(heights, UNKNOWN_HEIGHT);
-            CacheHelper.CACHE_WORKER.execute(() -> Xsm.queryExactChunkHeight(chunkX, chunkZ, heights));
+            CacheHelper.worker().execute(() -> Xsm.queryExactChunkHeight(chunkX, chunkZ, heights));
             return heights;
         });
         int rx = worldX - (chunkX << 4), rz = worldZ - (chunkZ << 4);

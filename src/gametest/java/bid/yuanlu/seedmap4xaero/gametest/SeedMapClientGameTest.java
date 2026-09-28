@@ -16,6 +16,7 @@ import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache.CellKey;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.perf.PerfConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
 import bid.yuanlu.seedmap4xaero.client.gui.SeedMapPanel;
@@ -324,7 +325,26 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             StructureDataConfig.flush();
             if (!java.nio.file.Files.exists(marksDir.resolve("r.22.-7.json")))
                 throw new AssertionError("live markVisited region file not created");
-            LOGGER.info("json config E2E assertions passed (server_config.json + marks shards)");
+
+            // 4. perf 全局配置: 变更 → flush → gameDir/…/global/perf_config.json 落盘
+            PerfConfig.setDebugOverlay(true);
+            PerfConfig.flush();
+            var perfPath = client.gameDirectory.toPath()
+                    .resolve("xaero").resolve("seed-map-for-xaero")
+                    .resolve("global").resolve("perf_config.json");
+            if (!java.nio.file.Files.exists(perfPath))
+                throw new AssertionError("perf_config.json not created");
+            try {
+                String text = java.nio.file.Files.readString(perfPath);
+                if (!text.contains("\"debugOverlay\": true"))
+                    throw new AssertionError("perf setting change not persisted:\n" + text);
+            } catch (java.io.IOException e) {
+                throw new AssertionError("failed to read perf_config.json", e);
+            }
+            PerfConfig.setDebugOverlay(false); // 还原
+            PerfConfig.flush();
+
+            LOGGER.info("json config E2E assertions passed (server_config.json + marks shards + perf_config.json)");
         });
         context.waitTick();
     }
@@ -382,6 +402,11 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         setStructTab(context, 2);
         context.waitTick();
         context.takeScreenshot("panel-icons");
+
+        // 性能区: 展开后截图 (perf_config.json 全局配置 UI)
+        context.runOnClient(client -> SeedMapPanel.activePanel().testExpandPerf());
+        context.waitTick();
+        context.takeScreenshot("panel-perf");
 
         // 图标组色遮罩: 最近结构标为 done + 半透明红覆盖
         context.runOnClient(client -> {

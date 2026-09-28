@@ -220,7 +220,7 @@ public class StructureCache {
             final int fez0 = noExcl ? 0 : ez0, fez1 = noExcl ? 0 : ez1;
             final int cap = StructureType.MAX_SPARSE_HITS;
             final int id = type.id;
-            CacheHelper.CACHE_WORKER.execute(() -> {
+            CacheHelper.worker().execute(() -> {
                 final Long2IntOpenHashMap hitVariants = new Long2IntOpenHashMap();
                 final long next = Xsm.querySparseStructures(
                         id,
@@ -387,7 +387,7 @@ public class StructureCache {
             final int fex0 = iex0, fex1 = iex1, fez0 = iez0, fez1 = iez1;
 
             // 进行diff更新, 只更新多出来的部分(在[r0,r1)且不在[fe0, fe1)的部分)，避免重复计算
-            CacheHelper.CACHE_WORKER.execute(() -> Xsm.queryRegionStructuresGrid(
+            CacheHelper.worker().execute(() -> Xsm.queryRegionStructuresGrid(
                     type.id,
                     rx0, rz0, rx1, rz1,
                     fex0, fez0, fex1, fez1,

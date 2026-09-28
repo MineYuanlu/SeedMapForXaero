@@ -4,6 +4,7 @@
 configs/
 ├── core/       # 通用配置文件 IO（JSON 现行格式 + legacy .sm4x 迁移，无 MC 依赖）— 见 core/AGENTS.md
 ├── basic/      # server_config.json 的数据 — 见 basic/AGENTS.md
+├── perf/       # perf_config.json 全局性能配置（无 legacy 前身）— 见 perf/AGENTS.md
 └── structure/  # structure_settings.json + marks/ 分片的持久标记 — 见 structure/AGENTS.md
 ```
 

@@ -4,9 +4,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
+import bid.yuanlu.seedmap4xaero.client.cache.BackgroundPregen;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.command.Sm4xCommand;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.perf.PerfConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorTable;
@@ -25,11 +27,13 @@ public class XaeroSeedMapClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        PerfConfig.init();
         Xsm.setGameVersion();
         Xsm.setBiomeColorTable(BiomeColorTable.providers().get(0));
         StructureType.init();
         BiomeType.init();
         StructureVisitTracker.register();
+        BackgroundPregen.register();
         HighlightWorldRenderer.register();
         HighlightHudRenderer.register();
         Sm4xCommand.register();
@@ -49,6 +53,7 @@ public class XaeroSeedMapClient implements ClientModInitializer {
                 return;
             ServerConfig.flush();
             StructureDataConfig.flush();
+            PerfConfig.flush();
         });
     }
 

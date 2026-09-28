@@ -233,8 +233,9 @@ public final class Xsm {
      * 生成瓦片图像。
      *
      * <p>
-     * 调用 C 侧 genCellImg，输出固定 64×64 像素的 RGBA 数据，
-     * 返回 ABGR 格式 {@code int[]}（兼容 {@code NativeImage.setPixelABGR}）。
+     * 调用 C 侧 genCellImg，输出固定 64×64 像素的 RGBA 字节（4B/px），
+     * 整块 bulk copy 进 {@code int[]}——按 LE 读出即 ABGR 格式
+     * （兼容 {@code NativeImage.setPixelABGR}），无逐像素转换。
      * </p>
      *
      * @param scale          缩放因子（1, 4, 16, 64, 256；256 仅主世界）
@@ -246,8 +247,8 @@ public final class Xsm {
      */
     public static int[] genCellImg(int scale, int worldX, int worldZ, int absY, boolean enableLighting) {
         try (Arena arena = Arena.ofConfined()) {
-            // C 侧输出 24-bit RGB，每像素 3 字节
-            MemorySegment data = arena.allocate(64L * 64 * 3);
+            // C 侧输出 RGBA 字节序, 4 字节/像素 (LE int32 = ABGR)
+            MemorySegment data = arena.allocate(64L * 64 * 4);
             int result = XsmNative.genCellImg(scale, worldX, worldZ, absY, data, enableLighting);
             if (result != 0) {
                 LOGGER.warn("genCellImg returned {} for scale={} worldX={} worldZ={} absY={}",
@@ -255,13 +256,7 @@ public final class Xsm {
                 return null;
             }
             int[] pixels = new int[64 * 64];
-            for (int i = 0; i < pixels.length; i++) {
-                long off = (long) i * 3;
-                int r = data.get(ValueLayout.JAVA_BYTE, off) & 0xFF;
-                int g = data.get(ValueLayout.JAVA_BYTE, off + 1) & 0xFF;
-                int b = data.get(ValueLayout.JAVA_BYTE, off + 2) & 0xFF;
-                pixels[i] = (0xFF << 24) | (b << 16) | (g << 8) | r;
-            }
+            MemorySegment.copy(data, 0L, MemorySegment.ofArray(pixels), 0L, 64L * 64 * 4);
             return pixels;
         }
     }

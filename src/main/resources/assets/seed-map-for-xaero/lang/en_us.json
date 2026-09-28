@@ -41,6 +41,7 @@
 
   "xsm.debug.scale": "SeedMap scale=%d | Mouse Block: %d %d %d",
   "xsm.debug.fill_gap": "fillGaps: %s",
+  "xsm.debug.perf": "tiles %d/s | avg %.1fms | pending %d | cache %d/%d | frame %.2fms",
   "xsm.debug.all_explored": "(%d,%d) S%d all %d tiles explored, skip fill",
   "xsm.debug.filled_tiles": "(%d,%d) S%d filled %d/%d unexplored tiles",
 
@@ -141,6 +142,17 @@
   "xsm.gui.panel.color.sat": "Sat",
   "xsm.gui.panel.color.val": "Val",
   "xsm.gui.panel.color.alpha": "Alpha",
+
+  "xsm.gui.panel.perf_header": "Performance",
+  "xsm.gui.panel.perf_threads": "Threads",
+  "xsm.gui.panel.perf_threads_auto": "Auto",
+  "xsm.gui.panel.perf_cache": "Cache",
+  "xsm.gui.panel.perf_prefetch": "Prefetch around view",
+  "xsm.gui.panel.perf_pregen": "Background pregen",
+  "xsm.gui.panel.perf_radius": "Pregen radius",
+  "xsm.gui.panel.perf_disk": "Disk cache (planned)",
+  "xsm.gui.panel.perf_disk_max": "Disk cap",
+  "xsm.gui.panel.perf_debug": "Perf overlay",
 
   "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
   "xsm.chestLoot.extraInfo.pieceName": "Piece: %s",

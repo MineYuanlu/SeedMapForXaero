@@ -59,7 +59,7 @@ public final class StrongholdCache {
         if (from >= MAX_COUNT)
             return;
         final int to = nextRingEnd(from);
-        CacheHelper.CACHE_WORKER.execute(() -> {
+        CacheHelper.worker().execute(() -> {
             try {
                 StrongholdPos[] batch = Xsm.queryStrongholdsRange(from, to);
                 synchronized (LOCK) {

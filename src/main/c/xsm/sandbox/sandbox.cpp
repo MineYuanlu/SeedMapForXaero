@@ -10,10 +10,16 @@ int test1() {
   if (!setBiomeColorTableNative()) return -1;
   if (!setGameVersion("26.1")) return -2;
   if (!setWorld(0, 0)) return -3;
-  uint8_t data[64 * 64 * 3];
+  uint8_t data[64 * 64 * 4];  // genCellImg 输出 RGBA 4B/px
   auto code = genCellImg(4, 0, 0, 64, data, true);
   if (code != 0) return -4;
-  if (savePPM("test1.ppm", data, 64, 64)) return -5;
+  uint8_t ppm[64 * 64 * 3];
+  for (int i = 0; i < 64 * 64; i++) {
+    ppm[i * 3] = data[i * 4];
+    ppm[i * 3 + 1] = data[i * 4 + 1];
+    ppm[i * 3 + 2] = data[i * 4 + 2];
+  }
+  if (savePPM("test1.ppm", ppm, 64, 64)) return -5;
   return 0;
 }
 
@@ -22,7 +28,7 @@ int test2() {
   if (!setGameVersion("26.1")) return -2;
   if (!setWorld(12345, 0)) return -3;
 
-  uint8_t data[64 * 64 * 3];
+  uint8_t data[64 * 64 * 4];  // RGBA
 
   // warmup: one gen like test1
   auto code = genCellImg(1, 0, 0, 64, data, true);
@@ -151,6 +157,33 @@ int test4() {
   return 0;
 }
 
+// genCellImg 基准表: 各 scale 的 ms/tile（不同机器横向对比 / CI 防回归）
+int test5() {
+  if (!setBiomeColorTableNative()) return -1;
+  if (!setGameVersion("26.1")) return -2;
+  if (!setWorld(12345, 0)) return -3;
+
+  uint8_t data[64 * 64 * 4];
+  std::mt19937 rng(42);
+  std::uniform_int_distribution<int> dist(-1000000, 1000000);
+
+  constexpr int N = 200;
+  std::printf("genCellImg ms/tile by scale (seed=12345, N=%d, lighting=on):\n", N);
+  for (int scale : {1, 4, 16, 64, 256}) {
+    genCellImg(scale, 0, 0, 64, data, true);  // warmup
+    auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < N; i++) {
+      int wx = dist(rng);
+      int wz = dist(rng);
+      genCellImg(scale, wx, wz, 64, data, true);
+    }
+    auto end = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(end - start).count() / N;
+    std::printf("  scale=%3d  %8.3f ms/tile\n", scale, ms);
+  }
+  return 0;
+}
+
 int main() {
   int r;
   std::printf("Running tests...\n");
@@ -162,5 +195,7 @@ int main() {
   std::printf(" test3 passed\n");  // test3 passed
   if ((r = test4()) != 0) return r;
   std::printf(" test4 passed\n");  // test4 passed
+  if ((r = test5()) != 0) return r;
+  std::printf(" test5 passed\n");  // test5 passed
   return 0;
 }

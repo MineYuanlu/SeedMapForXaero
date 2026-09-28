@@ -26,12 +26,14 @@
 1. `GuiMap.extractRenderState` HEAD → `tickWorldInfo`: resolve seed/dim, call `Xsm.setWorld(seed, dim)` + `CacheHelper.setWorld` (clears all caches on change), apply biome disabled bitset, `CacheHelper.tick()`
 2. Seed map tiles rendered after Xaero's 2nd draw via `renderSeedMapTiles` (injected at `INVOKE ordinal=1`)
 3. `curScale` from `userScale`: ≥0.5→1, ≥0.125→4, ≥0.03125→16, ≥0.0078125→64, else 256 (overworld) / 64
-4. Iterate visible `LeveledRegion`s; each cell: `CellCache.getOrRequest` → GPU texture or async gen on `CacheHelper.CACHE_WORKER` thread pool
-5. For regions with Xaero textures: 3-tier exploration detection + scanline merge
-6. SuperScale (×4) fallback + SubScale (÷4) overlay when cur-scale not ready
-7. `CellCache.cancelStalePending` + `CellCache.cleanByTTL` called each frame
-8. Structure overlay icons rendered after default framebuffer bind (from `StructureCache.REGIONS`, async via `CacheHelper.CACHE_WORKER`); STRONGHOLD enabled → also draw exact positions from `StructureCache.strongholds()` (`StrongholdCache`, ring-batched background)
-9. Debug HUD drawn at screen top center — gated by `DEBUG = false` constant in `SeedMapMixin` (set to `true` to enable)
+4. `CellCache.beginFrame(cameraX, cameraZ)` each frame (camera → scheduler priority; reset upload quota)
+5. Iterate visible `LeveledRegion`s; each cell: `CellCache.getOrRequest` → GPU texture or async gen via `GenScheduler` (priority: coarse scale > near camera > prefetch last)
+6. For regions with Xaero textures: 3-tier exploration detection + scanline merge
+7. SuperScale fallback walks up ×4 levels (multi-level); SubScale (÷4) overlay when cur-scale not ready
+8. `xsm$prefetchAround`: direct super layer of viewport(+half-viewport ring) + curScale ring outside viewport (gated by `PerfConfig.prefetchEnabled()`)
+9. After `rendererProvider.draw`: `CellCache.endFrame()` closes evicted GPU textures
+10. Structure overlay icons rendered after default framebuffer bind (from `StructureCache.REGIONS`, async via `CacheHelper.worker()`); STRONGHOLD enabled → also draw exact positions from `StructureCache.strongholds()` (`StrongholdCache`, ring-batched background)
+11. Debug HUD drawn at screen top center — gated by `PerfConfig.debugOverlay()` (perf_config.json; shows tiles/s, ms/tile, pending, cache usage, frame ms)
 
 ## Exploration (3-tier)
 

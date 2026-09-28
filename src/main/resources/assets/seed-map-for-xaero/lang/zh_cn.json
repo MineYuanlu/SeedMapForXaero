@@ -41,6 +41,7 @@
 
   "xsm.debug.scale": "SeedMap scale=%d | 鼠标方块: %d %d %d",
   "xsm.debug.fill_gap": "fillGaps: %s",
+  "xsm.debug.perf": "瓦片 %d/s | 均值 %.1fms | pending %d | 缓存 %d/%d | 帧 %.2fms",
   "xsm.debug.all_explored": "(%d,%d) S%d 全部%d个tile均已探索，跳过补绘",
   "xsm.debug.filled_tiles": "(%d,%d) S%d 补绘%d/%d个未探索tile",
 
@@ -141,6 +142,17 @@
   "xsm.gui.panel.color.sat": "饱和",
   "xsm.gui.panel.color.val": "亮度",
   "xsm.gui.panel.color.alpha": "透明",
+
+  "xsm.gui.panel.perf_header": "性能",
+  "xsm.gui.panel.perf_threads": "生成线程",
+  "xsm.gui.panel.perf_threads_auto": "自动",
+  "xsm.gui.panel.perf_cache": "缓存容量",
+  "xsm.gui.panel.perf_prefetch": "预取视野外围",
+  "xsm.gui.panel.perf_pregen": "后台预生成",
+  "xsm.gui.panel.perf_radius": "预生成半径",
+  "xsm.gui.panel.perf_disk": "磁盘缓存(规划中)",
+  "xsm.gui.panel.perf_disk_max": "磁盘上限",
+  "xsm.gui.panel.perf_debug": "性能统计",
 
   "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
   "xsm.chestLoot.extraInfo.pieceName": "构件: %s",

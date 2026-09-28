@@ -65,7 +65,8 @@ XSM_API bool setBiomeDisabled(const uint8_t* const bitset, uint32_t size);
 /// @param worldX 世界坐标X
 /// @param worldZ 世界坐标Z
 /// @param absY 绝对高度（仅用于群系生成）
-/// @param data 生成的图像数据, 32位 RGB
+/// @param data 生成的图像数据, 32位 RGBA (4 字节/像素, R,G,B,A 字节序;
+///             Java 侧按 LE int32 读出即 ABGR, 与 NativeImage.setPixelABGR 一致)
 /// @param light 是否启用地形光照（Sobel坡面着色 + 深度暗化 + 水下染色）
 /// @return 错误码; 0=成功
 XSM_API uint32_t genCellImg(uint32_t scale, int32_t worldX, int32_t worldZ,
