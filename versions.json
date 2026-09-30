@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated": "2026-09-21T08:52:41Z",
+  "generated": "2026-09-30T04:06:22Z",
   "minMinecraft": "26.1",
   "versions": [
     {
@@ -10,6 +10,7 @@
       "xaeroArtifactLine": "26.3",
       "xaeroOldest": "1.46.2",
       "xaeroNewest": "1.46.4",
+      "xaeroMinimap": "26.5.3",
       "fabricApi": "0.161.0+26.3"
     },
     {
@@ -19,6 +20,7 @@
       "xaeroArtifactLine": "26.2",
       "xaeroOldest": "1.41.0",
       "xaeroNewest": "1.46.1",
+      "xaeroMinimap": "26.5.1",
       "fabricApi": "0.161.0+26.2"
     },
     {
@@ -28,6 +30,7 @@
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.40.14",
       "xaeroNewest": "1.46.0",
+      "xaeroMinimap": "26.5.0",
       "fabricApi": "0.155.3+26.1.2"
     },
     {
@@ -37,6 +40,7 @@
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.41.3",
       "xaeroNewest": "1.46.0",
+      "xaeroMinimap": "26.5.0",
       "fabricApi": "0.155.3+26.1.2"
     },
     {
@@ -46,6 +50,7 @@
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.41.3",
       "xaeroNewest": "1.46.0",
+      "xaeroMinimap": "26.5.0",
       "fabricApi": "0.155.3+26.1.2"
     }
   ]
