@@ -88,6 +88,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 │   ├── command/       # AGENTS.md: /sm4x 客户端命令（种子历史 list/remove）
 │   ├── nativeapi/     # Xsm.java (System.load + FFM wrappers), XsmNative.java (generated)
 │   ├── cache/         # AGENTS.md: caches, sparse structures, strongholds, tile coords
+│   ├── compat/        # 跨版本兼容层: 版本敏感 MC API 唯一允许的 import 点 (doc/compat-layer.md)
 │   ├── mixin/         # mixins — table in client/AGENTS.md
 │   ├── render/        # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
 │   ├── structure/     # AGENTS.md: 结构运行时 — StructureType + 图标/交互/访问检测

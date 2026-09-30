@@ -8,6 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureData;
@@ -26,7 +27,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.WidgetSprites;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -294,7 +294,7 @@ public class SeedMapPanel {
                 Identifier.withDefaultNamespace("widget/button"),
                 Identifier.withDefaultNamespace("widget/button_disabled"),
                 Identifier.withDefaultNamespace("widget/button_highlighted"));
-        g.blitSprite(RenderPipelines.GUI_TEXTURED,
+        CompatGui.blitSprite(g,
                 btnSprites.get(true, hoverSc),
                 schemeX, schemeY, schemeW, schemeH, 1.0f);
         g.text(font, "C", schemeX + 6, schemeY + 6, 0xFFFFFFFF);
