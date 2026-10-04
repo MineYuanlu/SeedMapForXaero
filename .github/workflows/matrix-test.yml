@@ -76,6 +76,7 @@ jobs:
             -Pminecraft_version=${{ matrix.mc }} \
             -PxaeroMapLine=${{ matrix.xaeroLine }} \
             -PxaeroMapVersion=${{ matrix.xaeroVersion }} \
+            -PxaeroMinimapVersion=${{ matrix.xaeroMinimapVersion }} \
             -PfabricApiVersion=${{ matrix.fabricApi }}
       - name: Upload test results
         if: failure()
@@ -177,6 +178,7 @@ jobs:
             -Pminecraft_version=${{ matrix.mc }} \
             -PxaeroMapLine=${{ matrix.xaeroLine }} \
             -PxaeroMapVersion=${{ matrix.xaeroVersion }} \
+            -PxaeroMinimapVersion=${{ matrix.xaeroMinimapVersion }} \
             -PfabricApiVersion=${{ matrix.fabricApi }} \
             --stacktrace > gametest.log 2>&1
           # 断言全部通过才算成功；挂起由 timeout-minutes 兜底 kill

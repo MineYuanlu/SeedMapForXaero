@@ -2,7 +2,6 @@ package bid.yuanlu.seedmap4xaero.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.math.Axis;
 
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -13,6 +12,7 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.world.phys.Vec3;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatPose;
 import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
 
 /**
@@ -70,7 +70,7 @@ public final class HighlightWorldRenderer {
                 // pose 原点 = 相机; 平移到结构锚点方块中心 (+0.5 与 HUD 图标投影一致),
                 // 减去 camY 使光柱落在绝对世界高度
                 pose.translate(key.blockX() + 0.5 - cam.x, -cam.y, key.blockZ() + 0.5 - cam.z);
-                pose.mulPose(Axis.YP.rotationDegrees(rotation));
+                CompatPose.rotateYDegrees(pose, rotation);
                 collector.submitCustomGeometry(pose, renderType, (p, buf) ->
                         xsmRenderColumn(buf, p, y0, y1, tiles));
                 pose.popPose();

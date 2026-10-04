@@ -11,6 +11,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatTextures;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
@@ -23,14 +25,10 @@ import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 
 import java.util.ArrayList;
 
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.state.gui.BlitRenderState;
 import net.minecraft.client.resources.language.I18n;
 
 import xaero.map.MapProcessor;
@@ -140,10 +138,8 @@ public class StructureOverlayMixin {
         // 新开一层 stratum: 保证图标渲染在 map composite 之上 (addBlitToCurrentLayer 只挂到
         // current, 而 current 在 Xaero 的 debug 文本等操作后不可靠, 可能在地图之下被覆盖)
         guiRenderState.nextStratum();
-        final var tex = mc.getTextureManager().getTexture(StructureType.STRUCTURES_TEXTURE);
-        final GpuTextureView texView = tex.getTextureView();
-        final GpuSampler sampler = tex.getSampler();
-        final TextureSetup setup = TextureSetup.singleTexture(texView, sampler);
+        final TextureSetup setup = CompatTextures.singleTexture(
+                mc.getTextureManager().getTexture(StructureType.STRUCTURES_TEXTURE));
         final Matrix3x2f basePose = new Matrix3x2f(guiGraphics.pose());
 
         final double invScale = 1.0 / screenScale;
@@ -192,19 +188,18 @@ public class StructureOverlayMixin {
             final Matrix3x2f pose = new Matrix3x2f(basePose)
                     .translate((float) guiX, (float) guiZ)
                     .scale(iconScale, iconScale);
-            guiRenderState.addBlitToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED,
-                    setup, pose, -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
-                    u0, u1, 0.0F, 1.0F, -1, null));
+            CompatTextures.blitIcon(guiRenderState, setup, pose,
+                    -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
+                    u0, u1, 0.0F, 1.0F, -1);
             // 组色遮罩: 同 UV 第二次 blit, 顶点色乘法混合 → 只染色非透明像素;
             // alpha=0 (透明度 100%) 跳过。无 mark 记录 (= 未分组) 也按未分组组色解析,
             // 与 forEachVisible 的隐藏过滤把 mark==null 归为 DEFAULT 一致。
             final int tint = (mark == null || mark.group().isEmpty())
                     ? defaultTint : StructureGroups.colorOf(doc, mark.group());
             if ((tint & 0xFF000000) != 0) {
-                guiRenderState.addBlitToCurrentLayer(new BlitRenderState(
-                        RenderPipelines.GUI_TEXTURED, setup, pose,
+                CompatTextures.blitIcon(guiRenderState, setup, pose,
                         -ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE / 2, ICON_SIZE / 2,
-                        u0, u1, 0.0F, 1.0F, tint, null));
+                        u0, u1, 0.0F, 1.0F, tint);
             }
         }, t);
 
@@ -302,10 +297,8 @@ public class StructureOverlayMixin {
         if (tooltip != null) {
             final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
             guiRenderState.nextStratum();
-            guiGraphics.tooltip(mc.font, tooltip,
-                    widget.getPendingTooltipX(), widget.getPendingTooltipY(),
-                    net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE,
-                    null);
+            CompatGui.tooltip(guiGraphics, mc.font, tooltip,
+                    widget.getPendingTooltipX(), widget.getPendingTooltipY());
         }
     }
 

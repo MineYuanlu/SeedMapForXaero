@@ -2,20 +2,16 @@ package bid.yuanlu.seedmap4xaero.client.render;
 
 import org.joml.Matrix3x2f;
 
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
-
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.state.gui.BlitRenderState;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.GameRendererAccessor;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatTextures;
 import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 
@@ -76,10 +72,8 @@ public final class HighlightHudRenderer {
         // 新开一层 stratum: addBlitToCurrentLayer 只挂到 current, 保证本层图标在其它
         // HUD 元素之上 (与 StructureOverlayMixin 同模式)。
         guiRenderState.nextStratum();
-        final var tex = mc.getTextureManager().getTexture(StructureType.STRUCTURES_TEXTURE);
-        final GpuTextureView texView = tex.getTextureView();
-        final GpuSampler sampler = tex.getSampler();
-        final TextureSetup setup = TextureSetup.singleTexture(texView, sampler);
+        final TextureSetup setup = CompatTextures.singleTexture(
+                mc.getTextureManager().getTexture(StructureType.STRUCTURES_TEXTURE));
         final Matrix3x2f basePose = new Matrix3x2f(graphics.pose());
         final int half = ICON_SIZE / 2;
 
@@ -101,9 +95,8 @@ public final class HighlightHudRenderer {
             final float[] uv = spriteUv(key.type(), key.variant());
             // 浮点屏幕坐标经 pose 承载 → 亚像素平滑移动 (整数截断会让移动时每帧跳格)
             final Matrix3x2f pose = new Matrix3x2f(basePose).translate(sx, sy);
-            guiRenderState.addBlitToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED,
-                    setup, pose, -half, -half, half, half, uv[0], uv[1], 0.0F, 1.0F,
-                    ICON_ALPHA, null));
+            CompatTextures.blitIcon(guiRenderState, setup, pose,
+                    -half, -half, half, half, uv[0], uv[1], 0.0F, 1.0F, ICON_ALPHA);
             lastFrameHighlightBlits++;
 
             // 文字 API 只收 int, 就近取整 (图标平滑, 文字偶尔 1px 漂移可接受)

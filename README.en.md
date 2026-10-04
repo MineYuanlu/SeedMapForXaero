@@ -32,7 +32,7 @@ This mod automatically fills in **unexplored** areas on Xaero's World Map with b
 
 - Multi-level zoom biome preview, seamlessly integrated with Xaero's map
 - Terrain elevation rendering + lighting shadows (overworld only)
-- 3-tier exploration detection — explored areas keep real data, only fills unexplored gaps
+- Auto-detects explored areas — places you've visited keep their real map data, only unexplored gaps get filled
 - Three color schemes: Native (default), Vanilla, Legacy — switchable from side panel
 - **Structure icons** — 26 structure types, individually toggleable from side panel; variant-bearing structures (e.g. village by plains/desert/zombie) can be toggled per variant
 - **Loot preview** — hover a loot-bearing structure icon to preview chest contents (counts and enchantments shown, 12 structure types); 4 display modes (Quick Peek / Detail × single / tiled), left-click to pin then browse and page through multiple chests
@@ -46,27 +46,24 @@ This mod automatically fills in **unexplored** areas on Xaero's World Map with b
 1. Install dependencies: Xaero's World Map, Fabric API
 2. Press `M` to open the fullscreen map
 3. **Singleplayer**: seed is read automatically, map displays immediately
-4. **Multiplayer**: enter the seed in the world switching screen (`GuiMapSwitching`)
+4. **Multiplayer**: enter the seed in the map's world switching screen
 5. Click the **SM** button on the right side to open the **settings panel**:
    - Toggle individual biome types (show/hide specific biomes)
    - Toggle individual structure types (show/hide specific structures)
    - Adjust structure icon size (0.05~2.0x)
    - Toggle loot preview and switch display mode (Quick Peek / Detail × single / tiled)
 
-### Dependencies
+### Supported versions
 
-Supported versions verified by the CI matrix (`versions.json`, 4 MC × old/new Xaero combos):
+| Dependency        | Version                                                       |
+| ----------------- | ------------------------------------------------------------- |
+| Minecraft         | 26.1 / 26.1.1 / 26.1.2 / 26.2 / **26.3**                      |
+| Xaero's World Map | 1.40.14+ (26.1.x) / 1.41.0+ (26.2) / 1.46.2+ (26.3)           |
+| Fabric API        | 0.155.3+ (26.1.x) / 0.161.0+ (26.2 / 26.3)                    |
+| Fabric Loader     | Latest                                                        |
+| Java              | **25** (usually bundled with modern launchers)                |
 
-| Dependency        | Version                            |
-| ----------------- | ---------------------------------- |
-| Minecraft         | 26.1 / 26.1.1 / 26.1.2 / 26.2      |
-| Fabric Loader     | Latest                             |
-| Fabric API        | 0.155.2+ (26.1) / 0.156.0+ (26.2)  |
-| Xaero's World Map | 1.40.14+ (26.1) / 1.41.0+ (26.2)   |
-| Java              | **25** (FFM API required)          |
-
-A single JAR supports all of the above versions (verified by the CI matrix).
-- Default build target: Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0 (see `gradle.properties`).
+**One JAR supports all of the above versions** — no need to pick a download per Minecraft version. Every combination is launch-tested in CI using the same package.
 
 ---
 
@@ -83,6 +80,10 @@ Fabric mod that injects into Xaero World Map's rendering pipeline via Mixin, use
 - **Cache System** (`CellCache` + `StructureCache` + `QueryPointCache`) — multi-level (1, 4, 16, 64, 256) GPU texture cache + structure query cache, async generation
 - **Side Panel** (`SeedMapPanel`) — settings panel opened by the SM button, per-biome/structure toggle, icon size slider
 - **7 Mixins** — `SeedMapMixin` (render), `SeedMapCursorMixin` (cursor info), `SeedMapToggleMixin` (toggle), `XsmMainPanelMixin` (side panel), `WorldSwitchMixin` (world switch), `GuiMapSwitchingMixin` (seed input), `StructureOverlayMixin` (structure icons)
+
+#### Single-JAR Multi-Version Compat
+
+The published artifact is a single universal JAR: compiled against the oldest supported line (Xaero 1.40.14), `fabric.mod.json` declares `"minecraft": ">=26.1"`, and all version-sensitive MC APIs go through the `client/compat/` reflection facade (design in `doc/compat-layer.md`). CI launch-tests the same JAR on every supported version (E2E, see `doc/testing.md`).
 
 #### Render Pipeline
 
@@ -146,7 +147,7 @@ Four workflows in `.github/workflows/`:
 | ---------------------- | ----------------- | ------------------------------------------------------------------- |
 | `build.yml`            | Push / PR         | Non-master: Linux build; master/tag: all-platform native + package |
 | `build-test-jar.yml`   | workflow_dispatch | Manual universal JAR build (all-platform native + built-in checks), no bump/release |
-| `matrix-test.yml`      | Push / manual     | 8-combo version matrix (4 MC × old/new Xaero) + client E2E GameTest |
+| `matrix-test.yml`      | Push / manual     | 10-combo version matrix (5 MC × old/new Xaero) + client E2E GameTest |
 | `refresh-versions.yml` | Weekly + manual   | Refresh `versions.json` matrix (commits only on real changes)       |
 | `release.yml`          | workflow_dispatch | Version bump + all-platform build + Modrinth + Release              |
 
