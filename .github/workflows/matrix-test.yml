@@ -156,8 +156,8 @@ jobs:
           java-version: ${{ matrix.java }}
           distribution: 'microsoft'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install dependencies (cmake/gcc/xvfb)
-        run: sudo apt-get update && sudo apt-get install -y cmake gcc xvfb
+      - name: Install dependencies (cmake/gcc/xvfb/egl)
+        run: sudo apt-get update && sudo apt-get install -y cmake gcc xvfb libegl1 libegl-mesa0 libgl1 libgl1-mesa-dri
       - name: Download universal jar
         uses: actions/download-artifact@v8
         with:
