@@ -7,6 +7,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatTextures;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
@@ -540,7 +541,7 @@ public class SeedMapMixin {
             MultiTextureRenderTypeRenderer renderer,
             float x, float y, float w, float h,
             float u0, float u1, float v0, float v1) {
-        BufferBuilder bb = renderer.begin(tex.view);
+        BufferBuilder bb = CompatTextures.beginMultiTexture(renderer, tex);
         bb.addVertex(matrix, x, y + h, 0.0F).setColor(-1).setUv(u0, v1);
         bb.addVertex(matrix, x + w, y + h, 0.0F).setColor(-1).setUv(u1, v1);
         bb.addVertex(matrix, x + w, y, 0.0F).setColor(-1).setUv(u1, v0);

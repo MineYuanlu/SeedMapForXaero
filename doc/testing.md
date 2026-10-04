@@ -64,6 +64,16 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
   -PuniversalJar="$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
 ```
 
+**无头环境注意（MC 26.3+）**：26.3 渲染栈换成 SDL3+renderpearl，其 `GlDevice`
+探针窗口带 `SDL_WINDOW_TRANSPARENT` 且强制 sRGB framebuffer，Xvfb 的 GLX
+匹配不到 depth-32 fbconfig（`Couldn't find matching GLX visual`），GL/Vulkan 双
+backend 失败后客户端会挂死。CI 在 `universal-e2e` 设
+`SDL_VIDEODRIVER=offscreen`（SDL 走 EGL surfaceless 软渲染，绕开 X11/GLX；
+需 `libegl1 libegl-mesa0` 包）解决。26.1/26.2 走 GLFW 不读 `SDL_*` 变量，
+同一 env 无副作用。本地无显示器跑 26.3+ 时同理：`SDL_VIDEODRIVER=offscreen
+./gradlew runProductionClientGameTestUniversal ...`（需系统装了 libEGL，
+如 `apt install libegl1 libegl-mesa0`）。
+
 ### CI（`.github/workflows/matrix-test.yml` + native 矩阵）
 
 单人开发流程：`dev/xxx`、`fix/xxx` 只跑 `pr-check.yml` 快速检查；**develop / master 是全面门禁**（`matrix-test.yml` 版本矩阵 + E2E 与 `build.yml` 全平台 native + 打包都触发）。
@@ -107,5 +117,5 @@ Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 E
 
 ## 参数命名约定
 
-- `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMapVersion`、`minecraft_version`、`loader_version`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
+- `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMapVersion`、`xaeroMinimapVersion`、`minecraft_version`、`loader_version`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
 - 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PjextractPath`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）、`-PndkPath`（`compileNativeAndroid` 用，或环境变量 `ANDROID_NDK_HOME`）。
