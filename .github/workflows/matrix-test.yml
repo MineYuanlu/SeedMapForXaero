@@ -137,6 +137,13 @@ jobs:
       - build-universal
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # MC 26.3 换用 SDL3+renderpearl 渲染栈：其 GlDevice 探针窗口带
+      # SDL_WINDOW_TRANSPARENT 且强制 sRGB framebuffer，Xvfb 的 GLX 匹配不到
+      # depth-32 fbconfig → "Couldn't find matching GLX visual" → GL/Vulkan 双
+      # backend 失败后客户端挂死直到超时。offscreen 驱动走 EGL 软渲染，完全
+      # 绕开 X11/GLX。26.1/26.2 走 GLFW，不读 SDL_* 环境变量，对它们无副作用。
+      SDL_VIDEODRIVER: offscreen
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.resolve.outputs.matrix-e2e) }}
