@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm.ChestLoot;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm.LootItem;
@@ -18,9 +19,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
-import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -136,10 +135,10 @@ public class ChestLootWidget {
                 this.chestDataList.get(this.chestIndex), this.chestIndex, this.x, this.y);
 
         // 翻页按钮 (仅单容器模式)
-        g.blit(RenderPipelines.GUI_TEXTURED, BUTTON_TEXTURE,
+        CompatGui.blitTexture(g, BUTTON_TEXTURE,
                 this.x + BUTTON_X_OFFSET, this.y + BUTTON_Y_OFFSET,
                 0, 0, BUTTON_WIDTH, BUTTON_HEIGHT, 256, 256);
-        g.blit(RenderPipelines.GUI_TEXTURED, BUTTON_TEXTURE,
+        CompatGui.blitTexture(g, BUTTON_TEXTURE,
                 this.x + BUTTON_X_OFFSET + BUTTON_WIDTH, this.y + BUTTON_Y_OFFSET,
                 BUTTON_WIDTH, 0, BUTTON_WIDTH, BUTTON_HEIGHT, 256, 256);
     }
@@ -150,7 +149,7 @@ public class ChestLootWidget {
      */
     private boolean renderContainer(GuiGraphicsExtractor g, int mouseX, int mouseY, Font font,
             ChestLoot chestData, int index, int boxX, int boxY) {
-        g.blit(RenderPipelines.GUI_TEXTURED, CHEST_CONTAINER,
+        CompatGui.blitTexture(g, CHEST_CONTAINER,
                 boxX, boxY, 0, 0, CONTAINER_WIDTH, CONTAINER_HEIGHT,
                 CONTAINER_WIDTH, CONTAINER_HEIGHT);
 
@@ -166,9 +165,8 @@ public class ChestLootWidget {
         if (mouseX >= minX && mouseX <= minX + titleWidth
                 && mouseY >= minY && mouseY <= minY + font.lineHeight) {
             List<ClientTooltipComponent> tooltips = this.extraChestInfo.get(index);
-            g.tooltip(font, tooltips,
-                    minX - 4 - 12, boxY - tooltips.size() * font.lineHeight - 8 + 12,
-                    DefaultTooltipPositioner.INSTANCE, null);
+            CompatGui.tooltip(g, font, tooltips,
+                    minX - 4 - 12, boxY - tooltips.size() * font.lineHeight - 8 + 12);
         }
 
         minY += 12;

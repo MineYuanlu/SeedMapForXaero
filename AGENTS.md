@@ -32,7 +32,7 @@ cmake --build build-test --target xsmtest && ./build-test/xsmtest   # C 单测
 
 **Single universal jar**: `fabric.mod.json` hardcodes `"minecraft": ">=26.1"` (not templated). The published jar is compiled against the oldest Xaero line (1.40.14) so referenced symbols are a subset of all supported versions. CI (`matrix-test.yml`): `test` = 8-combo compile+JUnit (source-compat early warning, not published), `build-universal` = build the one jar, `universal-e2e` = run that same jar on all 4 MC × newest Xaero. Future breaking MC versions are caught by universal-e2e as `versions.json` grows.
 
-版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`）。
+版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`/`xaeroMinimapVersion`）。
 CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 
 ### CI 触发矩阵（单人开发流程）
@@ -88,6 +88,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 │   ├── command/       # AGENTS.md: /sm4x 客户端命令（种子历史 list/remove）
 │   ├── nativeapi/     # Xsm.java (System.load + FFM wrappers), XsmNative.java (generated)
 │   ├── cache/         # AGENTS.md: caches, sparse structures, strongholds, tile coords
+│   ├── compat/        # 跨版本兼容层: 版本敏感 MC API 唯一允许的 import 点 (doc/compat-layer.md)
 │   ├── mixin/         # mixins — table in client/AGENTS.md
 │   ├── render/        # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
 │   ├── structure/     # AGENTS.md: 结构运行时 — StructureType + 图标/交互/访问检测

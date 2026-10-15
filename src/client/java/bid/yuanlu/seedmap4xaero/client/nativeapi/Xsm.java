@@ -130,7 +130,7 @@ public final class Xsm {
      * 但 UI 仅提供 26.1+ 选项；新 MC 版本发布时在此追加。
      */
     public static final List<String> SUPPORTED_VERSIONS = List.of(
-            "26.2", "26.1");
+            "26.3", "26.2", "26.1");
 
     public static void setGameVersion() {
         final var version = SharedConstants.getCurrentVersion().name();
