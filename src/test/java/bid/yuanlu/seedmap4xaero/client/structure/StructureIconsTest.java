@@ -6,12 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureMark;
+
 import org.junit.jupiter.api.Test;
 
 class StructureIconsTest {
 
     /**
-     * 热循环契约: VisibleIconSink 的抽象方法只接受原始类型, 禁止回归到 record Icon
+     * 热循环契约: VisibleIconSink 的抽象方法只接受原始类型 + 共享引用
+     * (枚举常量/标记表取出的 StructureMark), 禁止回归到 record Icon
      * 这种每图标分配一次的写法 (渲染每帧几千图标时会产生大量 young gen 垃圾)。
      */
     @Test
@@ -21,11 +24,13 @@ class StructureIconsTest {
                 .toList();
         assertEquals(1, abstractMethods.size(), "VisibleIconSink must be a single-method functional interface");
         var method = abstractMethods.get(0);
-        assertEquals(6, method.getParameterCount());
+        assertEquals(7, method.getParameterCount());
         for (var type : method.getParameterTypes()) {
-            // 数值全原始类型 (禁止装箱/每图标对象); 唯一对象参数是共享枚举常量, 零分配
-            assertTrue(type.isPrimitive() || type == StructureType.class,
-                    "sink parameter must be primitive: " + type);
+            // 数值全原始类型 (禁止装箱/每图标对象); 对象参数仅共享枚举常量与
+            // 标记引用 (StructureMark), 均为零分配传递
+            assertTrue(type.isPrimitive() || type == StructureType.class
+                    || type == StructureMark.class,
+                    "sink parameter must be primitive or shared reference: " + type);
         }
     }
 

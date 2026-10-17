@@ -7,7 +7,9 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
 import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatTextures;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 
 import net.minecraft.client.Minecraft;
@@ -133,6 +135,7 @@ public class SeedMapMixin {
     private void xsm$onGuiMapInit(CallbackInfo ci) {
         if (this.mapProcessor != null) {
             ServerConfig.activate(this.mapProcessor);
+            StructureDataConfig.activate(this.mapProcessor);
         }
     }
 
@@ -155,8 +158,17 @@ public class SeedMapMixin {
             return;
         }
 
-        Xsm.setWorld(seed, dim);
+        // 世界生成 MC 版本：单机固定客户端版本；多人按 per-world 配置（null=跟随客户端）
         var wc = ServerConfig.getActiveWorldConfig();
+        final String version = (Minecraft.getInstance().getSingleplayerServer() != null || wc == null)
+                ? null
+                : wc.mcVersion();
+        if (!Xsm.applyGameVersion(version)) {
+            // 拒绝详情由 Xsm 首次拒绝时记录；此处静默回退客户端版本
+            Xsm.applyGameVersion(null);
+        }
+
+        Xsm.setWorld(seed, dim);
         if (wc != null) {
             Xsm.setBiomeDisabled(wc.getDisabledBiomes());
         }
@@ -529,7 +541,7 @@ public class SeedMapMixin {
             MultiTextureRenderTypeRenderer renderer,
             float x, float y, float w, float h,
             float u0, float u1, float v0, float v1) {
-        BufferBuilder bb = renderer.begin(tex.view);
+        BufferBuilder bb = CompatTextures.beginMultiTexture(renderer, tex);
         bb.addVertex(matrix, x, y + h, 0.0F).setColor(-1).setUv(u0, v1);
         bb.addVertex(matrix, x + w, y + h, 0.0F).setColor(-1).setUv(u1, v1);
         bb.addVertex(matrix, x + w, y, 0.0F).setColor(-1).setUv(u1, v0);

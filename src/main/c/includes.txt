@@ -13,3 +13,6 @@
 --include-function queryStrongholdsRange
 --include-function querySparseStructures
 --include-function xsmBiome2str
+--include-function xsmQueryStructureLoot
+--include-function xsmItemName
+--include-function xsmEnchantmentName

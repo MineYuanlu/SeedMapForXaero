@@ -52,3 +52,6 @@ gradle.local.properties
 
 # Python
 __pycache__/
+
+# ZCode session artifacts
+.zcode/

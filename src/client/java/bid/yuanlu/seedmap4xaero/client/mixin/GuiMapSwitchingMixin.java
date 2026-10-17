@@ -16,7 +16,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.gui.VersionDropdown;
 import xaero.map.MapProcessor;
 import xaero.map.graphics.MapRenderHelper;
 import xaero.map.gui.GuiMap;
@@ -35,6 +37,15 @@ public class GuiMapSwitchingMixin {
     private Button xsm$seedConfirmBtn;
 
     @Unique
+    private Button xsm$seedCopyBtn;
+
+    @Unique
+    private Long xsm$currentSeed;
+
+    @Unique
+    private VersionDropdown xsm$versionDropdown;
+
+    @Unique
     private void xsm$useSeed(long seed) {
         var cfg = ServerConfig.getActiveConfig();
         if (cfg == null || this.mapProcessor == null)
@@ -44,6 +55,8 @@ public class GuiMapSwitchingMixin {
             return;
         }
         var mw = this.mapProcessor.getCurrentMWId();
+        if (mw == null)
+            return;
         cfg.getOrCreateWorld(mw).seed(seed);
         ServerConfig.save();
     }
@@ -53,17 +66,22 @@ public class GuiMapSwitchingMixin {
         xsm$LOGGER.info("init: active={}, mapProcessor={}", this.active, this.mapProcessor);
         if (this.active && this.mapProcessor != null) {
             ServerConfig.activate(this.mapProcessor);
+            StructureDataConfig.activate(this.mapProcessor);
         }
         this.xsm$seedInput = null;
         this.xsm$seedConfirmBtn = null;
+        this.xsm$seedCopyBtn = null;
+        this.xsm$currentSeed = null;
+        VersionDropdown.unsetActive();
+        this.xsm$versionDropdown = null;
         if (!this.active)
             return;
 
-        Long currentSeed = ServerConfig.resolveSeed();
-        xsm$LOGGER.info("init: resolveSeed={}", currentSeed);
+        xsm$currentSeed = ServerConfig.resolveSeed();
+        xsm$LOGGER.info("init: resolveSeed={}", xsm$currentSeed);
         xsm$seedInput = new EditBox(minecraft.font, width / 2 - 100, 148, 145, 20, Component.translatable("xsm.gui.switching.seed"));
-        if (currentSeed != null) {
-            xsm$seedInput.setSuggestion(String.valueOf(currentSeed));
+        if (xsm$currentSeed != null) {
+            xsm$seedInput.setSuggestion(String.valueOf(xsm$currentSeed));
         }
 
         xsm$seedConfirmBtn = Button.builder(
@@ -78,14 +96,36 @@ public class GuiMapSwitchingMixin {
                             CellCache.clear();
                             xsm$seedInput.setValue("");
                             xsm$seedInput.setSuggestion(String.valueOf(seed));
+                            xsm$currentSeed = seed;
                         } catch (NumberFormatException e) {
                             xsm$LOGGER.warn("confirm: invalid seed format", e);
                         }
                     }
                 }).bounds(width / 2 + 50, 148, 50, 20).build();
 
+        xsm$seedCopyBtn = Button.builder(
+                Component.translatable("xsm.gui.switching.copy"),
+                b -> {
+                    Long seed = xsm$currentSeed;
+                    if (seed == null)
+                        return;
+                    minecraft.keyboardHandler.setClipboard(String.valueOf(seed));
+                    xsm$LOGGER.info("copy: copied seed={}", seed);
+                    if (minecraft.player != null) {
+                        minecraft.player.sendOverlayMessage(
+                                Component.translatable("xsm.gui.switching.copied", seed));
+                    }
+                }).bounds(width / 2 + 105, 148, 40, 20).build();
+        xsm$seedCopyBtn.active = xsm$currentSeed != null;
+
         mapScreen.addButton(xsm$seedInput);
         mapScreen.addButton(xsm$seedConfirmBtn);
+        mapScreen.addButton(xsm$seedCopyBtn);
+
+        // MC 版本选择：仅多人模式（单机世界版本固定为客户端版本）
+        if (Minecraft.getInstance().getSingleplayerServer() == null) {
+            xsm$versionDropdown = new VersionDropdown(width / 2 - 100, 172, 200, this.mapProcessor);
+        }
     }
 
     @Inject(method = "renderText", at = @At("TAIL"), remap = false)
@@ -93,9 +133,13 @@ public class GuiMapSwitchingMixin {
             int width, int height, CallbackInfo ci) {
         if (!this.active)
             return;
-        String label = I18n.get("xsm.gui.switching.current_seed");
+        String label = I18n.get("xsm.gui.switching.current_seed") + " "
+                + (xsm$currentSeed != null ? String.valueOf(xsm$currentSeed) : "-");
         MapRenderHelper.drawStringWithBackground(guiGraphics, minecraft.font, label, width / 2 - 100, 132, -1, 0.0F,
                 0.0F, 0.0F, 0.4F);
+        if (xsm$versionDropdown != null) {
+            xsm$versionDropdown.render(guiGraphics, minecraft.font, mouseX, mouseY);
+        }
     }
 
     @Shadow

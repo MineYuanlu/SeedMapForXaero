@@ -3,7 +3,11 @@ package bid.yuanlu.seedmap4xaero.client.structure;
 import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache.StructurePos;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureMark;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * 结构图标的共享枚举 + 屏幕坐标几何。
@@ -33,11 +37,13 @@ public final class StructureIcons {
      * <p>
      * 千万不用对象封装 (如 record Icon): 热循环 (渲染每帧/几千图标) 里
      * 每图标一次分配会增加 young gen 压力; 原始类型经寄存器传递无任何开销。
+     * {@code mark} 是标记表中取出的共享引用 (零分配), 供调用方做组色解析,
+     * 免去重复 map get; 无标记时为 null (= 未分组)。
      */
     @FunctionalInterface
     public interface VisibleIconSink {
         void accept(StructureType type, int variant, int blockX, int blockZ,
-                double guiX, double guiZ);
+                double guiX, double guiZ, @Nullable StructureMark mark);
     }
 
     private StructureIcons() {
@@ -57,7 +63,7 @@ public final class StructureIcons {
     }
 
     /**
-     * 枚举当前可见的结构图标 (REGIONS + 要塞, 应用 disabled flags)。
+     * 枚举当前可见的结构图标 (REGIONS + 要塞, 应用 disabled flags 与组隐藏过滤)。
      *
      * @return false 表示当前不可绘制 (未回调任何图标)
      */
@@ -66,6 +72,8 @@ public final class StructureIcons {
             return false;
         final var wc = ServerConfig.getActiveWorldConfig();
         final StructureBitFlagView flags = wc.getDisabledStructures();
+        // 组过滤/组色: 每帧只解析一次标记表 (激活数据为 null 时零开销)
+        final var dimData = StructureDataConfig.activeDimData();
 
         for (var entry : StructureCache.REGIONS.entrySet()) {
             StructureType type = entry.getKey();
@@ -75,8 +83,13 @@ public final class StructureIcons {
                     continue;
                 if (flags.isStructureSet(typeId) || flags.isVariantSet(typeId, rp.getVariant()))
                     continue;
+                var mark = dimData == null ? null
+                        : dimData.getMark(typeId, StructureDataConfig.keyOf(rp.blockX(), rp.blockZ()));
+                if (StructureDataConfig.isGroupHidden(
+                        mark == null ? StructureGroups.DEFAULT : mark.group()))
+                    continue;
                 out.accept(type, rp.getVariant(), rp.blockX(), rp.blockZ(),
-                        t.guiX(rp.blockX()), t.guiZ(rp.blockZ()));
+                        t.guiX(rp.blockX()), t.guiZ(rp.blockZ()), mark);
             }
         }
 
@@ -86,8 +99,14 @@ public final class StructureIcons {
                 for (StrongholdPos sh : strongholds) {
                     if (sh == null)
                         continue;
+                    var mark = dimData == null ? null
+                            : dimData.getMark(StructureType.STRONGHOLD.id,
+                                    StructureDataConfig.keyOf(sh.blockX(), sh.blockZ()));
+                    if (StructureDataConfig.isGroupHidden(
+                            mark == null ? StructureGroups.DEFAULT : mark.group()))
+                        continue;
                     out.accept(StructureType.STRONGHOLD, sh.getVariant(), sh.blockX(),
-                            sh.blockZ(), t.guiX(sh.blockX()), t.guiZ(sh.blockZ()));
+                            sh.blockZ(), t.guiX(sh.blockX()), t.guiZ(sh.blockZ()), mark);
                 }
             }
         }

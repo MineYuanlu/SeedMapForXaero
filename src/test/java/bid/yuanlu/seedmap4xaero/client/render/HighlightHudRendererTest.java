@@ -32,6 +32,12 @@ class HighlightHudRendererTest {
     }
 
     @Test
+    void behindCameraNegativeZReturnsNull() {
+        // 回归: 26.2 线性深度下背后点 z<0, 旧的 z>1 检查漏过导致镜像图标
+        assertNull(HighlightHudRenderer.ndcToScreen(new Vec3(0, 0, -0.5), 1000, 800));
+    }
+
+    @Test
     void positiveXOffsetMovesRight() {
         float[] s = HighlightHudRenderer.ndcToScreen(new Vec3(0.5, 0, 0.5), 1000, 800);
         assertEquals(750.0f, s[0], 1e-6f);

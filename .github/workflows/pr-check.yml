@@ -27,6 +27,8 @@ jobs:
           distribution: 'microsoft'
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
+      - name: Guardrail — version-sensitive MC APIs only inside client/compat
+        run: tools/check_compat_imports.sh
       - name: Run C unit tests
         run: |
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release

@@ -1,6 +1,14 @@
 # client — mixins & render pipeline
 
-## 9 client mixins
+## compat — 跨版本兼容层（强约束）
+
+`compat/`（CompatTextures / CompatGui / CompatPose / CompatNoise）收编全部版本敏感 MC API。
+**`com.mojang.blaze3d.{textures,systems,pipeline}`、`renderpearl.*`、`levelgen.synth.*` 只允许在
+compat/ 内 import**（pr-check grep 强制）——强类型调用点的二进制描述符含类型 FQN，MC 一搬家
+universal jar 就在其它版本上 NoSuchMethod/FieldError，且编译期不可见。新缝 → compat 门面加
+反射封装，业务代码只调门面。设计与缝清单见 `doc/compat-layer.md`。
+
+## 10 client mixins
 
 | Mixin                   | Targets                              | Role                                            |
 | ----------------------- | ------------------------------------ | ----------------------------------------------- |
@@ -10,6 +18,7 @@
 | `XsmMainPanelMixin`     | `GuiMap.init`                        | Settings panel button + mouse routing           |
 | `WorldSwitchMixin`      | `MapProcessor.checkForWorldUpdate`   | Detect world change → reload config             |
 | `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          |
+| `GuiMapVersionDropdownMixin` | `GuiMap.mouseClicked/mouseScrolled` | Route clicks/wheel to `VersionDropdown` (world MC version picker) |
 | `StructureOverlayMixin` | `GuiMap.extractRenderState`          | Structure icon overlay + hover tooltip          |
 | `StructureClickMixin`   | `GuiMap.mouseClicked` + `mapClicked` | Right-click structure icon → combined Xaero menu + appended (waypoint / highlight) |
 | `DropDownWidgetTitleMixin` | `DropDownWidget.drawSlot` (XaeroLib) | Title rows in right-click menu use `selectedBackground` grey via `@ModifyArg` on `fill(IIIII)V` |

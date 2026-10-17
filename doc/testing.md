@@ -25,12 +25,13 @@
 
 ### 3. E2E 客户端 GameTest — `src/gametest/java`（fabric-client-gametest）
 
-`SeedMapClientGameTest`：真实启动 MC 客户端 → 创建单机世界（`KNOWN_SEED=123456789`）→ 打开 Xaero `GuiMap` → 4 个断言 + 截图：
+`SeedMapClientGameTest`：真实启动 MC 客户端 → 创建单机世界（`KNOWN_SEED=123456789`）→ 打开 Xaero `GuiMap` → 5 个断言 + 截图：
 
 1. **种子解析**：`ServerConfig.resolveSeed()` 返回已知种子且与服务器实际种子一致
 2. **地图激活**：打开 `GuiMap` 后 `ServerConfig.activeMainId() != null`
 3. **CellCache 生成**：scale 1/4/16 任一有缓存（验证 `tickWorldInfo → Xsm.setWorld → native C 生成` 链路）
 4. **结构缓存**：`StructureCache.REGIONS` 非空（异步 CACHE_WORKER 查询）
+5. **HUD 高亮背后隐藏**：从 REGIONS 高亮最近的真实结构，正视断言 `HighlightHudRenderer.lastFrameHighlightBlits == 1`、转向水平镜像点（结构恰好正背后）断言 `== 0`——回归 26.2 线性深度约定下背后点 `NDC.z<0` 漏过旧 `z>1` 检查导致的镜像图标 bug（版本相关深度约定的回归只能靠真实投影的 E2E 抓）。结构超 400 格时先服务端传送玩家到附近并等落地。
 
 断言通过后打印 `seed-map E2E assertions passed` 供 CI grep。主 mod 和测试 mod 的 `fabric.mod.json` 都用宽松下限写死版本（`>=26.1`），**不 expand**——单 jar 在任意支持版本上通用，无需跟随矩阵精确版本。
 
@@ -62,6 +63,16 @@ XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 ./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
   -PuniversalJar="$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
 ```
+
+**无头环境注意（MC 26.3+）**：26.3 渲染栈换成 SDL3+renderpearl，其 `GlDevice`
+探针窗口带 `SDL_WINDOW_TRANSPARENT` 且强制 sRGB framebuffer，Xvfb 的 GLX
+匹配不到 depth-32 fbconfig（`Couldn't find matching GLX visual`），GL/Vulkan 双
+backend 失败后客户端会挂死。CI 在 `universal-e2e` 设
+`SDL_VIDEODRIVER=offscreen`（SDL 走 EGL surfaceless 软渲染，绕开 X11/GLX；
+需 `libegl1 libegl-mesa0` 包）解决。26.1/26.2 走 GLFW 不读 `SDL_*` 变量，
+同一 env 无副作用。本地无显示器跑 26.3+ 时同理：`SDL_VIDEODRIVER=offscreen
+./gradlew runProductionClientGameTestUniversal ...`（需系统装了 libEGL，
+如 `apt install libegl1 libegl-mesa0`）。
 
 ### CI（`.github/workflows/matrix-test.yml` + native 矩阵）
 
@@ -106,5 +117,5 @@ Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 E
 
 ## 参数命名约定
 
-- `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMapVersion`、`minecraft_version`、`loader_version`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
+- `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMapVersion`、`xaeroMinimapVersion`、`minecraft_version`、`loader_version`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
 - 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PjextractPath`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）、`-PndkPath`（`compileNativeAndroid` 用，或环境变量 `ANDROID_NDK_HOME`）。

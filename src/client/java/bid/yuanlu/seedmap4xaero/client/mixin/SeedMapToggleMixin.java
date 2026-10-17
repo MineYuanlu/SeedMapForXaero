@@ -4,7 +4,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.SeedMapToggleAccessor;
-import bid.yuanlu.seedmap4xaero.client.configs.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import xaero.map.gui.GuiMap;
 
 @Mixin(GuiMap.class)

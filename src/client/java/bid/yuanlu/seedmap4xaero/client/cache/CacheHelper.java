@@ -21,10 +21,22 @@ public final class CacheHelper {
             return;
         lastSeed = seed;
         lastDim = dim;
+        clearAllCaches();
+    }
+
+    /** 强制清空全部查询缓存并重置去重哨兵（如 MC 版本切换后）。 */
+    public static void invalidateAll() {
+        lastSeed = Long.MIN_VALUE;
+        lastDim = Integer.MIN_VALUE;
+        clearAllCaches();
+    }
+
+    private static void clearAllCaches() {
         CellCache.clear();
         QueryPointCache.clear();
         StructureCache.clear();
         StrongholdCache.clear();
+        bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState.clearCache();
     }
 
     static final ExecutorService CACHE_WORKER;
@@ -34,5 +46,10 @@ public final class CacheHelper {
             t.setDaemon(true);
             return t;
         });
+    }
+
+    /** 缓存/后台计算共用线程池 (包外只读访问, 如访问检测)。 */
+    public static ExecutorService worker() {
+        return CACHE_WORKER;
     }
 }

@@ -8,8 +8,11 @@ import java.lang.foreign.ValueLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import net.minecraft.SharedConstants;
 
@@ -18,6 +21,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.QueryPointCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorProvider;
@@ -179,6 +183,17 @@ public final class Xsm {
 
     private static long lastSeed = Long.MIN_VALUE;
     private static int lastDim = Integer.MIN_VALUE;
+    private static String lastAppliedVersion = null;
+    private static String lastRejectedVersion = null;
+
+    /**
+     * 版本选择器展示的 MC 版本（倒序，仅 26.1+；ViaVersion 跨版本场景）。
+     * <p>
+     * C 侧 {@code mcVersionMap} 支持更多旧版本（配置中已有的值仍可生效），
+     * 但 UI 仅提供 26.1+ 选项；新 MC 版本发布时在此追加。
+     */
+    public static final List<String> SUPPORTED_VERSIONS = List.of(
+            "26.3", "26.2", "26.1");
 
     public static void setGameVersion() {
         final var version = SharedConstants.getCurrentVersion().name();
@@ -190,6 +205,38 @@ public final class Xsm {
                 throw new IllegalStateException("Unsupported game version: " + version);
             }
         }
+    }
+
+    /**
+     * 应用世界生成 MC 版本（已去重）。null 表示跟随当前客户端版本。
+     *
+     * @return false 表示版本字符串不被 C 侧支持（保持原版本不变）
+     */
+    public static boolean applyGameVersion(@Nullable String version) {
+        final String target = version != null ? version : SharedConstants.getCurrentVersion().name();
+        if (Objects.equals(target, lastAppliedVersion))
+            return true;
+        if (Objects.equals(target, lastRejectedVersion))
+            return false;
+        try (Arena arena = Arena.ofConfined()) {
+            boolean success = XsmNative.setGameVersion(arena.allocateFrom(target));
+            if (!success) {
+                lastRejectedVersion = target;
+                LOGGER.warn("Unsupported MC version: {}, keeping current version ({})", target, lastAppliedVersion);
+                return false;
+            }
+        }
+        lastAppliedVersion = target;
+        // C 侧 setGameVersion 已重置 gen_setWorld，强制后续重新 setWorld 并清空全部缓存
+        resetWorldState();
+        CacheHelper.invalidateAll();
+        return true;
+    }
+
+    /** 重置种子/维度去重哨兵，强制下一次 setWorld 真正下发到 C 侧。 */
+    public static void resetWorldState() {
+        lastSeed = Long.MIN_VALUE;
+        lastDim = Integer.MIN_VALUE;
     }
 
     /** 设置世界种子/维度（已缓存去重）。 */
@@ -494,6 +541,104 @@ public final class Xsm {
                         z.getAtIndex(ValueLayout.JAVA_INT, i));
             }
             return out;
+        }
+    }
+
+    /**
+     * 单口箱子的战利品数据。
+     *
+     * @param chestX,chestZ 箱子方块坐标 (来自 cubiomes piece 数据)
+     * @param lootSeed      该箱子的战利品种子
+     * @param pieceName     cubiomes piece 名称 (如 "TeDP")
+     * @param lootTable     战利品表名称 (如 "desert_pyramid")
+     * @param items         战利品列表 (顺序即容器槽位顺序)
+     */
+    public record ChestLoot(int chestX, int chestZ, long lootSeed,
+                            String pieceName, String lootTable, List<LootItem> items) {
+    }
+
+    /** 单件战利品。 */
+    public record LootItem(int globalItemId, int count, List<int[]> enchantments) {
+    }
+
+    private static final int LOOT_BUF_CAP = 4096;
+    private static final int LOOT_NAME_SLOT = 64;
+
+    /**
+     * 查询结构位置处的箱子战利品 (复刻 SeedMapper showLoot 管线)。
+     * <p>
+     * 布局 (C 端): 每口箱子 5 个头部 int32
+     * {@code [chestX, chestZ, lootSeedLo, lootSeedHi, itemCount]},
+     * 然后每个物品 {@code [globalItemId, count, enchantmentCount, (id, level)×ench]}。
+     *
+     * @param structureType 结构类型 (cubiomes StructureType 枚举值)
+     * @param blockX,blockZ 结构生成点方块坐标
+     * @return 箱子列表; 空列表 = 无战利品/不支持; {@code null} = native 错误
+     */
+    public static @Nullable List<ChestLoot> queryStructureLoot(int structureType, int blockX, int blockZ) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment data = arena.allocate(4L * LOOT_BUF_CAP);
+            MemorySegment written = arena.allocate(4);
+            MemorySegment chests = arena.allocate(4);
+            MemorySegment pieceNames = arena.allocate(128L * LOOT_NAME_SLOT);
+            MemorySegment lootTables = arena.allocate(128L * LOOT_NAME_SLOT);
+            int rc = XsmNative.xsmQueryStructureLoot(
+                    structureType, blockX, blockZ, LOOT_BUF_CAP, data, written, chests,
+                    pieceNames, lootTables);
+            if (rc != 0)
+                return rc == -2 ? List.of() : null;
+            int nChests = chests.get(ValueLayout.JAVA_INT, 0);
+            int w = written.get(ValueLayout.JAVA_INT, 0);
+            if (nChests <= 0)
+                return List.of();
+
+            List<ChestLoot> out = new ArrayList<>(nChests);
+            int o = 0;
+            for (int c = 0; c < nChests && o < w; c++) {
+                int chestX = data.getAtIndex(ValueLayout.JAVA_INT, o++);
+                int chestZ = data.getAtIndex(ValueLayout.JAVA_INT, o++);
+                long seedLo = Integer.toUnsignedLong(data.getAtIndex(ValueLayout.JAVA_INT, o++));
+                long seedHi = Integer.toUnsignedLong(data.getAtIndex(ValueLayout.JAVA_INT, o++));
+                long lootSeed = (seedHi << 32) | seedLo;
+                int itemCount = data.getAtIndex(ValueLayout.JAVA_INT, o++);
+                String pieceName = pieceNames.getString((long) c * LOOT_NAME_SLOT);
+                String lootTable = lootTables.getString((long) c * LOOT_NAME_SLOT);
+                List<LootItem> items = new ArrayList<>(itemCount);
+                for (int i = 0; i < itemCount && o < w; i++) {
+                    int gid = data.getAtIndex(ValueLayout.JAVA_INT, o++);
+                    int count = data.getAtIndex(ValueLayout.JAVA_INT, o++);
+                    int enchCount = data.getAtIndex(ValueLayout.JAVA_INT, o++);
+                    List<int[]> ench = new ArrayList<>(enchCount);
+                    for (int e = 0; e < enchCount && o < w; e++) {
+                        int id = data.getAtIndex(ValueLayout.JAVA_INT, o++);
+                        int level = data.getAtIndex(ValueLayout.JAVA_INT, o++);
+                        ench.add(new int[] { id, level });
+                    }
+                    items.add(new LootItem(gid, count, ench));
+                }
+                out.add(new ChestLoot(chestX, chestZ, lootSeed, pieceName, lootTable, items));
+            }
+            return out;
+        }
+    }
+
+    /** 查询 global item id 对应的物品名称 (如 {@code minecraft:apple})。 */
+    public static @Nullable String itemName(int globalItemId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(64);
+            if (XsmNative.xsmItemName(globalItemId, out, 64))
+                return out.getString(0);
+            return null;
+        }
+    }
+
+    /** 查询附魔 id 对应的附魔名称 (如 {@code sharpness}, 无 {@code minecraft:} 前缀)。 */
+    public static @Nullable String enchantmentName(int enchantmentId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(64);
+            if (XsmNative.xsmEnchantmentName(enchantmentId, out, 64))
+                return out.getString(0);
+            return null;
         }
     }
 }

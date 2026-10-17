@@ -1,4 +1,4 @@
-package bid.yuanlu.seedmap4xaero.client.configs;
+package bid.yuanlu.seedmap4xaero.client.configs.basic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -19,6 +19,7 @@ import java.util.BitSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 
@@ -45,6 +46,21 @@ class ServerConfigTest {
         assertEquals(expect.seed(), actual.seed());
         assertEquals(expect.getDisabledStructures(), actual.getDisabledStructures());
         assertEquals(expect.getDisabledBiomes(), actual.getDisabledBiomes());
+        assertEquals(expect.mcVersion(), actual.mcVersion());
+    }
+
+    @Test
+    void seedHistoryMruSnapshot() {
+        ConfigData cfg = new ConfigData();
+        assertTrue(cfg.getSeedHistory().isEmpty());
+        cfg.useSeed(42L);
+        cfg.useSeed(999L);
+        cfg.useSeed(42L); // MRU 提前
+        var hist = cfg.getSeedHistory();
+        assertEquals(2, hist.size());
+        assertEquals(42L, hist.get(0).seed());
+        assertEquals(999L, hist.get(1).seed());
+        assertFalse(hist.get(0).lastUsed().isEmpty());
     }
 
     @Test
@@ -53,8 +69,8 @@ class ServerConfigTest {
         Path file = tmp.resolve("sub/server_config.sm4x");
         Files.createDirectories(file.getParent());
 
-        cfg.write(file);
-        ConfigData read = ConfigData.read(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
 
         assertEquals("Vanilla", read.getTheme());
         assertTrue(read.isInvisibleBiomes());
@@ -67,8 +83,8 @@ class ServerConfigTest {
     void emptyConfigRoundTrip() throws IOException {
         ConfigData cfg = new ConfigData();
         Path file = tmp.resolve("empty.sm4x");
-        cfg.write(file);
-        ConfigData read = ConfigData.read(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
         assertNull(read.getTheme());
         assertFalse(read.isInvisibleBiomes());
         assertEquals(1.0f, read.getStructureIconSize());
@@ -79,17 +95,17 @@ class ServerConfigTest {
     void corruptMagicWordRejected() throws IOException {
         Path file = tmp.resolve("bad.sm4x");
         Files.writeString(file, "THIS IS NOT A CONFIG FILE");
-        org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> ConfigData.read(file));
+        org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> Sm4xFile.readFrame(file, ConfigData.CODEC));
     }
 
     @Test
     void truncatedFileRejected() throws IOException {
         ConfigData cfg = sample(new ConfigData());
         Path file = tmp.resolve("trunc.sm4x");
-        cfg.write(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
         byte[] all = Files.readAllBytes(file);
         Files.write(file, java.util.Arrays.copyOf(all, all.length / 2));
-        org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> ConfigData.read(file));
+        org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> Sm4xFile.readFrame(file, ConfigData.CODEC));
     }
 
     @Test
@@ -169,8 +185,8 @@ class ServerConfigTest {
         wc.setVariantEnabled(StructureType.VILLAGE.id, 8, false); // 僵尸平原村禁用
 
         Path file = tmp.resolve("bits.sm4x");
-        cfg.write(file);
-        ConfigData read = ConfigData.read(file);
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
 
         var flags = read.getWorld("w").getDisabledStructures();
         assertFalse(flags.isStructureSet(StructureType.VILLAGE.id), "village visible");
@@ -249,6 +265,52 @@ class ServerConfigTest {
     }
 
     @Test
+    void mcVersionDefaultsToNull() {
+        assertNull(new ConfigData().getOrCreateWorld("w").mcVersion(), "default follows client version");
+    }
+
+    @Test
+    void mcVersionRoundTrip() throws IOException {
+        ConfigData cfg = new ConfigData();
+        cfg.getOrCreateWorld("w").mcVersion("1.21.9");
+        Path file = tmp.resolve("mcv.sm4x");
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        assertEquals("1.21.9", Sm4xFile.readFrame(file, ConfigData.CODEC).getWorld("w").mcVersion());
+
+        // null（跟随客户端）也要能往返
+        ConfigData auto = new ConfigData();
+        auto.getOrCreateWorld("w").mcVersion(null);
+        Path file2 = tmp.resolve("mcv_auto.sm4x");
+        Sm4xFile.writeFrame(file2, auto, ConfigData.CODEC);
+        assertNull(Sm4xFile.readFrame(file2, ConfigData.CODEC).getWorld("w").mcVersion());
+    }
+
+    @Test
+    void v1WorldConfigWithoutMcVersionLoads() throws IOException {
+        // WorldConfig record version 2 与 1 前缀兼容: 尾部仅多一个 mcVersion 字段
+        // (null 时恰为 1 字节 false)。去掉该字节即得合法的 v1 记录。
+        ConfigData main = new ConfigData();
+        var wc = main.getOrCreateWorld("w");
+        wc.seed(9L);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bos)) {
+            wc.write(out);
+        }
+        byte[] all = bos.toByteArray();
+        // 头部 int 改回 1 + 去掉尾部 mcVersion 字节 → 合法的 v1 记录
+        byte[] v1Bytes = java.util.Arrays.copyOf(all, all.length - 1);
+        v1Bytes[0] = 0;
+        v1Bytes[1] = 0;
+        v1Bytes[2] = 0;
+        v1Bytes[3] = 1;
+
+        WorldConfig read = WorldConfig.read(main,
+                new DataInputStream(new ByteArrayInputStream(v1Bytes)));
+        assertEquals(9L, read.seed());
+        assertNull(read.mcVersion(), "v1 record has no mcVersion → follow client");
+    }
+
+    @Test
     void overwriteMovesPreviousToOld() throws IOException {
         ConfigData first = new ConfigData();
         first.getOrCreateWorld("w").seed(1L);
@@ -261,7 +323,108 @@ class ServerConfigTest {
         ConfigData loaded = ServerConfig.loadConfig(tmp, "srvD");
         assertEquals(2L, loaded.getWorld("w").seed());
         // 老文件应为第一次的内容
-        ConfigData old = ConfigData.read(tmp.resolve("srvD/server_config.sm4x.old"));
+        ConfigData old = Sm4xFile.readFrame(tmp.resolve("srvD/server_config.sm4x.old"), ConfigData.CODEC);
         assertEquals(1L, old.getWorld("w").seed());
+    }
+
+    @Test
+    void lootPreviewRoundTrip() throws IOException {
+        ConfigData cfg = new ConfigData();
+        cfg.setLootPreview(true);
+        Path file = tmp.resolve("loot.sm4x");
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
+        assertTrue(read.isLootPreview());
+    }
+
+    @Test
+    void lootPreviewDefaultOff() {
+        assertFalse(new ConfigData().isLootPreview());
+    }
+
+    @Test
+    void oldV0FileWithoutLootPreviewLoads() throws IOException {
+        // 模拟旧版 (v0) 文件: seeds 后直接跟结尾 MAGIC_WORD, 无 lootPreview/mode 字节
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bos)) {
+            out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8));
+            out.writeInt(0); // version 0
+            out.writeInt(0); // worlds 为空
+            out.writeBoolean(false); // no theme
+            out.writeBoolean(false); // invisibleBiomes
+            out.writeBoolean(false); // invisibleStructures
+            out.writeFloat(1.0f); // structureIconSize
+            out.writeInt(0); // seeds 为空
+            out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8)); // 结尾 MAGIC, 无 lootPreview
+        }
+        Path file = tmp.resolve("oldv0.sm4x");
+        Files.write(file, bos.toByteArray());
+
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
+        assertFalse(read.isLootPreview(), "old v0 file without lootPreview byte defaults false");
+        assertEquals(LootDisplayMode.QUICK_PEEK, read.getLootDisplayMode());
+    }
+
+    @Test
+    void v1FileLoadsLootPreviewAndMode() throws IOException {
+        // 显式构造 v1 文件: seeds 后是 lootPreview(1字节) + mode(1字节), 再结尾 MAGIC
+        for (LootDisplayMode mode : LootDisplayMode.values()) {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            try (DataOutputStream out = new DataOutputStream(bos)) {
+                out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8));
+                out.writeInt(1); // version 1
+                out.writeInt(0); // worlds 为空
+                out.writeBoolean(false); // no theme
+                out.writeBoolean(false); // invisibleBiomes
+                out.writeBoolean(false); // invisibleStructures
+                out.writeFloat(1.0f); // structureIconSize
+                out.writeInt(0); // seeds 为空
+                out.writeBoolean(true); // lootPreview = true
+                out.writeByte(mode.ordinal()); // mode
+                out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8)); // 结尾 MAGIC
+            }
+            Path file = tmp.resolve("v1_mode_" + mode.ordinal() + ".sm4x");
+            Files.write(file, bos.toByteArray());
+
+            ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
+            assertEquals(mode, read.getLootDisplayMode(), "v1 file should restore mode");
+            assertTrue(read.isLootPreview(), "v1 file should restore lootPreview");
+        }
+    }
+
+    @Test
+    void v1WriteProducedByConfig() throws IOException {
+        // cfg.write() 应产出 version 1 文件, 且首字节探测不到任何旧格式歧义
+        ConfigData cfg = new ConfigData();
+        cfg.setLootPreview(true);
+        cfg.setLootDisplayMode(LootDisplayMode.TILED_DETAIL);
+        Path file = tmp.resolve("v1write.sm4x");
+        Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+
+        byte[] bytes = Files.readAllBytes(file);
+        String header = new String(bytes, StandardCharsets.UTF_8);
+        assertTrue(header.startsWith("SEEDMAP4XAERO"), "magic word header");
+        // 版本号 4 字节紧跟 MAGIC (13 字节)
+        int version = ((bytes[13] & 0xFF) << 24) | ((bytes[14] & 0xFF) << 16)
+                | ((bytes[15] & 0xFF) << 8) | (bytes[16] & 0xFF);
+        assertEquals(1, version, "cfg.write should emit version 1");
+
+        ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
+        assertEquals(LootDisplayMode.TILED_DETAIL, read.getLootDisplayMode());
+        assertTrue(read.isLootPreview());
+    }
+
+    @Test
+    void lootDisplayModeRoundTrip() throws IOException {
+        for (LootDisplayMode mode : LootDisplayMode.values()) {
+            ConfigData cfg = new ConfigData();
+            cfg.setLootPreview(true);
+            cfg.setLootDisplayMode(mode);
+            Path file = tmp.resolve("mode_" + mode.ordinal() + ".sm4x");
+            Sm4xFile.writeFrame(file, cfg, ConfigData.CODEC);
+            ConfigData read = Sm4xFile.readFrame(file, ConfigData.CODEC);
+            assertEquals(mode, read.getLootDisplayMode());
+            assertTrue(read.isLootPreview(), "lootPreview should survive round trip");
+        }
     }
 }
