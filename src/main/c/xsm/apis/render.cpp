@@ -641,17 +641,13 @@ uint32_t queryStrongholdsRange(int32_t from, int32_t to,
   if (!gen_setWorld || tn.g.dim != DIM_OVERWORLD) return 0;
   if (to <= from || !outBlockX || !outBlockZ) return 0;
 
-  Generator g;
-  setupGenerator(&g, tn.g.mc, 0);
-  applySeed(&g, DIM_OVERWORLD, tn.g.seed);
-
   const bool canSkip = tn.g.mc > MC_1_19_2;
   StrongholdIter sh;
   initFirstStronghold(&sh, tn.g.mc, tn.g.seed & MASK48);
   uint32_t n = 0;
   for (int k = 0; k < to; k++) {
     const bool want = (k >= from);
-    const Generator* gk = (canSkip && !want) ? NULL : &g;
+    const Generator* gk = (canSkip && !want) ? NULL : &tn.g;
     int rem = nextStronghold(&sh, gk);
     if (rem < 0) break;
     if (want) {
@@ -662,6 +658,16 @@ uint32_t queryStrongholdsRange(int32_t from, int32_t to,
     if (rem == 0) break;
   }
   return n;
+}
+
+int32_t querySpawn(int32_t* outBlockX, int32_t* outBlockZ) {
+  if (!gen_setWorld || tn.g.dim != DIM_OVERWORLD) return 0;
+  if (!outBlockX || !outBlockZ) return 0;
+
+  Pos spawn = getSpawn(&tn.g);
+  *outBlockX = spawn.x;
+  *outBlockZ = spawn.z;
+  return 1;
 }
 
 

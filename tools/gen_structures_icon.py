@@ -115,6 +115,7 @@ SPRITES: "dict[int, str | tuple[str, ...] | dict[int, str | tuple[str, ...]]]" =
         3: "BlockSprite_trial-spawner-inactive.png",
     },
     25: "ItemSprite_ender-eye.png",  # stronghold
+    26: "ItemSprite_bed.png",  # world_spawn
 }
 
 
