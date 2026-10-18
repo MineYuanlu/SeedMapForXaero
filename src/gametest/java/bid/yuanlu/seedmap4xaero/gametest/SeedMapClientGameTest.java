@@ -2,12 +2,22 @@ package bid.yuanlu.seedmap4xaero.gametest;
 
 import java.util.Objects;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+
+import org.jetbrains.annotations.Nullable;
+
+import bid.yuanlu.seedmap4xaero.client.configs.basic.ConfigData;
+import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureData;
+import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataLegacy;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache.CellKey;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
@@ -15,7 +25,9 @@ import bid.yuanlu.seedmap4xaero.client.gui.SeedMapPanel;
 import bid.yuanlu.seedmap4xaero.client.mixin.SeedMapMixin;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.render.HighlightHudRenderer;
+import bid.yuanlu.seedmap4xaero.client.structure.ChestLootWidget;
 import bid.yuanlu.seedmap4xaero.client.structure.HighlightedStructures;
+import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -64,6 +76,9 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
 
             assertSeedResolved(context, singleplayer);
 
+            // 配置系统 v2: 预置 legacy .sm4x → 开图激活时真实迁移
+            seedLegacyConfigs(context);
+
             openWorldMap(context);
             context.waitForScreen(GuiMap.class);
 
@@ -74,11 +89,17 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             assertCellCachePopulated(context);
             assertStructureCachePopulated(context);
 
+            // 配置系统 v2: 迁移产物 + JSON 落盘 + marks region 分片
+            assertLegacyMigrated(context);
+            assertJsonConfigOnDisk(context);
+
             context.takeScreenshot("seed-map-final");
 
             assertPanelScreenshots(context, singleplayer);
 
             assertHighlightHudHiddenWhenBehind(context, singleplayer);
+
+            assertLootTitleTooltipNoCrash(context);
 
             LOGGER.info("seed-map E2E assertions passed");
 
@@ -180,6 +201,139 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     private static void assertStructureCachePopulated(ClientGameTestContext context) {
         context.waitFor(client -> !StructureCache.REGIONS.isEmpty(), 200);
         LOGGER.info("StructureCache types = {}", StructureCache.REGIONS.keySet());
+    }
+
+    /**
+     * 开图前预置 legacy {@code .sm4x}（v0.6.x 二进制格式，由冻结的 legacy writer
+     * 生成）：activate 加载时走真实迁移链路。标记放在当前单机 (seed=KNOWN_SEED,
+     * mwId="") 下 (12345,-5432) 供后续断言。
+     */
+    private static void seedLegacyConfigs(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var session = WorldMapSession.getCurrentSession();
+            if (session == null || !session.isUsable()) {
+                throw new AssertionError("session not usable before map open");
+            }
+            var mp = session.getMapProcessor();
+            String mainId = mp.getCurrentWorldId();
+            if (mainId == null && mp.getMapWorld() != null) {
+                mainId = mp.getMapWorld().getMainId();
+            }
+            if (mainId == null) {
+                throw new AssertionError("mainId unavailable before map open");
+            }
+            var base = client.gameDirectory.toPath()
+                    .resolve("xaero").resolve("seed-map-for-xaero").resolve(mainId);
+            try {
+                java.nio.file.Files.createDirectories(base);
+                Sm4xFile.writeFrame(base.resolve("server_config.sm4x"), ConfigData.empty(),
+                        ConfigData.LEGACY_CODEC);
+                var dim = new StructureDataLegacy.LegacyDim(java.util.Map.of(
+                        StructureType.VILLAGE.id,
+                        java.util.List.of(new StructureDataLegacy.LegacyMark(
+                                StructureDataConfig.keyOf(12345, -5432), 7, "e2e组"))));
+                var snap = new StructureDataLegacy.Snapshot(
+                        java.util.List.of(),
+                        java.util.List.of(new StructureData.UserGroup("e2e组", 0xFF00AAFF)),
+                        new Long2ObjectOpenHashMap<>(java.util.Map.of(
+                                KNOWN_SEED, new StructureDataLegacy.LegacySeed(java.util.Map.of("", dim)))));
+                Sm4xFile.writeFrame(base.resolve("structure_data.sm4x"), snap,
+                        StructureDataLegacy.LEGACY_CODEC);
+            } catch (java.io.IOException e) {
+                throw new AssertionError("failed to seed legacy configs", e);
+            }
+            LOGGER.info("legacy configs seeded at {}", base);
+        });
+        context.waitTick();
+    }
+
+    /** 开图后断言 legacy → JSON 迁移产物：改名 + json + 会话内可见（设置 + 标记）。 */
+    private static void assertLegacyMigrated(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var base = client.gameDirectory.toPath()
+                    .resolve("xaero").resolve("seed-map-for-xaero").resolve(ServerConfig.activeMainId());
+            if (!java.nio.file.Files.exists(base.resolve("server_config.sm4x.legacy"))) {
+                throw new AssertionError("server_config.sm4x not migrated/renamed");
+            }
+            if (!java.nio.file.Files.exists(base.resolve("structure_data.sm4x.legacy"))) {
+                throw new AssertionError("structure_data.sm4x not migrated/renamed");
+            }
+            if (java.nio.file.Files.exists(base.resolve("server_config.sm4x"))
+                    || java.nio.file.Files.exists(base.resolve("structure_data.sm4x"))) {
+                throw new AssertionError("legacy files must be retired after migration");
+            }
+
+            var settings = StructureDataConfig.getActiveData();
+            if (settings == null || settings.colorOf("e2e组") != 0xFF00AAFF) {
+                throw new AssertionError("user group from legacy not visible in session");
+            }
+            var mark = StructureDataConfig.getMark(StructureType.VILLAGE,
+                    StructureDataConfig.keyOf(12345, -5432));
+            if (mark == null || mark.minDist() != 7 || !"e2e组".equals(mark.group())) {
+                throw new AssertionError("migrated mark not visible in session: " + mark);
+            }
+            LOGGER.info("legacy migration E2E assertions passed");
+        });
+        context.waitTick();
+    }
+
+    /**
+     * 配置系统 v2 落盘验证：
+     * <ol>
+     * <li>server_config.json 为纯 JSON（设置变更 → flush → 内容可读回）</li>
+     * <li>迁移标记的 region 分片存在且含结构 key + 用户组</li>
+     * <li>会话内新 markVisited → flush → 新 region 分片生成</li>
+     * </ol>
+     */
+    private static void assertJsonConfigOnDisk(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var mainId = ServerConfig.activeMainId();
+            if (mainId == null)
+                throw new AssertionError("config not activated");
+            var base = client.gameDirectory.toPath()
+                    .resolve("xaero").resolve("seed-map-for-xaero").resolve(mainId);
+
+            // 1. server_config.json: 设置变更 → flush → 纯 JSON 可读
+            var cfg = ServerConfig.getActiveConfig();
+            if (cfg == null)
+                throw new AssertionError("active config missing");
+            cfg.setInvisibleBiomes(true);
+            ServerConfig.flush();
+            var jsonPath = base.resolve("server_config.json");
+            if (!java.nio.file.Files.exists(jsonPath))
+                throw new AssertionError("server_config.json not created");
+            try {
+                String text = java.nio.file.Files.readString(jsonPath);
+                if (!text.strip().startsWith("{"))
+                    throw new AssertionError("server_config.json is not plain JSON: " + text);
+                if (!text.contains("\"invisibleBiomes\": true"))
+                    throw new AssertionError("setting change not persisted:\n" + text);
+            } catch (java.io.IOException e) {
+                throw new AssertionError("failed to read server_config.json", e);
+            }
+            cfg.setInvisibleBiomes(false); // 还原
+
+            // 2. 迁移标记的 region 分片 (12345,-5432) → region (12,-6); mwId "" → default/
+            var marksDir = base.resolve("marks")
+                    .resolve(Long.toHexString(KNOWN_SEED))
+                    .resolve("default");
+            try {
+                String text = java.nio.file.Files.readString(marksDir.resolve("r.12.-6.json"));
+                if (!text.contains("\"minecraft:village\"") || !text.contains("e2e组"))
+                    throw new AssertionError("region file missing structure key/group:\n" + text);
+            } catch (java.io.IOException e) {
+                throw new AssertionError("migrated marks region file missing: " + marksDir, e);
+            }
+
+            // 3. 会话内新访问 → flush → 新 region 分片 (23456,-6789) → region (22,-7)
+            StructureDataConfig.markVisited(StructureType.FORTRESS,
+                    StructureDataConfig.keyOf(23456, -6789), 42);
+            StructureDataConfig.flush();
+            if (!java.nio.file.Files.exists(marksDir.resolve("r.22.-7.json")))
+                throw new AssertionError("live markVisited region file not created");
+            LOGGER.info("json config E2E assertions passed (server_config.json + marks shards)");
+        });
+        context.waitTick();
     }
 
     /** 要高亮的真实结构位置。 */
@@ -301,6 +455,124 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
 
         context.runOnClient(client -> HighlightedStructures.clear());
         LOGGER.info("highlight-hud E2E assertions passed");
+    }
+
+    /**
+     * 回归: 战利品标题 tooltip 经 {@code CompatGui.tooltip} 反射调用（v0.6.2 兼容层
+     * 重构引入漏传 {@code GuiGraphicsExtractor} 接收者的崩溃）。用真实渲染帧驱动
+     * {@link ChestLootWidget#extractRenderState} 命中标题, 断言不再崩。
+     */
+    private static void assertLootTitleTooltipNoCrash(ClientGameTestContext context) {
+        openWorldMap(context);
+        context.waitForScreen(GuiMap.class);
+        context.waitTicks(20);
+
+        LootTarget target = context.computeOnClient(SeedMapClientGameTest::findLootStructure);
+        if (target == null) {
+            throw new AssertionError("no loot-producing structure found for loot tooltip test");
+        }
+
+        int[] widgetPos = context.computeOnClient(client -> {
+            // 平铺详情: 悬停即自动固定 → 鼠标离开图标后 widget 常驻
+            ServerConfig.setLootPreviewEnabled(true);
+            ServerConfig.setLootDisplayMode(LootDisplayMode.TILED_DETAIL);
+            LootPreviewState.onHover(target.type(), target.blockX(), target.blockZ(),
+                    100, 100, client.getWindow().getGuiScaledWidth(),
+                    client.getWindow().getGuiScaledHeight());
+            ChestLootWidget widget = LootPreviewState.widget();
+            if (widget == null) {
+                throw new AssertionError("loot widget not built for " + target);
+            }
+            return new int[] { widget.getX(), widget.getY() };
+        });
+
+        // 标题左上角 = widget.x + 8, widget.y + 6 (renderContainer 内 minX/minY); +2 落在字内
+        double guiScale = context.computeOnClient(
+                client -> (double) client.getWindow().getWidth() / client.getWindow().getGuiScaledWidth());
+        context.getInput().setCursorPos((widgetPos[0] + 10) * guiScale, (widgetPos[1] + 8) * guiScale);
+        context.waitTicks(5);
+
+        context.runOnClient(client -> {
+            Object screen = currentScreen(client);
+            if (screen != SCREEN_UNKNOWN && !(screen instanceof GuiMap)) {
+                throw new AssertionError("client left map (crash) during loot title tooltip: " + screen);
+            }
+            if (!LootPreviewState.hasWidget()) {
+                throw new AssertionError("loot widget disappeared during title hover");
+            }
+        });
+        context.takeScreenshot("loot-title-tooltip");
+        LOGGER.info("loot title tooltip E2E assertion passed");
+
+        context.runOnClient(client -> {
+            LootPreviewState.close();
+            ServerConfig.setLootPreviewEnabled(false);
+            ServerConfig.setLootDisplayMode(LootDisplayMode.QUICK_PEEK);
+        });
+        context.waitTick();
+    }
+
+    /** 找一个能产出非空战利品的结构 (真实位置优先, 退化为栅格扫描沙漠神殿)。 */
+    private static @Nullable LootTarget findLootStructure(Minecraft client) {
+        for (var entry : StructureCache.REGIONS.entrySet()) {
+            if (!LootPreviewState.isLootSupported(entry.getKey())) {
+                continue;
+            }
+            for (var pos : entry.getValue()) {
+                if (!pos.loaded()) {
+                    continue;
+                }
+                var loot = LootPreviewState.queryLoot(entry.getKey(), pos.blockX(), pos.blockZ());
+                if (loot != null && !loot.isEmpty()) {
+                    return new LootTarget(entry.getKey(), pos.blockX(), pos.blockZ());
+                }
+            }
+        }
+        final int prx = Math.floorDiv((int) client.player.getX(), 512);
+        final int prz = Math.floorDiv((int) client.player.getZ(), 512);
+        final LootTarget[] holder = new LootTarget[1];
+        Xsm.queryRegionStructuresGrid(StructureType.DESERT_PYRAMID.id,
+                prx - 8, prz - 8, prx + 8, prz + 8, 0, 0, 0, 0,
+                (x, z, found, bx, bz, variant) -> {
+                    if (holder[0] != null || !found) {
+                        return;
+                    }
+                    var loot = LootPreviewState.queryLoot(StructureType.DESERT_PYRAMID, bx, bz);
+                    if (loot != null && !loot.isEmpty()) {
+                        holder[0] = new LootTarget(StructureType.DESERT_PYRAMID, bx, bz);
+                    }
+                });
+        return holder[0];
+    }
+
+    /** 战利品预览测试目标结构。 */
+    private record LootTarget(StructureType type, int blockX, int blockZ) {
+    }
+
+    /** {@link #currentScreen} 判定失败时的哨兵 (无法跨版本读取当前 screen)。 */
+    private static final Object SCREEN_UNKNOWN = new Object();
+
+    /**
+     * 跨版本读取当前 screen：26.1 为公有字段 {@code Minecraft.screen}，26.2 移除
+     * {@code Minecraft.setScreen} 后该字段不再可直接引用。反射字段/取值器，均不可得时
+     * 返回哨兵 (调用方跳过该断言，崩溃仍由渲染异常中止测试兜底)。
+     */
+    private static Object currentScreen(Minecraft client) {
+        for (String field : new String[] { "screen", "currentScreen" }) {
+            try {
+                java.lang.reflect.Field f = Minecraft.class.getDeclaredField(field);
+                f.setAccessible(true);
+                return f.get(client);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        for (String method : new String[] { "getScreen", "currentScreen" }) {
+            try {
+                return Minecraft.class.getMethod(method).invoke(client);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        return SCREEN_UNKNOWN;
     }
 
     /** REGIONS 中离玩家最近且已加载的结构。 */

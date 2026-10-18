@@ -45,22 +45,40 @@ public final class Xsm {
     private static void loadNativeLibrary() {
         String libName = System.mapLibraryName("xsmcore");
         String resourcePath = nativeResourcePath(libName);
+        Path tmp;
         try {
-            Path tmp = Files.createTempFile(libName, "");
-            try (InputStream in = Xsm.class.getResourceAsStream(resourcePath)) {
-                if (in == null) {
-                    throw new RuntimeException(
-                            "Native library not found in JAR: " + resourcePath
-                                    + " (os=" + osName() + ", arch=" + archName()
-                                    + ", android=" + isAndroid() + ")");
-                }
-                Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+            tmp = Files.createTempFile(libName, "");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create temp file for native library " + libName, e);
+        }
+        try (InputStream in = Xsm.class.getResourceAsStream(resourcePath)) {
+            if (in == null) {
+                throw new RuntimeException(
+                        "Native library not found in JAR: " + resourcePath
+                                + " (os=" + osName() + ", arch=" + archName()
+                                + ", android=" + androidSignal() + ")");
             }
-            tmp.toFile().deleteOnExit();
-            System.load(tmp.toAbsolutePath().toString());
+            Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(
-                    "Failed to load native library libxsmcore from " + resourcePath, e);
+                    "Failed to extract native library libxsmcore from " + resourcePath
+                            + " to " + tmp.toAbsolutePath(), e);
+        }
+        tmp.toFile().deleteOnExit();
+        try {
+            System.load(tmp.toAbsolutePath().toString());
+            LOGGER.info("[native-load] loaded {} ({} bytes, signal={})",
+                    resourcePath, tmp.toFile().length(), androidSignal());
+            int features = XsmNative.xsmGetStructFEATURE_NUM();
+            LOGGER.info("[native-load] smoke call ok: xsmGetStructFEATURE_NUM()={}", features);
+        } catch (UnsatisfiedLinkError e) {
+            LOGGER.error("[native-load] FAILED to load {} (os={}, arch={}, android={})",
+                    tmp.toAbsolutePath(), osName(), archName(), androidSignal(), e);
+            throw e;
+        } catch (Throwable e) {
+            LOGGER.error("[native-load] loaded but smoke call FAILED (os={}, arch={}, android={})",
+                    osName(), archName(), androidSignal(), e);
+            throw e;
         }
     }
 
@@ -110,12 +128,38 @@ public final class Xsm {
     }
 
     private static boolean isAndroid() {
+        return androidSignal() != null;
+    }
+
+    /** 返回 Android 检测命中的信号描述；非 Android 返回 null。 */
+    private static @Nullable String androidSignal() {
+        // FCL/Pojav 用桌面版 OpenJDK 起 MC 进程，android.os.Build 不在 classpath，
+        // 必须叠加系统属性/环境变量/路径等信号判定。
         try {
             Class.forName("android.os.Build");
-            return true;
-        } catch (ClassNotFoundException | LinkageError e) {
-            return false;
+            return "class:android.os.Build";
+        } catch (ClassNotFoundException | LinkageError ignored) {
+            // fall through
         }
+        String osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String osVersion = System.getProperty("os.version", "").toLowerCase(Locale.ROOT);
+        if (osName.contains("android")) {
+            return "os.name=" + System.getProperty("os.name");
+        }
+        if (osVersion.startsWith("android")) {
+            return "os.version=" + System.getProperty("os.version");
+        }
+        for (String key : new String[]{"POJAV_RENDERER", "POJAV_NATIVEDIR",
+                "FCL_NATIVEDIR", "POJAVEXEC_EGL"}) {
+            if (System.getenv().containsKey(key)) {
+                return "env:" + key;
+            }
+        }
+        String tmp = System.getProperty("java.io.tmpdir", "");
+        if (tmp.contains("/storage/emulated/") || tmp.contains("/data/user/0/")) {
+            return "tmpdir=" + tmp;
+        }
+        return null;
     }
 
     private static long lastSeed = Long.MIN_VALUE;
