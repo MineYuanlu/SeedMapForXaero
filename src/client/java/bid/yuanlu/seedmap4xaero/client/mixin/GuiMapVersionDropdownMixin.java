@@ -20,7 +20,7 @@ import xaero.map.gui.GuiMap;
 @Mixin(GuiMap.class)
 public class GuiMapVersionDropdownMixin {
 
-    @Inject(method = "mouseClicked", at = @At("HEAD"))
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void xsm$onMouseClicked(MouseButtonEvent event, boolean doubleClick,
             CallbackInfoReturnable<Boolean> cir) {
         var dd = VersionDropdown.active();
@@ -28,7 +28,7 @@ public class GuiMapVersionDropdownMixin {
             cir.setReturnValue(true);
     }
 
-    @Inject(method = "mouseScrolled", at = @At("HEAD"))
+    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
     private void xsm$onMouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY,
             CallbackInfoReturnable<Boolean> cir) {
         var dd = VersionDropdown.active();

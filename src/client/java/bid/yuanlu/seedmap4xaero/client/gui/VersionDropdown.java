@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import org.jetbrains.annotations.Nullable;
 
+import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import net.minecraft.SharedConstants;
@@ -142,7 +143,7 @@ public final class VersionDropdown {
         double mx = event.x();
         double my = event.y();
         if (expanded) {
-            if (overList(mx, my) && event.button() == 0) {
+            if (overList(mx, my) && event.button() == CompatInput.MOUSE_LEFT) {
                 int row = (int) ((my - y - height - LIST_PAD) / ROW_H);
                 int entry = scroll + row;
                 if (entry >= 0 && entry < entryCount())
@@ -151,12 +152,12 @@ public final class VersionDropdown {
                 return true;
             }
             expanded = false;
-            if (overButton(mx, my) && event.button() == 0) {
+            if (overButton(mx, my) && event.button() == CompatInput.MOUSE_LEFT) {
                 return true; // 再点按钮 = 收起
             }
             return true; // 展开时吞掉所有点击以关闭/避免误触下层
         }
-        if (overButton(mx, my) && event.button() == 0) {
+        if (overButton(mx, my) && event.button() == CompatInput.MOUSE_LEFT) {
             expanded = true;
             // 让当前选中项尽量可见
             String sel = currentSelection();

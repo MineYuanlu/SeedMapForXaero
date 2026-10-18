@@ -11,10 +11,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm.ChestLoot;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm.LootItem;
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -283,7 +283,7 @@ public class ChestLootWidget {
             return false; // 平铺无翻页按钮
         }
         int button = mouseButtonEvent.button();
-        if (button != InputConstants.MOUSE_BUTTON_LEFT) {
+        if (button != CompatInput.MOUSE_LEFT) {
             return false;
         }
         double mouseX = mouseButtonEvent.x();
