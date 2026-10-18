@@ -98,19 +98,19 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 └── utils/             # BitSetView (immutable BitSet wrapper)
 src/client/resources/assets/seed-map-for-xaero/textures/icons/   # biomes.png, structures.png, biomes.ini
 src/main/
-├── java/…/XaeroSeedMap.java   # ModInitializer (empty)
+├── java/…/XaeroSeedMap.java   # ModInitializer + Identifier id() helper
 ├── resources/          # fabric.mod.json + mixins json + lang/ + icon.png
 └── c/                # cubiomes submodule + xsm/ (AGENTS.md: C API & gotchas)
 src/gametest/         # E2E client gametest (see doc/testing.md)
 src/test/             # JUnit 单测 + native 集成测试 (see doc/testing.md)
-tools/                # resolve_versions.py, gen_biomes_icon.py, gen_structures_icon.py, generate_lib_src.py
+tools/                # resolve_versions.py, gen_biomes_icon.py, gen_structures_icon.py, generate_lib_src.py, check_compat_imports.sh (版本敏感 import guardrail，pr-check 强制执行)
 ```
 
 ### Cross-cutting rules
 
 - All UI strings go through i18n (`Component.translatable` / `I18n.get`) — add both `en_us.json` and `zh_cn.json`
 - LSP maybe shows false errors when edit java files — only `./gradlew build` is authoritative
-- Config file is **not JSON** — binary format with magic word; corrupt file silently falls back to `.old` then fresh config (details in `configs/AGENTS.md`)
+- Config persistence is **JSON v2** (`server_config.json` / `structure_settings.json` / `marks/` regional shards); legacy binary `.sm4x` auto-migrates on load, then renames to `*.legacy`. Load fallback chain: `.json` → `.json.old` → `.sm4x` (migrate) → `.sm4x.old` → fresh (details in `configs/AGENTS.md`)
 
 ## Dependencies
 
