@@ -493,8 +493,9 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         context.waitTicks(5);
 
         context.runOnClient(client -> {
-            if (!(client.screen instanceof GuiMap)) {
-                throw new AssertionError("client left map (crash) during loot title tooltip");
+            Object screen = currentScreen(client);
+            if (screen != SCREEN_UNKNOWN && !(screen instanceof GuiMap)) {
+                throw new AssertionError("client left map (crash) during loot title tooltip: " + screen);
             }
             if (!LootPreviewState.hasWidget()) {
                 throw new AssertionError("loot widget disappeared during title hover");
@@ -546,6 +547,32 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
 
     /** 战利品预览测试目标结构。 */
     private record LootTarget(StructureType type, int blockX, int blockZ) {
+    }
+
+    /** {@link #currentScreen} 判定失败时的哨兵 (无法跨版本读取当前 screen)。 */
+    private static final Object SCREEN_UNKNOWN = new Object();
+
+    /**
+     * 跨版本读取当前 screen：26.1 为公有字段 {@code Minecraft.screen}，26.2 移除
+     * {@code Minecraft.setScreen} 后该字段不再可直接引用。反射字段/取值器，均不可得时
+     * 返回哨兵 (调用方跳过该断言，崩溃仍由渲染异常中止测试兜底)。
+     */
+    private static Object currentScreen(Minecraft client) {
+        for (String field : new String[] { "screen", "currentScreen" }) {
+            try {
+                java.lang.reflect.Field f = Minecraft.class.getDeclaredField(field);
+                f.setAccessible(true);
+                return f.get(client);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        for (String method : new String[] { "getScreen", "currentScreen" }) {
+            try {
+                return Minecraft.class.getMethod(method).invoke(client);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        return SCREEN_UNKNOWN;
     }
 
     /** REGIONS 中离玩家最近且已加载的结构。 */
