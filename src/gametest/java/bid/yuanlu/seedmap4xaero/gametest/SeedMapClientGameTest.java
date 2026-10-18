@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache.CellKey;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
@@ -100,6 +101,8 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             assertHighlightHudHiddenWhenBehind(context, singleplayer);
 
             assertLootTitleTooltipNoCrash(context);
+
+            assertLootPaging(context);
 
             LOGGER.info("seed-map E2E assertions passed");
 
@@ -510,6 +513,132 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             ServerConfig.setLootDisplayMode(LootDisplayMode.QUICK_PEEK);
         });
         context.waitTick();
+    }
+
+    /**
+     * 回归 (issue #30): 详情模式下翻页按钮点击无效 (26.3)。
+     * <p>
+     * 用真实 MC 输入路径驱动: 详情模式悬停自动固定 widget → 将光标移到"下一页"箭头 →
+     * {@code pressMouse(CompatInput.MOUSE_LEFT)} → 断言 {@code chestIndex} 递增。绕过 {@code onHover} 的自动
+     * 命中检测 (与 {@link #assertLootTitleTooltipNoCrash} 一致), 但点击仍经
+     * {@code MouseHandler → GuiMap.mouseClicked → StructureClickMixin → LootPreviewState}。
+     */
+    private static void assertLootPaging(ClientGameTestContext context) {
+        openWorldMap(context);
+        context.waitForScreen(GuiMap.class);
+        context.waitTicks(20);
+
+        LootTarget target = context.computeOnClient(client -> {
+            ServerConfig.setLootPreviewEnabled(true);
+            ServerConfig.setLootDisplayMode(LootDisplayMode.DETAIL);
+            return findMultiChestLootStructure(client);
+        });
+        if (target == null) {
+            resetLootState(context);
+            LOGGER.info("loot paging E2E skipped: no loot structure with >=2 containers found");
+            return;
+        }
+
+        int[] widgetPos = context.computeOnClient(client -> {
+            // 详情模式: 悬停即自动固定 → 鼠标离开图标后 widget 常驻
+            LootPreviewState.onHover(target.type(), target.blockX(), target.blockZ(),
+                    100, 100, client.getWindow().getGuiScaledWidth(),
+                    client.getWindow().getGuiScaledHeight());
+            ChestLootWidget widget = LootPreviewState.widget();
+            if (widget == null) {
+                throw new AssertionError("loot widget not built for " + target);
+            }
+            return new int[] { widget.getX(), widget.getY(), widget.getChestDataList().size() };
+        });
+
+        double guiScale = context.computeOnClient(
+                client -> (double) client.getWindow().getWidth() / client.getWindow().getGuiScaledWidth());
+        // "下一页"箭头中心: widget 左上 + (BUTTON_X_OFFSET + BUTTON_WIDTH + BUTTON_WIDTH/2, BUTTON_Y_OFFSET + BUTTON_HEIGHT/2)
+        double nextX = widgetPos[0] + 149 + 10 + 5;
+        double nextY = widgetPos[1] + 4 + 6;
+        context.getInput().setCursorPos(nextX * guiScale, nextY * guiScale);
+        context.waitTicks(5);
+
+        context.runOnClient(client -> {
+            ChestLootWidget widget = LootPreviewState.widget();
+            if (widget == null) {
+                throw new AssertionError("loot widget closed before paging click");
+            }
+            if (widget.getX() != widgetPos[0] || widget.getY() != widgetPos[1]) {
+                throw new AssertionError("loot widget moved before click: ("
+                        + widget.getX() + "," + widget.getY() + ") expected ("
+                        + widgetPos[0] + "," + widgetPos[1] + ")");
+            }
+            if (widget.getChestIndex() != 0) {
+                throw new AssertionError("initial chestIndex != 0: " + widget.getChestIndex());
+            }
+        });
+
+        context.getInput().pressMouse(CompatInput.MOUSE_LEFT);
+        context.waitTicks(3);
+
+        context.runOnClient(client -> {
+            ChestLootWidget widget = LootPreviewState.widget();
+            if (widget == null) {
+                throw new AssertionError("loot widget closed after next-page click");
+            }
+            if (widget.getChestIndex() != 1) {
+                throw new AssertionError("chestIndex after next-page click = "
+                        + widget.getChestIndex() + ", expected 1 (size=" + widgetPos[2] + ")");
+            }
+        });
+        context.takeScreenshot("loot-paging-next");
+
+        resetLootState(context);
+        LOGGER.info("loot paging E2E assertion passed");
+    }
+
+    private static void resetLootState(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            LootPreviewState.close();
+            ServerConfig.setLootPreviewEnabled(false);
+            ServerConfig.setLootDisplayMode(LootDisplayMode.QUICK_PEEK);
+        });
+        context.waitTick();
+    }
+
+    /** 找一个战利品容器数 >= 2 的结构 (翻页测试需要多容器)。 */
+    private static @Nullable LootTarget findMultiChestLootStructure(Minecraft client) {
+        for (var entry : StructureCache.REGIONS.entrySet()) {
+            if (!LootPreviewState.isLootSupported(entry.getKey())) {
+                continue;
+            }
+            for (var pos : entry.getValue()) {
+                if (!pos.loaded()) {
+                    continue;
+                }
+                var loot = LootPreviewState.queryLoot(entry.getKey(), pos.blockX(), pos.blockZ());
+                if (loot != null && loot.size() >= 2) {
+                    return new LootTarget(entry.getKey(), pos.blockX(), pos.blockZ());
+                }
+            }
+        }
+        // 退化: 栅格扫描附近的沙漠神殿 (4 个箱子) / 丛林神庙
+        final LootTarget[] holder = new LootTarget[1];
+        for (var type : new StructureType[] { StructureType.DESERT_PYRAMID, StructureType.JUNGLE_PYRAMID }) {
+            if (holder[0] != null) {
+                break;
+            }
+            final int prx = Math.floorDiv((int) client.player.getX(), 512);
+            final int prz = Math.floorDiv((int) client.player.getZ(), 512);
+            Xsm.queryRegionStructuresGrid(type.id,
+                    prx - 12, prz - 12, prx + 12, prz + 12, 0, 0, 0, 0,
+                    (x, z, found, bx, bz, variant) -> {
+                        if (holder[0] != null || !found) {
+                            return;
+                        }
+                        var loot = LootPreviewState.queryLoot(type, bx, bz);
+                        if (loot != null && loot.size() >= 2) {
+                            holder[0] = new LootTarget(type, bx, bz);
+                        }
+                    });
+        }
+        return holder[0];
     }
 
     /** 找一个能产出非空战利品的结构 (真实位置优先, 退化为栅格扫描沙漠神殿)。 */
