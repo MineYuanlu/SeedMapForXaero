@@ -110,6 +110,19 @@ public final class StructureIcons {
                 }
             }
         }
+
+        if (!flags.isStructureSet(StructureType.WORLD_SPAWN.id)) {
+            final var spawn = StructureCache.spawn();
+            if (spawn != null) {
+                var mark = dimData == null ? null
+                        : dimData.getMark(StructureType.WORLD_SPAWN.id,
+                                StructureDataConfig.keyOf(spawn.blockX(), spawn.blockZ()));
+                if (!StructureDataConfig.isGroupHidden(
+                        mark == null ? StructureGroups.DEFAULT : mark.group()))
+                    out.accept(StructureType.WORLD_SPAWN, spawn.getVariant(), spawn.blockX(),
+                            spawn.blockZ(), t.guiX(spawn.blockX()), t.guiZ(spawn.blockZ()), mark);
+            }
+        }
         return true;
     }
 }

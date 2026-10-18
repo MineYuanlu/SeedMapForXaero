@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.QueryPointCache;
+import bid.yuanlu.seedmap4xaero.client.cache.SpawnCache.SpawnPos;
 import bid.yuanlu.seedmap4xaero.client.cache.StrongholdCache.StrongholdPos;
 import bid.yuanlu.seedmap4xaero.client.render.BiomeColorProvider;
 import bid.yuanlu.seedmap4xaero.client.render.NativeBiomeColor;
@@ -522,6 +523,23 @@ public final class Xsm {
                         z.getAtIndex(ValueLayout.JAVA_INT, i));
             }
             return out;
+        }
+    }
+
+    /**
+     * 查询世界出生点 (cubiomes getSpawn, 精确)。仅主世界有效, 较慢, 应在后台线程调用。
+     *
+     * @return 出生点方块坐标; {@code null} = native 未就绪/非主世界/失败
+     */
+    public static @Nullable SpawnPos querySpawn() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment x = arena.allocate(4);
+            MemorySegment z = arena.allocate(4);
+            if (XsmNative.querySpawn(x, z) == 0)
+                return null;
+            return new SpawnPos(
+                    x.get(ValueLayout.JAVA_INT, 0),
+                    z.get(ValueLayout.JAVA_INT, 0));
         }
     }
 

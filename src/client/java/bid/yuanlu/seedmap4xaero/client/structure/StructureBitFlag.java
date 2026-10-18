@@ -29,7 +29,9 @@ public class StructureBitFlag implements StructureBitFlagView {
     }
 
     public StructureBitFlag(int[] flags) {
-        this.flags = Arrays.copyOf(flags, flags.length);
+        // 旧持久化 (legacy .sm4x) 的 flag 长度可能小于当前 FEATURE_NUM
+        // (如新增 WORLD_SPAWN 后); 补齐到 FEATURE_NUM 以保证 equals/hashCode 稳定
+        this.flags = Arrays.copyOf(flags, Math.max(flags.length, StructureType.FEATURE_NUM));
     }
 
     /** 读取结构整体的标记 */
@@ -88,7 +90,7 @@ public class StructureBitFlag implements StructureBitFlagView {
 
     /** 用另一个 flag 的位覆盖本对象 (用于反序列化) */
     public synchronized void setAll(StructureBitFlag other) {
-        flags = Arrays.copyOf(other.flags, other.flags.length);
+        flags = Arrays.copyOf(other.flags, Math.max(other.flags.length, StructureType.FEATURE_NUM));
     }
 
     /** 容量（可安全下标的 id 上界；JSON 导出/诊断遍历用）。 */
