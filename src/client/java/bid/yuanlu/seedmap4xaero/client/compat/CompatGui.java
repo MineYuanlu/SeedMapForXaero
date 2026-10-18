@@ -49,9 +49,9 @@ public final class CompatGui {
 		try {
 			final MethodHandle handle = tooltipHandle != null ? tooltipHandle : xsm$resolve();
 			if (tooltipTakesBoolean) {
-				handle.invoke(font, lines, x, y, DefaultTooltipPositioner.INSTANCE, null, false);
+				handle.invoke(g, font, lines, x, y, DefaultTooltipPositioner.INSTANCE, (Identifier) null, false);
 			} else {
-				handle.invoke(font, lines, x, y, DefaultTooltipPositioner.INSTANCE, null);
+				handle.invoke(g, font, lines, x, y, DefaultTooltipPositioner.INSTANCE, (Identifier) null);
 			}
 		} catch (Throwable e) {
 			throw new RuntimeException("CompatGui.tooltip failed", e);

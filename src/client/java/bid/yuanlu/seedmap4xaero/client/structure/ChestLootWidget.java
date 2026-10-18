@@ -356,4 +356,13 @@ public class ChestLootWidget {
     public List<ChestLoot> getChestDataList() {
         return this.chestDataList;
     }
+
+    /** 容器左上角 GUI 坐标 (E2E 定位标题 tooltip 命中点用)。 */
+    public int getX() {
+        return this.x;
+    }
+
+    public int getY() {
+        return this.y;
+    }
 }

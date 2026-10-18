@@ -71,5 +71,7 @@ MC 26.3 彻底移除该类且无等价 API（`NoiseStack` 范式不同、无法�
   非兼容层可解，属 MC 侧资源管理方式。
 - `CompatGui.tooltip` 26.3 的第 7 参（单行 -2px 微调）传 `false`，与 26.1 观感一致；
   多行 tooltip 场景无差异。
-- chest 战利品 tooltip / 面板 blitSprite 等低频 GUI 路径无 E2E 覆盖，靠 26.1/26.3 双端
-  人工开图验证兜底。
+- 反射调用点务必把 `unreflect` 出的实例方法句柄的**接收者**作为首参传入（`CompatGui.tooltip`
+  早期漏传 `GuiGraphicsExtractor` 导致 `WrongMethodTypeException` 崩溃，见 `blit*` 的正确写法）。
+- chest 战利品标题 tooltip 已有 E2E 覆盖（`SeedMapClientGameTest.assertLootTitleTooltipNoCrash`
+  驱动真实渲染帧命中标题）；面板 blitSprite 等其余低频 GUI 路径仍靠 26.1/26.3 双端人工开图兜底。
