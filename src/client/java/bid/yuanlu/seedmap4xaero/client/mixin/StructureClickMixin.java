@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.DropDownWidgetTitleAccessor;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureIcons;
@@ -54,7 +55,7 @@ public class StructureClickMixin {
     @Unique
     private StructureRightClick xsm$rightClickTarget;
 
-    @Inject(method = "mouseClicked", at = @At("HEAD"))
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void xsm$onMouseClicked(MouseButtonEvent event, boolean doubleClick,
             CallbackInfoReturnable<Boolean> cir) {
         xsm$rightClickTarget = null;
@@ -75,7 +76,7 @@ public class StructureClickMixin {
         }
 
         // 左键点击悬浮的战利品结构图标 → 固定悬浮框
-        if (event.button() == 0 && ServerConfig.isLootPreviewEnabled()
+        if (event.button() == CompatInput.MOUSE_LEFT && ServerConfig.isLootPreviewEnabled()
                 && LootPreviewState.isPinned() == false
                 && LootPreviewState.tryPin() && LootPreviewState.hasWidget()) {
             cir.setReturnValue(true);
@@ -83,14 +84,14 @@ public class StructureClickMixin {
         }
 
         // 右键命中 → 合成菜单
-        if (event.button() != 1 || !StructureIcons.enabled())
+        if (event.button() != CompatInput.MOUSE_RIGHT || !StructureIcons.enabled())
             return;
         xsm$rightClickTarget = xsm$hitTest(scaledMouseX, scaledMouseY);
     }
 
     @Inject(method = "mapClicked", at = @At("HEAD"), cancellable = true)
     private void xsm$onMapClicked(int button, int x, int y, CallbackInfo ci) {
-        if (button == 1 && xsm$rightClickTarget != null) {
+        if (button == CompatInput.MOUSE_RIGHT && xsm$rightClickTarget != null) {
             final StructureRightClick target = xsm$rightClickTarget;
             xsm$rightClickTarget = null;
             // 与 Xaero handleRightClick 一致: 先关旧菜单再开新菜单

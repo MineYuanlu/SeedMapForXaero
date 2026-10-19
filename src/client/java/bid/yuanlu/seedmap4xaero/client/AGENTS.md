@@ -1,5 +1,13 @@
 # client — mixins & render pipeline
 
+## compat — 跨版本兼容层（强约束）
+
+`compat/`（CompatTextures / CompatGui / CompatPose / CompatNoise）收编全部版本敏感 MC API。
+**`com.mojang.blaze3d.{textures,systems,pipeline}`、`renderpearl.*`、`levelgen.synth.*` 只允许在
+compat/ 内 import**（pr-check grep 强制）——强类型调用点的二进制描述符含类型 FQN，MC 一搬家
+universal jar 就在其它版本上 NoSuchMethod/FieldError，且编译期不可见。新缝 → compat 门面加
+反射封装，业务代码只调门面。设计与缝清单见 `doc/compat-layer.md`。
+
 ## 10 client mixins
 
 | Mixin                   | Targets                              | Role                                            |

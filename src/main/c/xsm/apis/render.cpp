@@ -67,7 +67,7 @@ static const std::unordered_map<std::string, MCVersion> mcVersionMap = {
     {"1.21.5", MC_1_21_5},   {"1.21.6", MC_1_21_5}, {"1.21.7", MC_1_21_5},
     {"1.21.8", MC_1_21_5},   {"1.21.9", MC_1_21_9}, {"1.21.10", MC_1_21_9},
     {"1.21.11", MC_1_21_11}, {"26.1", MC_26_1},     {"26.1.1", MC_26_1},
-    {"26.1.2", MC_26_1},     {"26.2", MC_26_2}};
+    {"26.1.2", MC_26_1},     {"26.2", MC_26_2},     {"26.3", MC_26_2}};
 
     static constexpr const size_t MAX_BIOMES = 256;
 
@@ -653,17 +653,13 @@ uint32_t queryStrongholdsRange(int32_t from, int32_t to,
   if (!gen_setWorld || tn.g.dim != DIM_OVERWORLD) return 0;
   if (to <= from || !outBlockX || !outBlockZ) return 0;
 
-  Generator g;
-  setupGenerator(&g, tn.g.mc, 0);
-  applySeed(&g, DIM_OVERWORLD, tn.g.seed);
-
   const bool canSkip = tn.g.mc > MC_1_19_2;
   StrongholdIter sh;
   initFirstStronghold(&sh, tn.g.mc, tn.g.seed & MASK48);
   uint32_t n = 0;
   for (int k = 0; k < to; k++) {
     const bool want = (k >= from);
-    const Generator* gk = (canSkip && !want) ? NULL : &g;
+    const Generator* gk = (canSkip && !want) ? NULL : &tn.g;
     int rem = nextStronghold(&sh, gk);
     if (rem < 0) break;
     if (want) {
@@ -674,6 +670,16 @@ uint32_t queryStrongholdsRange(int32_t from, int32_t to,
     if (rem == 0) break;
   }
   return n;
+}
+
+int32_t querySpawn(int32_t* outBlockX, int32_t* outBlockZ) {
+  if (!gen_setWorld || tn.g.dim != DIM_OVERWORLD) return 0;
+  if (!outBlockX || !outBlockZ) return 0;
+
+  Pos spawn = getSpawn(&tn.g);
+  *outBlockX = spawn.x;
+  *outBlockZ = spawn.z;
+  return 1;
 }
 
 

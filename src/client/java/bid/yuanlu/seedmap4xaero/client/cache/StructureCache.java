@@ -91,6 +91,14 @@ public class StructureCache {
         return StrongholdCache.update();
     }
 
+    /**
+     * 世界出生点 (单点; null = 未算出/不可用)。
+     * 首次调用触发异步计算。
+     */
+    public static @Nullable SpawnCache.SpawnPos spawn() {
+        return SpawnCache.update();
+    }
+
     public interface StructurePos {
         boolean loaded();
 

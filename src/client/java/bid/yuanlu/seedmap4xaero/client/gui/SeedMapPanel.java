@@ -8,6 +8,8 @@ import org.jetbrains.annotations.Nullable;
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.perf.PerfConfig;
@@ -27,7 +29,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.WidgetSprites;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -316,7 +317,7 @@ public class SeedMapPanel {
                 Identifier.withDefaultNamespace("widget/button"),
                 Identifier.withDefaultNamespace("widget/button_disabled"),
                 Identifier.withDefaultNamespace("widget/button_highlighted"));
-        g.blitSprite(RenderPipelines.GUI_TEXTURED,
+        CompatGui.blitSprite(g,
                 btnSprites.get(true, hoverSc),
                 schemeX, schemeY, schemeW, schemeH, 1.0f);
         g.text(font, "C", schemeX + 6, schemeY + 6, 0xFFFFFFFF);
@@ -1356,16 +1357,16 @@ public class SeedMapPanel {
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && sliderDragging) {
+        if (button == CompatInput.MOUSE_LEFT && sliderDragging) {
             sliderDragging = false;
             return true;
         }
-        if (button == 0 && perfSliderDrag > 0) {
+        if (button == CompatInput.MOUSE_LEFT && perfSliderDrag > 0) {
             perfSliderDrag = -1;
             PerfConfig.flush(); // 拖拽结束落盘
             return true;
         }
-        if (button == 0 && colorSliderDrag > 0) {
+        if (button == CompatInput.MOUSE_LEFT && colorSliderDrag > 0) {
             colorSliderDrag = -1; // 颜色不在此处落盘: 完成 提交或离开编辑器时 flush
             return true;
         }
@@ -1373,7 +1374,7 @@ public class SeedMapPanel {
     }
 
     public boolean mouseDragged(double mouseX, double mouseY, int button) {
-        if (button == 0 && sliderDragging) {
+        if (button == CompatInput.MOUSE_LEFT && sliderDragging) {
             updateSlider((int) mouseX);
             return true;
         }

@@ -32,7 +32,7 @@ cmake --build build-test --target xsmtest && ./build-test/xsmtest   # C 单测
 
 **Single universal jar**: `fabric.mod.json` hardcodes `"minecraft": ">=26.1"` (not templated). The published jar is compiled against the oldest Xaero line (1.40.14) so referenced symbols are a subset of all supported versions. CI (`matrix-test.yml`): `test` = 8-combo compile+JUnit (source-compat early warning, not published), `build-universal` = build the one jar, `universal-e2e` = run that same jar on all 4 MC × newest Xaero. Future breaking MC versions are caught by universal-e2e as `versions.json` grows.
 
-版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`）。
+版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`/`xaeroMinimapVersion`）。
 CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 
 ### CI 触发矩阵（单人开发流程）
@@ -88,6 +88,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 │   ├── command/       # AGENTS.md: /sm4x 客户端命令（种子历史 list/remove）
 │   ├── nativeapi/     # Xsm.java (System.load + FFM wrappers), XsmNative.java (generated)
 │   ├── cache/         # AGENTS.md: LRU 瓦片缓存/调度器/预生成, sparse structures, strongholds, tile coords
+│   ├── compat/        # 跨版本兼容层: 版本敏感 MC API 唯一允许的 import 点 (doc/compat-layer.md)
 │   ├── mixin/         # mixins — table in client/AGENTS.md
 │   ├── render/        # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
 │   ├── structure/     # AGENTS.md: 结构运行时 — StructureType + 图标/交互/访问检测
@@ -97,19 +98,19 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 └── utils/             # BitSetView (immutable BitSet wrapper)
 src/client/resources/assets/seed-map-for-xaero/textures/icons/   # biomes.png, structures.png, biomes.ini
 src/main/
-├── java/…/XaeroSeedMap.java   # ModInitializer (empty)
+├── java/…/XaeroSeedMap.java   # ModInitializer + Identifier id() helper
 ├── resources/          # fabric.mod.json + mixins json + lang/ + icon.png
 └── c/                # cubiomes submodule + xsm/ (AGENTS.md: C API & gotchas)
 src/gametest/         # E2E client gametest (see doc/testing.md)
 src/test/             # JUnit 单测 + native 集成测试 (see doc/testing.md)
-tools/                # resolve_versions.py, gen_biomes_icon.py, gen_structures_icon.py, generate_lib_src.py
+tools/                # resolve_versions.py, gen_biomes_icon.py, gen_structures_icon.py, generate_lib_src.py, check_compat_imports.sh (版本敏感 import guardrail，pr-check 强制执行)
 ```
 
 ### Cross-cutting rules
 
 - All UI strings go through i18n (`Component.translatable` / `I18n.get`) — add both `en_us.json` and `zh_cn.json`
 - LSP maybe shows false errors when edit java files — only `./gradlew build` is authoritative
-- Config files are JSON (v2): `server_config.json` per mainId + `global/perf_config.json`；legacy `.sm4x` 只读迁移，损坏回退链见 `configs/AGENTS.md`
+- Config persistence is **JSON v2** (`server_config.json` / `structure_settings.json` / `global/perf_config.json` / `marks/` regional shards); legacy binary `.sm4x` auto-migrates on load, then renames to `*.legacy`. Load fallback chain: `.json` → `.json.old` → `.sm4x` (migrate) → `.sm4x.old` → fresh (details in `configs/AGENTS.md`)
 - 性能设计（内存模型/调度/prefetch 论证/磁盘缓存规范）见 `doc/perf.md`
 
 ## Dependencies

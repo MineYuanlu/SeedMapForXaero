@@ -1,11 +1,9 @@
 package bid.yuanlu.seedmap4xaero.client.render;
 
 import net.minecraft.util.Mth;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.GrassColor;
-import net.minecraft.world.level.levelgen.synth.PerlinSimplexNoise;
 
-import java.util.List;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatNoise;
 
 public final class VanillaBiomeColor implements BiomeColorProvider {
 
@@ -36,7 +34,7 @@ public final class VanillaBiomeColor implements BiomeColorProvider {
 
 	private static final boolean[] AQUATIC = new boolean[256];
 
-	private static PerlinSimplexNoise SWAMP_NOISE;
+	private static CompatNoise SWAMP_NOISE;
 
 	static {
 		for (int i = 0; i < 256; i++) {
@@ -292,10 +290,10 @@ public final class VanillaBiomeColor implements BiomeColorProvider {
 	}
 
 	private static int computeSwampColor(int x, int z) {
+		// vanilla: new PerlinSimplexNoise(RandomSource.create(0L), List.of(0))，
+		// MC 26.3 移除该类 → 用逐位对齐的自实现副本 (见 CompatNoise)
 		if (SWAMP_NOISE == null) {
-			SWAMP_NOISE = new PerlinSimplexNoise(
-					RandomSource.create(0L),
-					List.of(0));
+			SWAMP_NOISE = new CompatNoise(0L);
 		}
 		double noise = SWAMP_NOISE.getValue(x * 0.0225, z * 0.0225, false);
 		return noise < -0.1 ? 0x4C763C : 0x6A7039;

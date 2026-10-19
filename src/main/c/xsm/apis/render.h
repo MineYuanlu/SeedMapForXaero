@@ -172,6 +172,17 @@ XSM_API uint32_t queryStrongholdsRange(
     int32_t* outBlockZ
 );
 
+/// @brief 查询世界出生点 (cubiomes getSpawn, 精确但较慢)
+/// @details 复现 MC 世界出生点算法: 先近似的适应度/群系搜索, 再扫描草地方块或
+/// y>63 的地表精修。仅主世界有效, 由调用方在后台线程执行。
+/// @param outBlockX 输出出生点方块坐标 X
+/// @param outBlockZ 输出出生点方块坐标 Z
+/// @return 1=成功; 0=世界未设置/非主世界/参数异常
+XSM_API int32_t querySpawn(
+    int32_t* outBlockX,
+    int32_t* outBlockZ
+);
+
 /// @brief 批量查询稀疏结构(regionSize=1 的逐区块低概率结构), 只返回命中位置(变长结果)
 /// @details 用于 Treasure/Mineshaft/Desert_Well/Geode/End_Gateway/End_Island 等
 /// 每区块独立掷骰的结构: 逐区块扫描 [rx0,rx1)×[rz0,rz1) 中不在排除矩形内的 region

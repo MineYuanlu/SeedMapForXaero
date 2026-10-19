@@ -32,7 +32,7 @@
 
 - 与 Xaero 地图无缝集成的多级缩放生物群系预览
 - 地形高度渲染 + 光照阴影（仅主世界）
-- 三级探索检测——已探索区域保留真实数据，仅填充未探索缺口
+- 自动识别已探索区域——你探索过的部分保留真实地图数据，只填充未探索的缺口
 - 三种配色方案：Native（默认）、Vanilla（原版风格）、Legacy（旧风格），可在侧面板切换
 - **结构图标显示** — 26 种结构类型，可在侧面板逐类开关；有变种的结构可再细分单独开关（如村庄按平原/沙漠/僵尸等）
 - **战利品预览** — 悬停带战利品的结构图标即可预览箱子内物品（显示数量与附魔，支持 12 种结构）；提供速览/详情 × 单容器/平铺四种显示模式，左键固定后可移入浏览并翻页查看多口箱子
@@ -46,27 +46,24 @@
 1. 安装依赖：Xaero's World Map、Fabric API
 2. 按 `M` 打开大地图
 3. **单机游戏**：种子自动读取，地图直接显示
-4. **多人游戏**：在切换世界界面（`GuiMapSwitching`）输入种子
+4. **多人游戏**：在地图的切换世界界面输入种子
 5. 点击右侧的 **SM** 按钮打开**设置面板**，可：
    - 按生物群系类型逐类开关（显示/隐藏特定群系）
    - 按结构类型逐类开关（显示/隐藏特定结构）
    - 调节结构图标大小（0.05~2.0 倍）
    - 开关战利品预览并切换显示模式（速览/详情 × 单容器/平铺）
 
-### 前置依赖
+### 支持版本
 
-CI 矩阵验证的支持版本（`versions.json`，4 个 MC × 新旧 Xaero 各组合）：
+| 依赖              | 版本                                                  |
+| ----------------- | ----------------------------------------------------- |
+| Minecraft         | 26.1 / 26.1.1 / 26.1.2 / 26.2 / **26.3**              |
+| Xaero's World Map | 1.40.14+（26.1.x）/ 1.41.0+（26.2）/ 1.46.2+（26.3） |
+| Fabric API        | 0.155.3+（26.1.x）/ 0.161.0+（26.2 / 26.3）          |
+| Fabric Loader     | 最新                                                  |
+| Java              | **25**（现代启动器一般已内置）                        |
 
-| 依赖              | 版本                                    |
-| ----------------- | --------------------------------------- |
-| Minecraft         | 26.1 / 26.1.1 / 26.1.2 / 26.2           |
-| Fabric Loader     | 最新                                    |
-| Fabric API        | 0.155.2+（26.1）/ 0.156.0+（26.2）      |
-| Xaero's World Map | 1.40.14+（26.1）/ 1.41.0+（26.2）       |
-| Java              | **25**（FFM API 必需）                  |
-
-单jar支持以上全部版本：`fabric.mod.json` 的 `"minecraft": ">=26.1"` 放行所有版本，发布产物编译在最老 Xaero 线上（符号为全部版本子集），由 CI 的 universal E2E 用同一个 jar 在全部版本上真实启动验证（见 `doc/testing.md`）。
-- 默认构建目标：Minecraft 26.1.2 + Xaero's World Map 1.41.0 + Fabric API 0.153.0（见 `gradle.properties`）；发布时以最老 Xaero 线 1.40.14 编译。
+**一个 JAR 支持以上全部版本**——下载时无需挑选 MC 版本，所有版本组合均在 CI 上用同一安装包真实启动验证过。
 
 ---
 
@@ -83,6 +80,10 @@ Fabric 模组，通过 Mixin 注入 Xaero World Map 的渲染管线，利用 cub
 - **缓存系统** (`CellCache` + `StructureCache` + `QueryPointCache`) — 多级缩放（1, 4, 16, 64, 256）的 GPU 纹理缓存 + 结构查询缓存，异步生成
 - **侧面板** (`SeedMapPanel`) — SM 按钮打开的设置面板，支持逐生物群系/结构类型开关、图标大小滑条
 - **7 个 Mixin** — `SeedMapMixin`（渲染）、`SeedMapCursorMixin`（光标信息）、`SeedMapToggleMixin`（开关）、`XsmMainPanelMixin`（侧面板）、`WorldSwitchMixin`（世界切换）、`GuiMapSwitchingMixin`（种子输入）、`StructureOverlayMixin`（结构图标）
+
+#### 单 JAR 多版本兼容
+
+发布产物为单个 universal JAR：以最老支持线（Xaero 1.40.14）编译，`fabric.mod.json` 声明 `"minecraft": ">=26.1"`，版本敏感的 MC API 全部经 `client/compat/` 反射门面封装（设计见 `doc/compat-layer.md`），由 CI 用同一个 JAR 在全部支持版本上真实启动验证（E2E，见 `doc/testing.md`）。
 
 #### 渲染流程
 
@@ -146,7 +147,7 @@ cmake --build build-test --target xsmtest
 | ---------------------- | ----------------- | ----------------------------------------------------------- |
 | `build.yml`            | 推送 / PR         | 非 master：Linux 构建；master/tag：全平台原生编译 + 打包    |
 | `build-test-jar.yml`   | workflow_dispatch | 手动构建 universal JAR（全平台 native + 内置校验），不 bump/不发版 |
-| `matrix-test.yml`      | 推送 / 手动       | 8 组合版本矩阵（4 个 MC × 新旧 Xaero）+ 客户端 E2E GameTest |
+| `matrix-test.yml`      | 推送 / 手动       | 10 组合版本矩阵（5 个 MC × 新旧 Xaero）+ 客户端 E2E GameTest |
 | `refresh-versions.yml` | 每周一 + 手动     | 刷新 `versions.json` 版本矩阵（有变更才提交）               |
 | `release.yml`          | workflow_dispatch | 版本提升 + 全平台编译 + Modrinth + Release                  |
 
