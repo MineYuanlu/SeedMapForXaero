@@ -36,6 +36,7 @@ public final class CacheHelper {
         QueryPointCache.clear();
         StructureCache.clear();
         StrongholdCache.clear();
+        SpawnCache.clear();
         bid.yuanlu.seedmap4xaero.client.structure.LootPreviewState.clearCache();
     }
 
