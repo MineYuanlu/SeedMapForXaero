@@ -1,5 +1,6 @@
 package bid.yuanlu.seedmap4xaero.client.mixin;
 
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -61,7 +62,7 @@ public class SeedMapMixin {
         return PerfConfig.debugOverlay();
     }
 
-    // ─── 性能统计 (debug HUD 采样, 每 ~1s 汇总) ─────────────────
+    // ─── 性能统计 (debug HUD 采样, 每 500ms 汇总并刷新快照) ─────
     @Unique
     private static long xsm$lastSampleNanos;
     @Unique
@@ -72,14 +73,31 @@ public class SeedMapMixin {
     private static double xsm$statTps;
     @Unique
     private static double xsm$statAvgMs;
+    @Unique
+    private static long xsm$statPending;
+    @Unique
+    private static long xsm$statEntries;
+    @Unique
+    private static long xsm$statCapacity;
+    @Unique
+    private static double xsm$statFrameMs;
     /** 本 mod 渲染路径耗时 (beginFrame→endFrame, 上一帧)。 */
     @Unique
     private static long xsm$frameNanos;
+    /** 采样窗口内累计的渲染耗时/帧数 (取均值, 消除逐帧跳动)。 */
+    @Unique
+    private static long xsm$frameAccumNanos;
+    @Unique
+    private static int xsm$frameSamples;
 
-    /** 每 ~1s 汇总一次生成速率与均耗时（渲染线程）。 */
+    /** 每 500ms 汇总一次生成速率、均耗时与 HUD 快照（渲染线程）。 */
     @Unique
     private static void xsm$updateStats() {
         long now = System.nanoTime();
+        if (xsm$frameNanos > 0) {
+            xsm$frameAccumNanos += xsm$frameNanos;
+            xsm$frameSamples++;
+        }
         if (xsm$lastSampleNanos == 0) {
             xsm$lastSampleNanos = now;
             xsm$lastGenCount = CellCache.STAT_GEN_COUNT.get();
@@ -87,7 +105,7 @@ public class SeedMapMixin {
             return;
         }
         long dt = now - xsm$lastSampleNanos;
-        if (dt < 1_000_000_000L)
+        if (dt < 500_000_000L) // 500ms = 2Hz, 避免逐帧刷新造成的视觉抖动
             return;
         long count = CellCache.STAT_GEN_COUNT.get();
         long nanos = CellCache.STAT_GEN_NANOS.get();
@@ -95,6 +113,14 @@ public class SeedMapMixin {
         long dn = nanos - xsm$lastGenNanos;
         xsm$statTps = dc * 1_000_000_000.0 / dt;
         xsm$statAvgMs = dc > 0 ? dn / (double) dc / 1_000_000.0 : 0;
+        xsm$statPending = CellCache.pending();
+        xsm$statEntries = CellCache.entries();
+        xsm$statCapacity = PerfConfig.cacheCapacityEntries();
+        xsm$statFrameMs = xsm$frameSamples > 0
+                ? xsm$frameAccumNanos / (double) xsm$frameSamples / 1_000_000.0
+                : 0;
+        xsm$frameAccumNanos = 0;
+        xsm$frameSamples = 0;
         xsm$lastSampleNanos = now;
         xsm$lastGenCount = count;
         xsm$lastGenNanos = nanos;
@@ -287,7 +313,11 @@ public class SeedMapMixin {
         if (xsm$debug()) {
             xsm$updateStats();
             int guiWidth = mc.getWindow().getGuiScaledWidth();
-            String line1 = I18n.get("xsm.debug.scale", curScale, mouseBlockPosX, mouseBlockPosY, mouseBlockPosZ);
+            String line1 = I18n.get("xsm.debug.scale",
+                    String.format(Locale.ROOT, "%3d", curScale),
+                    String.format(Locale.ROOT, "%7d", mouseBlockPosX),
+                    String.format(Locale.ROOT, "%4d", mouseBlockPosY),
+                    String.format(Locale.ROOT, "%7d", mouseBlockPosZ));
             MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font, line1, guiWidth / 2, 40, -1, 0.0F, 0.0F,
                     0.0F, 0.4F);
             String decision = this.xsm$debugDecision;
@@ -297,9 +327,11 @@ public class SeedMapMixin {
                         guiWidth / 2, 56, -1, 0.0F, 0.0F, 0.0F, 0.4F);
             }
             String perf = I18n.get("xsm.debug.perf",
-                    (long) xsm$statTps, xsm$statAvgMs,
-                    CellCache.pending(), CellCache.entries(), PerfConfig.cacheCapacityEntries(),
-                    xsm$frameNanos / 1_000_000.0);
+                    String.format(Locale.ROOT, "%5d", (long) xsm$statTps),
+                    String.format(Locale.ROOT, "%6.2f", xsm$statAvgMs),
+                    String.format(Locale.ROOT, "%3d", xsm$statPending),
+                    String.format(Locale.ROOT, "%5d/%5d", xsm$statEntries, xsm$statCapacity),
+                    String.format(Locale.ROOT, "%6.2f", xsm$statFrameMs));
             MapRenderHelper.drawCenteredStringWithBackground(guiGraphics, mc.font, perf,
                     guiWidth / 2, 72, -1, 0.0F, 0.0F, 0.0F, 0.4F);
         }

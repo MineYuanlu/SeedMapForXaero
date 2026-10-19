@@ -124,6 +124,7 @@ public class SeedMapPanel {
     private static final int PERF_SLIDER_THREADS = 1;
     private static final int PERF_SLIDER_CACHE = 2;
     private static final int PERF_SLIDER_RADIUS = 3;
+    /** TODO(disk-cache): 磁盘缓存未实现，暂不渲染/命中；保留分支供后续接入。 */
     private static final int PERF_SLIDER_DISK = 4;
     private static final int PERF_SLIDER_H = 12;
     /** 性能区滑条标签固定宽度 (标签列)。 */
@@ -259,6 +260,10 @@ public class SeedMapPanel {
         // color slider drag: live preview (flush on release)
         if (colorSliderDrag > 0) {
             applyColorSliderDrag(mouseX);
+        }
+        // perf slider drag: GuiMap 不派发 mouseDragged，与图标/颜色滑条一样逐帧轮询
+        if (perfSliderDrag > 0) {
+            applyPerfSlider(mouseX, perfSliderDrag);
         }
 
         // refresh slider value from config
@@ -804,7 +809,10 @@ public class SeedMapPanel {
 
     /** 性能区行几何 (单一来源: render / mouseClicked 共用)。 */
     private record PerfLayout(int contentY, int threadsY, int cacheY, int prefetchY,
-            int pregenY, int radiusY, int diskY, int diskMaxY, int debugY, int bottom) {
+            int pregenY, int radiusY,
+            // TODO(disk-cache): 磁盘缓存未实现，暂不展示。
+            // int diskY, int diskMaxY,
+            int debugY, int bottom) {
     }
 
     private PerfLayout perfLayout(int headerY) {
@@ -820,14 +828,16 @@ public class SeedMapPanel {
         y += ITEM_H;
         int radiusY = y;
         y += PERF_SLIDER_H;
-        int diskY = y;
-        y += ITEM_H;
-        int diskMaxY = y;
-        y += PERF_SLIDER_H;
+        // TODO(disk-cache): 磁盘缓存尚未实现，暂不展示开关与上限滑条；
+        // 保留 PerfConfig.diskCache* / PERF_SLIDER_DISK 供后续接入。
+        // int diskY = y;
+        // y += ITEM_H;
+        // int diskMaxY = y;
+        // y += PERF_SLIDER_H;
         int debugY = y;
         y += ITEM_H;
         return new PerfLayout(contentY, threadsY, cacheY, prefetchY, pregenY,
-                radiusY, diskY, diskMaxY, debugY, y);
+                radiusY, debugY, y);
     }
 
     private int renderPerfSection(GuiGraphicsExtractor g, int mx, int my, int headerY) {
@@ -862,12 +872,13 @@ public class SeedMapPanel {
         renderPerfSlider(g, mx, my, P.radiusY(), PERF_SLIDER_RADIUS,
                 Integer.numberOfTrailingZeros(radius / 1024) / 6f,
                 String.valueOf(radius), PerfConfig.pregenEnabled());
-        renderPerfCheckboxRow(g, mx, my, P.diskY(), "xsm.gui.panel.perf_disk",
-                PerfConfig.diskCacheEnabled());
-        int dmb = PerfConfig.diskCacheMaxMB();
-        renderPerfSlider(g, mx, my, P.diskMaxY(), PERF_SLIDER_DISK,
-                Integer.numberOfTrailingZeros(dmb / 32) / 7f,
-                dmb + "MB", PerfConfig.diskCacheEnabled());
+        // TODO(disk-cache): 磁盘缓存尚未实现，暂不展示。
+        // renderPerfCheckboxRow(g, mx, my, P.diskY(), "xsm.gui.panel.perf_disk",
+        //         PerfConfig.diskCacheEnabled());
+        // int dmb = PerfConfig.diskCacheMaxMB();
+        // renderPerfSlider(g, mx, my, P.diskMaxY(), PERF_SLIDER_DISK,
+        //         Integer.numberOfTrailingZeros(dmb / 32) / 7f,
+        //         dmb + "MB", PerfConfig.diskCacheEnabled());
         renderPerfCheckboxRow(g, mx, my, P.debugY(), "xsm.gui.panel.perf_debug",
                 PerfConfig.debugOverlay());
         return P.bottom();
@@ -1094,21 +1105,23 @@ public class SeedMapPanel {
             PerfConfig.flush();
             return true;
         }
-        if (hitPerfRow(mx, my, P.diskY())) {
-            PerfConfig.setDiskCacheEnabled(!PerfConfig.diskCacheEnabled());
-            PerfConfig.flush();
-            return true;
-        }
+        // TODO(disk-cache): 磁盘缓存开关未展示。
+        // if (hitPerfRow(mx, my, P.diskY())) {
+        //     PerfConfig.setDiskCacheEnabled(!PerfConfig.diskCacheEnabled());
+        //     PerfConfig.flush();
+        //     return true;
+        // }
         if (hitPerfRow(mx, my, P.debugY())) {
             PerfConfig.setDebugOverlay(!PerfConfig.debugOverlay());
             PerfConfig.flush();
             return true;
         }
-        // 滑条: 半径/磁盘上限在所属开关关闭时不可交互
+        // 滑条: 半径在预生成关闭时不可交互
         if (PerfConfig.pregenEnabled() && hitPerfSliderRow(mx, my, P.radiusY(), PERF_SLIDER_RADIUS))
             return true;
-        if (PerfConfig.diskCacheEnabled() && hitPerfSliderRow(mx, my, P.diskMaxY(), PERF_SLIDER_DISK))
-            return true;
+        // TODO(disk-cache): 磁盘上限滑条未展示。
+        // if (PerfConfig.diskCacheEnabled() && hitPerfSliderRow(mx, my, P.diskMaxY(), PERF_SLIDER_DISK))
+        //     return true;
         hitPerfSliderRow(mx, my, P.threadsY(), PERF_SLIDER_THREADS);
         hitPerfSliderRow(mx, my, P.cacheY(), PERF_SLIDER_CACHE);
         return true;

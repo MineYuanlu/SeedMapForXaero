@@ -41,7 +41,7 @@ universal jar 就在其它版本上 NoSuchMethod/FieldError，且编译期不可
 8. `xsm$prefetchAround`: direct super layer of viewport(+half-viewport ring) + curScale ring outside viewport (gated by `PerfConfig.prefetchEnabled()`)
 9. After `rendererProvider.draw`: `CellCache.endFrame()` closes evicted GPU textures
 10. Structure overlay icons rendered after default framebuffer bind (from `StructureCache.REGIONS`, async via `CacheHelper.worker()`); STRONGHOLD enabled → also draw exact positions from `StructureCache.strongholds()` (`StrongholdCache`, ring-batched background)
-11. Debug HUD drawn at screen top center — gated by `PerfConfig.debugOverlay()` (perf_config.json; shows tiles/s, ms/tile, pending, cache usage, frame ms)
+11. Debug HUD drawn at screen top center — gated by `PerfConfig.debugOverlay()` (perf_config.json; 2Hz snapshot, shows tiles/s, avg ms, generation queue, cache usage, frame ms)
 
 ## Exploration (3-tier)
 

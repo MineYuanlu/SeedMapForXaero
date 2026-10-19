@@ -39,9 +39,9 @@
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
   "xsm.cursor.coords_no_y": "X: %d Z: %d",
 
-  "xsm.debug.scale": "SeedMap scale=%d | 鼠标方块: %d %d %d",
+  "xsm.debug.scale": "SeedMap scale=%s | 鼠标方块: %s %s %s",
   "xsm.debug.fill_gap": "fillGaps: %s",
-  "xsm.debug.perf": "瓦片 %d/s | 均值 %.1fms | pending %d | 缓存 %d/%d | 帧 %.2fms",
+  "xsm.debug.perf": "瓦片 %s/s | 均值 %sms | 生成队列 %s | 缓存 %s | 帧 %sms",
   "xsm.debug.all_explored": "(%d,%d) S%d 全部%d个tile均已探索，跳过补绘",
   "xsm.debug.filled_tiles": "(%d,%d) S%d 补绘%d/%d个未探索tile",
 

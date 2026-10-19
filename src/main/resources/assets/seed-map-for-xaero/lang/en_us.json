@@ -39,9 +39,9 @@
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
   "xsm.cursor.coords_no_y": "X: %d Z: %d",
 
-  "xsm.debug.scale": "SeedMap scale=%d | Mouse Block: %d %d %d",
+  "xsm.debug.scale": "SeedMap scale=%s | Mouse Block: %s %s %s",
   "xsm.debug.fill_gap": "fillGaps: %s",
-  "xsm.debug.perf": "tiles %d/s | avg %.1fms | pending %d | cache %d/%d | frame %.2fms",
+  "xsm.debug.perf": "tiles %s/s | avg %sms | gen queue %s | cache %s | frame %sms",
   "xsm.debug.all_explored": "(%d,%d) S%d all %d tiles explored, skip fill",
   "xsm.debug.filled_tiles": "(%d,%d) S%d filled %d/%d unexplored tiles",
 
