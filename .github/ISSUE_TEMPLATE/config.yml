@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 支持版本与安装说明 / Supported versions & installation
+    url: https://github.com/MineYuanlu/SeedMapForXaero#支持版本
+    about: 提交前请确认你的 Minecraft、Xaero's World Map 和 Fabric API 版本在支持范围内。
