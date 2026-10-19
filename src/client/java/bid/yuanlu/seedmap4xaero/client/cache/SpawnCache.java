@@ -47,7 +47,7 @@ public final class SpawnCache {
     }
 
     private static void schedule(long gen) {
-        CacheHelper.CACHE_WORKER.execute(() -> {
+        CacheHelper.worker().execute(() -> {
             SpawnPos p = Xsm.querySpawn();
             if (p == null)
                 return;
