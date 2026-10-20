@@ -173,7 +173,7 @@ public final class ServerConfig {
         var server = Minecraft.getInstance().getSingleplayerServer();
         if (server != null) {
             try {
-                return server.getWorldGenSettings().options().seed();
+                return server.getWorldData().worldGenOptions().seed();
             } catch (Exception e) {
                 return null;
             }

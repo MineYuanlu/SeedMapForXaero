@@ -25,7 +25,7 @@ import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.WidgetSprites;
 import net.minecraft.client.resources.language.I18n;
@@ -228,7 +228,7 @@ public class SeedMapPanel {
 
     // ─── RENDER ──────────────────────────────────────────────
 
-    public void render(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+    public void render(GuiGraphics g, int mouseX, int mouseY) {
         if (!panelOpen)
             return;
 
@@ -252,11 +252,11 @@ public class SeedMapPanel {
         y = renderStructSection(g, mouseX, mouseY, y);
     }
 
-    private void renderPanelBg(GuiGraphicsExtractor g) {
+    private void renderPanelBg(GuiGraphics g) {
         g.fill(0, 0, PANEL_WIDTH, scrH, 0x77_000000);
     }
 
-    private int renderBiomeSection(GuiGraphicsExtractor g, int mx, int my, int y) {
+    private int renderBiomeSection(GuiGraphics g, int mx, int my, int y) {
         boolean enabled = isBiomeEnabled();
         boolean hoverHdr = my >= y && my < y + HEADER_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING;
         if (hoverHdr)
@@ -266,12 +266,12 @@ public class SeedMapPanel {
         renderCheckbox(g, PADDING, y + (HEADER_H - 9) / 2, enabled, hoverCb);
 
         String label = I18n.get("xsm.gui.panel.biomes_header", I18n.get(enabled ? "xsm.value.on" : "xsm.value.off"));
-        g.text(font, label, PADDING + 12, y + (HEADER_H - font.lineHeight) / 2,
+        g.drawString(font, label, PADDING + 12, y + (HEADER_H - font.lineHeight) / 2,
                 enabled ? 0xFFFFFFFF : 0xFF888888);
 
         String arrow = biomeExpanded ? "▼" : "▶";
         int arrX = PANEL_WIDTH - PADDING - font.width(arrow);
-        g.text(font, arrow, arrX, y + (HEADER_H - font.lineHeight) / 2, 0xFFFFFFFF);
+        g.drawString(font, arrow, arrX, y + (HEADER_H - font.lineHeight) / 2, 0xFFFFFFFF);
 
         y += HEADER_H;
 
@@ -298,7 +298,7 @@ public class SeedMapPanel {
         CompatGui.blitSprite(g,
                 btnSprites.get(true, hoverSc),
                 schemeX, schemeY, schemeW, schemeH, 1.0f);
-        g.text(font, "C", schemeX + 6, schemeY + 6, 0xFFFFFFFF);
+        g.drawString(font, "C", schemeX + 6, schemeY + 6, 0xFFFFFFFF);
 
         int searchX = schemeX + schemeW + 5;
         int searchW = PANEL_WIDTH - PADDING - searchX;
@@ -307,7 +307,7 @@ public class SeedMapPanel {
             biomeSearchField.setX(searchX);
             biomeSearchField.setY(schemeY);
             biomeSearchField.setWidth(searchW);
-            biomeSearchField.extractRenderState(g, mx, my, 0);
+            biomeSearchField.render(g, mx, my, 0);
         }
 
         if (hoverSc) {
@@ -319,7 +319,7 @@ public class SeedMapPanel {
             int tipY = schemeY - font.lineHeight - 4;
             if (tipY < 0) tipY = schemeY + schemeH + 2;
             g.fill(tipX - 2, tipY - 2, tipX + tw + 4, tipY + font.lineHeight + 2, 0xCC000000);
-            g.text(font, tip, tipX, tipY, 0xFFFFFFFF);
+            g.drawString(font, tip, tipX, tipY, 0xFFFFFFFF);
         }
 
         y += schemeH + PADDING;
@@ -353,7 +353,7 @@ public class SeedMapPanel {
             String bioKey = "biome.minecraft." + b.name;
             String bioName = b.name.indexOf(' ') < 0 && b.name.indexOf('(') < 0
                     && !I18n.get(bioKey).equals(bioKey) ? I18n.get(bioKey) : b.name;
-            g.text(font, bioName, PADDING + 24, itemY + (ITEM_H - font.lineHeight) / 2,
+            g.drawString(font, bioName, PADDING + 24, itemY + (ITEM_H - font.lineHeight) / 2,
                     bi ? 0xFFFFFFFF : 0xFF888888);
         }
 
@@ -379,7 +379,7 @@ public class SeedMapPanel {
         return new StructLayout(tabY, tabW, contentY, typeListY, typeVisible, contentY, groupVisibleRows);
     }
 
-    private void renderTabBar(GuiGraphicsExtractor g, StructLayout L, int mx, int my) {
+    private void renderTabBar(GuiGraphics g, StructLayout L, int mx, int my) {
         String[] keys = { "xsm.gui.panel.tab_types", "xsm.gui.panel.tab_groups", "xsm.gui.panel.tab_icons" };
         for (int i = 0; i < 3; i++) {
             int x = PADDING + i * (L.tabW() + TAB_GAP);
@@ -388,7 +388,7 @@ public class SeedMapPanel {
             g.fill(x, L.tabY(), x + L.tabW(), L.tabY() + TAB_H,
                     active ? 0xFF4A4A4A : hover ? 0xFF333333 : 0xFF262626);
             String label = I18n.get(keys[i]);
-            g.text(font, label, x + (L.tabW() - font.width(label)) / 2,
+            g.drawString(font, label, x + (L.tabW() - font.width(label)) / 2,
                     L.tabY() + (TAB_H - font.lineHeight) / 2, active ? 0xFFFFFFFF : 0xFFAAAAAA);
         }
     }
@@ -426,7 +426,7 @@ public class SeedMapPanel {
         return s + "…";
     }
 
-    private int renderStructSection(GuiGraphicsExtractor g, int mx, int my, int y) {
+    private int renderStructSection(GuiGraphics g, int mx, int my, int y) {
         boolean enabled = ServerConfig.isStructureEnabled();
         boolean hoverHdr = my >= y && my < y + HEADER_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING;
         if (hoverHdr)
@@ -436,12 +436,12 @@ public class SeedMapPanel {
         renderCheckbox(g, PADDING, y + (HEADER_H - 9) / 2, enabled, hoverCb);
 
         String label = I18n.get("xsm.gui.panel.structures_header", I18n.get(enabled ? "xsm.value.on" : "xsm.value.off"));
-        g.text(font, label, PADDING + 12, y + (HEADER_H - font.lineHeight) / 2,
+        g.drawString(font, label, PADDING + 12, y + (HEADER_H - font.lineHeight) / 2,
                 enabled ? 0xFFFFFFFF : 0xFF888888);
 
         String arrow = structureExpanded ? "▼" : "▶";
         int arrX = PANEL_WIDTH - PADDING - font.width(arrow);
-        g.text(font, arrow, arrX, y + (HEADER_H - font.lineHeight) / 2, 0xFFFFFFFF);
+        g.drawString(font, arrow, arrX, y + (HEADER_H - font.lineHeight) / 2, 0xFFFFFFFF);
 
         int structHeaderY = y;
         y += HEADER_H;
@@ -466,13 +466,13 @@ public class SeedMapPanel {
 
     // ─── Tab: 类型 ───────────────────────────────────────────
 
-    private int renderTypesTab(GuiGraphicsExtractor g, int mx, int my, StructLayout L) {
+    private int renderTypesTab(GuiGraphics g, int mx, int my, StructLayout L) {
         int y = L.contentY();
 
         // search field
         if (structSearchField != null) {
             structSearchField.setY(y);
-            structSearchField.extractRenderState(g, mx, my, 0);
+            structSearchField.render(g, mx, my, 0);
         }
         y = L.typeListY();
 
@@ -506,7 +506,7 @@ public class SeedMapPanel {
                         cbX + 12, itemY + 1,
                         cbX + 22, itemY + 11,
                         v0, v1, 0.0F, 1.0F);
-                g.text(font, I18n.get(row.type().variantTranslationKey(v)),
+                g.drawString(font, I18n.get(row.type().variantTranslationKey(v)),
                         cbX + 24, itemY + (ITEM_H - font.lineHeight) / 2,
                         on ? 0xFFFFFFFF : 0xFF888888);
             } else {
@@ -521,7 +521,7 @@ public class SeedMapPanel {
                         PADDING + 22, itemY + 11,
                         u0, u1, 0.0F, 1.0F);
 
-                g.text(font, I18n.get(s.translationKey()), PADDING + 24,
+                g.drawString(font, I18n.get(s.translationKey()), PADDING + 24,
                         itemY + (ITEM_H - font.lineHeight) / 2,
                         si ? 0xFFFFFFFF : 0xFF888888);
             }
@@ -539,7 +539,7 @@ public class SeedMapPanel {
         return rows;
     }
 
-    private int renderGroupsTab(GuiGraphicsExtractor g, int mx, int my, StructLayout L) {
+    private int renderGroupsTab(GuiGraphics g, int mx, int my, StructLayout L) {
         var sdata = StructureDataConfig.getActiveData();
         if (--groupCountCooldown <= 0) {
             updateGroupCounts();
@@ -569,7 +569,7 @@ public class SeedMapPanel {
             int count = GROUP_COUNTS.getOrDefault(group, 0);
             String full = truncate(displayNameOf(group) + " (" + count + ")",
                     PANEL_WIDTH - PADDING - textX);
-            g.text(font, full, textX, y + (ITEM_H - font.lineHeight) / 2,
+            g.drawString(font, full, textX, y + (ITEM_H - font.lineHeight) / 2,
                     color != 0 ? StructureGroups.opaque(color)
                             : shown ? 0xFFFFFFFF : 0xFF888888);
             y += ITEM_H;
@@ -582,7 +582,7 @@ public class SeedMapPanel {
             boolean hoverNew = my >= y && my < y + ITEM_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING;
             if (hoverNew)
                 g.fill(PADDING, y, PANEL_WIDTH - PADDING, y + ITEM_H, 0x22_FFFFFF);
-            g.text(font, I18n.get("xsm.gui.panel.group_new"), PADDING + 12,
+            g.drawString(font, I18n.get("xsm.gui.panel.group_new"), PADDING + 12,
                     y + (ITEM_H - font.lineHeight) / 2, 0xFFAAAAAA);
             y += ITEM_H;
         }
@@ -590,7 +590,7 @@ public class SeedMapPanel {
     }
 
     /** 组编辑器 (名称 + HSV/透明度滑条 + 按钮), 返回新的 y。 */
-    private int renderGroupEditor(GuiGraphicsExtractor g, int mx, int my, int y, String group) {
+    private int renderGroupEditor(GuiGraphics g, int mx, int my, int y, String group) {
         int x0 = PADDING + 12;
         int w = PANEL_WIDTH - PADDING - x0;
 
@@ -600,7 +600,7 @@ public class SeedMapPanel {
             groupEditField.setX(x0);
             groupEditField.setY(y);
             groupEditField.setWidth(w - 16);
-            groupEditField.extractRenderState(g, mx, my, 0);
+            groupEditField.render(g, mx, my, 0);
         }
         g.fill(previewX, y, previewX + 12, y + 12, 0xFF888888);
         g.fill(previewX + 1, y + 1, previewX + 11, y + 11, currentEditorArgb());
@@ -621,13 +621,13 @@ public class SeedMapPanel {
             boolean hov = my >= y && my <= y + ITEM_H && mx >= x0 && mx <= x0 + delW;
             g.fill(x0, y, x0 + delW, y + ITEM_H,
                     deleteArmed ? 0xFF7A2222 : hov ? 0xFF666666 : 0xFF333333);
-            g.text(font, delLabel, x0 + 4, y + (ITEM_H - font.lineHeight) / 2, 0xFFFFFFFF);
+            g.drawString(font, delLabel, x0 + 4, y + (ITEM_H - font.lineHeight) / 2, 0xFFFFFFFF);
         } else if (sdata != null && sdata.colorOf(group) != 0) {
             String resetLabel = I18n.get("xsm.gui.panel.group_reset_color");
             int rw = font.width(resetLabel) + 8;
             boolean hov = my >= y && my <= y + ITEM_H && mx >= x0 && mx <= x0 + rw;
             g.fill(x0, y, x0 + rw, y + ITEM_H, hov ? 0xFF666666 : 0xFF333333);
-            g.text(font, resetLabel, x0 + 4, y + (ITEM_H - font.lineHeight) / 2, 0xFFFFFFFF);
+            g.drawString(font, resetLabel, x0 + 4, y + (ITEM_H - font.lineHeight) / 2, 0xFFFFFFFF);
         }
         boolean doneEnabled = canCommitRename(group) || editorColorDirty;
         String doneLabel = I18n.get("xsm.gui.panel.group_done");
@@ -637,16 +637,16 @@ public class SeedMapPanel {
                 && mx >= doneX && mx <= doneX + doneW;
         g.fill(doneX, y, doneX + doneW, y + ITEM_H,
                 !doneEnabled ? 0xFF262626 : hovDone ? 0xFF666666 : 0xFF333333);
-        g.text(font, doneLabel, doneX + 4, y + (ITEM_H - font.lineHeight) / 2,
+        g.drawString(font, doneLabel, doneX + 4, y + (ITEM_H - font.lineHeight) / 2,
                 doneEnabled ? 0xFFFFFFFF : 0xFF888888);
         return y + ITEM_H + 2;
     }
 
     /** 线性小滑条 (标签 + 轨道 + thumb), 返回新的 y。 */
-    private int renderColorSlider(GuiGraphicsExtractor g, int mx, int my, int y,
+    private int renderColorSlider(GuiGraphics g, int mx, int my, int y,
             int id, String labelKey, float t) {
         String label = I18n.get(labelKey);
-        g.text(font, label, PADDING, y + (12 - font.lineHeight) / 2, 0xFFAAAAAA);
+        g.drawString(font, label, PADDING, y + (12 - font.lineHeight) / 2, 0xFFAAAAAA);
         int trackX1 = PANEL_WIDTH - PADDING;
         int trackY = y + 4;
         g.fill(COLOR_TRACK_X0, trackY, trackX1, trackY + 4, 0xFF444444);
@@ -721,7 +721,7 @@ public class SeedMapPanel {
 
     // ─── Tab: 图标 ───────────────────────────────────────────
 
-    private int renderIconsTab(GuiGraphicsExtractor g, int mx, int my, StructLayout L) {
+    private int renderIconsTab(GuiGraphics g, int mx, int my, StructLayout L) {
         int y = L.contentY() + 5;
         int thumbW = 8;
         int thumbH = 12;
@@ -735,7 +735,7 @@ public class SeedMapPanel {
         int trackLen = sliderEnd - sliderStart - thumbW;
         int trackY = y + (thumbH - 4) / 2;
 
-        g.text(font, sliderLabel, PADDING, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
+        g.drawString(font, sliderLabel, PADDING, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
         g.fill(sliderStart, trackY, sliderEnd, trackY + 4, 0xFF444444);
 
         float t = (float) ((-1.75f + Math.sqrt(3.0225f + 0.8f * sliderValue)) / 0.4f);
@@ -745,7 +745,7 @@ public class SeedMapPanel {
         g.fill(thumbX, y, thumbX + thumbW, y + thumbH,
                 hoverThumb || sliderDragging ? 0xFFAAAAAA : 0xFF888888);
 
-        g.text(font, sizeTxt, sliderEnd + 5, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
+        g.drawString(font, sizeTxt, sliderEnd + 5, y + (thumbH - font.lineHeight) / 2, 0xFFFFFFFF);
 
         // loot preview checkbox
         y += thumbH + 5;
@@ -753,7 +753,7 @@ public class SeedMapPanel {
         boolean hoverLoot = mx >= PADDING && mx <= PANEL_WIDTH - PADDING
                 && my >= y && my <= y + ITEM_H;
         renderCheckbox(g, PADDING, y + (ITEM_H - 9) / 2, lootOn, hoverLoot);
-        g.text(font, I18n.get("xsm.gui.panel.loot_preview"), PADDING + 12,
+        g.drawString(font, I18n.get("xsm.gui.panel.loot_preview"), PADDING + 12,
                 y + (ITEM_H - font.lineHeight) / 2,
                 lootOn ? 0xFFFFFFFF : 0xFF888888);
 
@@ -768,13 +768,13 @@ public class SeedMapPanel {
                 hoverMode ? 0xFF666666 : 0xFF333333);
         if (lootOn && hoverMode)
             g.fill(modeBtnX, y, modeBtnX + modeBtnW, y + 1, 0xFFFFFFFF);
-        g.text(font, modeName, modeBtnX + 5, y + (modeBtnH - font.lineHeight) / 2,
+        g.drawString(font, modeName, modeBtnX + 5, y + (modeBtnH - font.lineHeight) / 2,
                 lootOn ? 0xFFFFFFFF : 0xFF888888);
 
         return y + ITEM_H;
     }
 
-    private void renderCheckbox(GuiGraphicsExtractor g, int x, int y, boolean checked, boolean hovered) {
+    private void renderCheckbox(GuiGraphics g, int x, int y, boolean checked, boolean hovered) {
         int border = hovered ? 0xFFFFFFFF : 0xFF888888;
         int fill = checked ? 0xFFFFFFFF : 0xFF222222;
         g.fill(x, y, x + 9, y + 1, border);

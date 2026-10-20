@@ -1,19 +1,20 @@
 package bid.yuanlu.seedmap4xaero.client.accessor;
 
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.state.GameRenderState;
+import net.minecraft.client.gui.render.state.GuiRenderState;
 
 /**
  * 跨版本访问 {@link net.minecraft.client.renderer.GameRenderer} 的私有字段。
- * 字段两版本同名 (private final)，仅暴露方法名不同，直接 @Accessor 字段即可双版本通用：
+ * 字段两线同名 (private final)，直接 @Accessor 字段即可通用：
  * <ul>
- * <li>gameRenderState: 26.1.2 为 getGameRenderState()，26.2 起改名为 gameRenderState()</li>
- * <li>mainCamera: 26.1.2 为 getMainCamera()，26.2 起改名为 mainCamera()</li>
+ * <li>guiRenderState: legacy 1.21.11 为 GuiRenderState (public 字段)；26.x 的
+ * GameRenderState 是另一类型——26.x 分支自行维护本接口的另一形态</li>
+ * <li>mainCamera: private final（public getter getMainCamera() 不经 accessor）</li>
  * </ul>
  */
 public interface GameRendererAccessor {
 
-    GameRenderState xsm$gameRenderState();
+    GuiRenderState xsm$guiRenderState();
 
     Camera xsm$mainCamera();
 }

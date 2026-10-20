@@ -75,7 +75,7 @@ jobs:
       - uses: gradle/actions/wrapper-validation@v6
       - uses: actions/setup-java@v5
         with:
-          java-version: '25'
+          java-version: '21'
           distribution: 'microsoft'
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
@@ -116,7 +116,7 @@ jobs:
             echo 'EOF_M'
           } >> "$GITHUB_ENV"
       - name: Publish to Modrinth
-        run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
+        run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=1.21.11 -PxaeroMapVersion=1.40.4
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CHANGELOG: ${{ env.CHANGELOG }}

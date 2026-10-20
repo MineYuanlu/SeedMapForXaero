@@ -3,7 +3,7 @@ package bid.yuanlu.seedmap4xaero.client.render;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -44,7 +44,7 @@ public final class HighlightWorldRenderer {
         if (registered)
             return;
         registered = true;
-        LevelRenderEvents.COLLECT_SUBMITS.register(context -> {
+        WorldRenderEvents.AFTER_ENTITIES.register(context -> {
             final Minecraft mc = Minecraft.getInstance();
             final var level = mc.level;
             if (level == null)
@@ -54,8 +54,8 @@ public final class HighlightWorldRenderer {
                 return;
             final var dim = level.dimension();
             final Vec3 cam = ((GameRendererAccessor) mc.gameRenderer).xsm$mainCamera().position();
-            final var pose = context.poseStack();
-            final var collector = context.submitNodeCollector();
+            final var pose = context.matrices();
+            final var collector = context.commandQueue();
             final int y0 = level.getMinY();
             final int y1 = level.getMaxY();
             final float tiles = (y1 - y0) / TILE_BLOCKS;

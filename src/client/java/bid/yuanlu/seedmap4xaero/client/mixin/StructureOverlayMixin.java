@@ -27,7 +27,7 @@ import java.util.ArrayList;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.resources.language.I18n;
 
@@ -41,7 +41,7 @@ import xaero.map.gui.GuiMap;
  * <p>
  * 图标渲染回到合成后的屏幕空间 (与原始 guiGraphics.blit 完全一致: 透明、不受地图
  * 光照影响、坐标平滑), 但绕开 MC 26.1 GuiRenderState 的 O(N²) 空间节点树:
- * 直接用 {@link net.minecraft.client.renderer.state.gui.GuiRenderState#addBlitToCurrentLayer}
+ * 直接用 {@link net.minecraft.client.gui.render.state.GuiRenderState#addBlitToCurrentLayer}
  * 把每个图标作为 BlitRenderState 追加到当前层, 单次插入 O(1), 且所有图标共用一张
  * 精灵图 → 渲染端自动合并为一次绘制。
  *
@@ -99,8 +99,8 @@ public class StructureOverlayMixin {
         return enabled;
     }
 
-    @Inject(method = "extractRenderState", at = @At("TAIL"))
-    private void updateStructures(GuiGraphicsExtractor guiGraphics,
+    @Inject(method = "render", at = @At("TAIL"))
+    private void updateStructures(GuiGraphics guiGraphics,
             int scaledMouseX, int scaledMouseY, float partialTicks, CallbackInfo ci) {
         final var enabled = xsm$enabledTypes();
         if (enabled == null)
@@ -124,8 +124,8 @@ public class StructureOverlayMixin {
      * 每个图标 = 一个 BlitRenderState 直接追加到 GuiRenderState 当前层, O(N) 插入,
      * 渲染端按纹理自动批处理成一次绘制。
      */
-    @Inject(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/ImprovedFramebuffer;bindDefaultFramebuffer(Lnet/minecraft/client/Minecraft;)V", shift = At.Shift.AFTER))
-    private void renderStructures(GuiGraphicsExtractor guiGraphics,
+    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/ImprovedFramebuffer;bindDefaultFramebuffer(Lnet/minecraft/client/Minecraft;)V", shift = At.Shift.AFTER))
+    private void renderStructures(GuiGraphics guiGraphics,
             int scaledMouseX, int scaledMouseY, float partialTicks, CallbackInfo ci) {
         if (xsm$enabledTypes() == null)
             return;
@@ -134,7 +134,7 @@ public class StructureOverlayMixin {
         final float iconHalf = ICON_SIZE * iconScale * 0.5f;
 
         final Minecraft mc = Minecraft.getInstance();
-        final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
+        final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$guiRenderState();
         // 新开一层 stratum: 保证图标渲染在 map composite 之上 (addBlitToCurrentLayer 只挂到
         // current, 而 current 在 Xaero 的 debug 文本等操作后不可靠, 可能在地图之下被覆盖)
         guiRenderState.nextStratum();
@@ -237,7 +237,7 @@ public class StructureOverlayMixin {
      * 首行白色 (标题), 其余按行色 (灰/组色)。
      */
     @Unique
-    private static void xsm$drawTooltip(GuiGraphicsExtractor g, Font font,
+    private static void xsm$drawTooltip(GuiGraphics g, Font font,
             ArrayList<HoverLine> lines, int mouseX, int mouseY, double guiW, double guiH) {
         final int PAD = 3;
         int textW = 0;
@@ -264,12 +264,12 @@ public class StructureOverlayMixin {
 
         for (int i = 0; i < lines.size(); i++) {
             HoverLine line = lines.get(i);
-            g.text(font, line.text(), x + PAD, y + PAD + i * lineH, line.color());
+            g.drawString(font, line.text(), x + PAD, y + PAD + i * lineH, line.color());
         }
     }
 
     @Unique
-    private void xsm$renderLootWidget(GuiGraphicsExtractor guiGraphics,
+    private void xsm$renderLootWidget(GuiGraphics guiGraphics,
             int scaledMouseX, int scaledMouseY, double guiW, double guiH) {
         if (!ServerConfig.isLootPreviewEnabled())
             return;
@@ -295,7 +295,7 @@ public class StructureOverlayMixin {
         // 物品 tooltip 渲染到新 stratum (与 SeedMapper 一致)
         var tooltip = widget.getPendingItemTooltip();
         if (tooltip != null) {
-            final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
+            final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$guiRenderState();
             guiRenderState.nextStratum();
             CompatGui.tooltip(guiGraphics, mc.font, tooltip,
                     widget.getPendingTooltipX(), widget.getPendingTooltipY());

@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Surrogate;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import bid.yuanlu.seedmap4xaero.client.accessor.DropDownWidgetTitleAccessor;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
 import xaero.lib.client.gui.widget.dropdown.DropDownWidget;
@@ -44,7 +44,7 @@ public abstract class DropDownWidgetTitleMixin implements DropDownWidgetTitleAcc
     private int xsm$currentSlot;
 
     @Inject(method = "drawSlot", at = @At("HEAD"))
-    private void xsm$captureSlot(GuiGraphicsExtractor guiGraphics, Component text, int slotIndex, int pos,
+    private void xsm$captureSlot(GuiGraphics guiGraphics, Component text, int slotIndex, int pos,
             int mouseX, int mouseY, boolean scrolling, int optionLimit,
             int xWithOffset, int yWithOffset, CallbackInfo ci) {
         xsm$currentSlot = slotIndex;
@@ -56,14 +56,14 @@ public abstract class DropDownWidgetTitleMixin implements DropDownWidgetTitleAcc
      * 版本），此 @Surrogate 让老版目标签名也能匹配，单 jar 跨版本通用。
      */
     @Surrogate
-    private void xsm$captureSlot(GuiGraphicsExtractor guiGraphics, String text, int slotIndex, int pos,
+    private void xsm$captureSlot(GuiGraphics guiGraphics, String text, int slotIndex, int pos,
             int mouseX, int mouseY, boolean scrolling, int optionLimit,
             int xWithOffset, int yWithOffset, CallbackInfo ci) {
         xsm$currentSlot = slotIndex;
     }
 
     @ModifyArg(method = "drawSlot", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/gui/GuiGraphicsExtractor;fill(IIIII)V"), index = 4)
+            target = "Lnet/minecraft/client/gui/GuiGraphics;fill(IIIII)V"), index = 4)
     private int xsm$renderTitleBackground(int color) {
         return xsm$titleRows.contains(xsm$currentSlot) ? selectedBackground : color;
     }

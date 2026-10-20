@@ -15,7 +15,7 @@ import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.MarksStore;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -43,7 +43,7 @@ public final class Sm4xCommand {
 
     /** {@code /sm4x} 根节点: 无参显示帮助。 */
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdSm4x() {
-        return ClientCommands.literal("sm4x")
+        return ClientCommandManager.literal("sm4x")
             .executes(ctx -> {
                 ctx.getSource().sendFeedback(Component.translatable("xsm.command.help"));
                 return 1;
@@ -53,23 +53,23 @@ public final class Sm4xCommand {
 
     /** {@code /sm4x history …}: 种子历史 / 结构数据。 */
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdHistory() {
-        return ClientCommands.literal("history")
+        return ClientCommandManager.literal("history")
             .then(cmdHistorySeed())
             .then(cmdHistoryStructure());
     }
 
     /** {@code /sm4x history seed list [page=1]}: 种子历史 (MRU)。 */
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdHistorySeed() {
-        return ClientCommands.literal("seed")
+        return ClientCommandManager.literal("seed")
             .then(listNode(Sm4xCommand::listSeedHistory));
     }
 
     /** {@code /sm4x history structure list [page=1] | remove <seed>}。 */
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdHistoryStructure() {
-        return ClientCommands.literal("structure")
+        return ClientCommandManager.literal("structure")
             .then(listNode(Sm4xCommand::listStructureData))
-            .then(ClientCommands.literal("remove")
-                .then(ClientCommands.argument("seed", LongArgumentType.longArg())
+            .then(ClientCommandManager.literal("remove")
+                .then(ClientCommandManager.argument("seed", LongArgumentType.longArg())
                     .executes(ctx -> {
                         removeStructureData(ctx.getSource(), LongArgumentType.getLong(ctx, "seed"));
                         return 1;
@@ -79,12 +79,12 @@ public final class Sm4xCommand {
     /** {@code list [page=1]} 子树; handler 首参 = 页码。 */
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> listNode(
             java.util.function.ObjIntConsumer<FabricClientCommandSource> handler) {
-        return ClientCommands.literal("list")
+        return ClientCommandManager.literal("list")
             .executes(ctx -> {
                 handler.accept(ctx.getSource(), 1);
                 return 1;
             })
-            .then(ClientCommands.argument("page", IntegerArgumentType.integer(1))
+            .then(ClientCommandManager.argument("page", IntegerArgumentType.integer(1))
                 .executes(ctx -> {
                     handler.accept(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "page"));
                     return 1;

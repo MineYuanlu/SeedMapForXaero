@@ -50,6 +50,9 @@ file(GLOB_RECURSE XSM_PRETOOLS_SOURCES
 add_library(xsmcore SHARED ${XSM_APIS_SOURCES})
 target_link_libraries(xsmcore PRIVATE cubiomes_static)
 target_include_directories(xsmcore PRIVATE cubiomes)
+# vendored JNI 头 (GPLv2+Classpath exception, 平台由 jni/jni_md.h shim 分发) ——
+# 仅 jni.cpp 使用；不链接 libjvm，符号由 JVM 在 dlopen 后 dlsym 解析
+target_include_directories(xsmcore PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/jni)
 
 if (WIN32)
     set_target_properties(xsmcore PROPERTIES PREFIX "")

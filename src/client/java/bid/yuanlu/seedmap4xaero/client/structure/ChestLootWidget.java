@@ -17,7 +17,7 @@ import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm.ChestLoot;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm.LootItem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.Holder;
@@ -110,7 +110,7 @@ public class ChestLootWidget {
         }
     }
 
-    public void extractRenderState(GuiGraphicsExtractor guiGraphicsExtractor, int mouseX, int mouseY, Font font) {
+    public void extractRenderState(GuiGraphics guiGraphicsExtractor, int mouseX, int mouseY, Font font) {
         this.pendingItemTooltip = null;
         if (this.tiled) {
             renderTiled(guiGraphicsExtractor, mouseX, mouseY, font);
@@ -120,7 +120,7 @@ public class ChestLootWidget {
     }
 
     /** 平铺模式: 所有容器同时显示, 无翻页箭头。 */
-    private void renderTiled(GuiGraphicsExtractor g, int mouseX, int mouseY, Font font) {
+    private void renderTiled(GuiGraphics g, int mouseX, int mouseY, Font font) {
         boolean tooltipRendered = false;
         for (int i = 0; i < this.chestDataList.size(); i++) {
             int tileX = this.x + (i % TILE_COLS) * (CONTAINER_WIDTH + TILE_GAP);
@@ -130,7 +130,7 @@ public class ChestLootWidget {
     }
 
     /** 单容器模式: 当前箱子的容器 + 翻页箭头。 */
-    private void renderSingle(GuiGraphicsExtractor g, int mouseX, int mouseY, Font font) {
+    private void renderSingle(GuiGraphics g, int mouseX, int mouseY, Font font) {
         renderContainer(g, mouseX, mouseY, font,
                 this.chestDataList.get(this.chestIndex), this.chestIndex, this.x, this.y);
 
@@ -147,7 +147,7 @@ public class ChestLootWidget {
      * 渲染一个箱子容器 (背景 + 标题 + 3×9 物品网格 + 物品 tooltip)。
      * 返回是否渲染了物品 tooltip (用于平铺模式跨格只渲染首个)。
      */
-    private boolean renderContainer(GuiGraphicsExtractor g, int mouseX, int mouseY, Font font,
+    private boolean renderContainer(GuiGraphics g, int mouseX, int mouseY, Font font,
             ChestLoot chestData, int index, int boxX, int boxY) {
         CompatGui.blitTexture(g, CHEST_CONTAINER,
                 boxX, boxY, 0, 0, CONTAINER_WIDTH, CONTAINER_HEIGHT,
@@ -159,7 +159,7 @@ public class ChestLootWidget {
 
         int minX = boxX + 8;
         int minY = boxY + 6;
-        g.text(font, title, minX, minY, -1);
+        g.drawString(font, title, minX, minY, -1);
 
         int titleWidth = font.width(title.getVisualOrderText());
         if (mouseX >= minX && mouseX <= minX + titleWidth
@@ -179,8 +179,8 @@ public class ChestLootWidget {
                     continue;
                 }
                 int x = minX + column * ITEM_SLOT_SIZE;
-                g.item(item, x, y);
-                g.itemDecorations(font, item, x, y);
+                g.renderItem(item, x, y);
+                g.renderItemDecorations(font, item, x, y);
                 if (!tooltipRendered && mouseX >= x && mouseX <= x + ITEM_SLOT_SIZE
                         && mouseY >= y && mouseY <= y + ITEM_SLOT_SIZE) {
                     Minecraft minecraft = Minecraft.getInstance();

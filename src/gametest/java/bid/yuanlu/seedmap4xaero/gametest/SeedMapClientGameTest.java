@@ -117,15 +117,27 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     /**
      * 等待 chunk 渲染完成。跨 fabric-client-gametest 版本兼容：
      * <ul>
+     * <li>4.x（fabric-api 0.141，MC 1.21.11）：{@code singleplayer.getClientWorld()}
+     *     返回 {@code TestClientWorldContext}（有 {@code waitForChunksRender(boolean,int)}）</li>
      * <li>5.1.x（fabric-api 0.153/0.155，MC 26.1）：{@code singleplayer.getClientLevel()}
      *     返回 {@code TestClientLevelContext}（有 {@code waitForChunksRender()}）</li>
      * <li>6.0.0（fabric-api 0.156，MC 26.2）：该类型被移除，改走
      *     {@code singleplayer.getConnection().waitForChunksRender()}</li>
      * </ul>
-     * 用反射统一入口：先试 {@code getClientLevel().waitForChunksRender()}，
-     * 没有则退到 {@code getConnection().waitForChunksRender()}。
+     * 用反射统一入口：先试 {@code getClientWorld()}，没有则退到
+     * {@code getClientLevel()}/{@code getConnection()}。
      */
     private static void waitForChunksRender(TestSingleplayerContext singleplayer) {
+        try {
+            Object world = TestSingleplayerContext.class.getMethod("getClientWorld").invoke(singleplayer);
+            world.getClass().getMethod("waitForChunksRender", boolean.class, int.class).invoke(world, false, 600);
+            return;
+        } catch (NoSuchMethodException e) {
+            // 更新版本：getClientWorld 已移除
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("waitForChunksRender (getClientWorld path) failed", e);
+        }
+
         try {
             Object level = TestSingleplayerContext.class.getMethod("getClientLevel").invoke(singleplayer);
             level.getClass().getMethod("waitForChunksRender").invoke(level);
@@ -152,7 +164,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
                 throw new AssertionError("resolveSeed() = " + seed + ", expected " + KNOWN_SEED);
             }
             // 直接验证单机服务器已用该种子
-            Long serverSeed = client.getSingleplayerServer().getWorldGenSettings().options().seed();
+            Long serverSeed = client.getSingleplayerServer().getWorldData().worldGenOptions().seed();
             if (!Objects.equals(serverSeed, KNOWN_SEED)) {
                 throw new AssertionError("server seed = " + serverSeed + ", expected " + KNOWN_SEED);
             }

@@ -13,7 +13,7 @@ import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -33,6 +33,7 @@ import xaero.map.WorldMap;
 import xaero.map.graphics.CustomRenderTypes;
 import xaero.map.graphics.MapRenderHelper;
 import xaero.map.graphics.renderer.multitexture.MultiTextureRenderTypeRenderer;
+import xaero.map.graphics.renderer.multitexture.MultiTextureRenderTypeRendererProvider;
 import xaero.map.gui.GuiMap;
 import xaero.map.region.LeveledRegion;
 import xaero.map.region.MapRegion;
@@ -142,8 +143,8 @@ public class SeedMapMixin {
     /**
      * 在所有渲染工作之前, 处理缓存、C侧切换
      */
-    @Inject(method = "extractRenderState", at = @At("HEAD"))
-    private void tickWorldInfo(GuiGraphicsExtractor guiGraphics, int scaledMouseX, int scaledMouseY,
+    @Inject(method = "render", at = @At("HEAD"))
+    private void tickWorldInfo(GuiGraphics guiGraphics, int scaledMouseX, int scaledMouseY,
             float partialTicks, CallbackInfo ci) {
         final var toggle = ((SeedMapToggleAccessor) this);
 
@@ -180,8 +181,8 @@ public class SeedMapMixin {
     /**
      * 生物群系渲染
      */
-    @Inject(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;draw(Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer;)V", ordinal = 1, shift = At.Shift.AFTER))
-    private void renderSeedMapTiles(GuiGraphicsExtractor guiGraphics, int scaledMouseX, int scaledMouseY,
+    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;draw(Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer;)V", ordinal = 1, shift = At.Shift.AFTER))
+    private void renderSeedMapTiles(GuiGraphics guiGraphics, int scaledMouseX, int scaledMouseY,
             float partialTicks, CallbackInfo ci) {
         if (!((SeedMapToggleAccessor) this).xsm$isSeedMapEnabled())
             return;
@@ -220,7 +221,11 @@ public class SeedMapMixin {
         final var rendererProvider = this.mapProcessor.getMultiTextureRenderTypeRenderers();
         if (rendererProvider == null)
             return;
-        final var renderer = rendererProvider.getRenderer(CustomRenderTypes.MAP);
+        // legacy Xaero 1.40.4 无 1 参 getRenderer(RenderType) 便捷重载:
+        // 需显式传 textureBinder；defaultTextureBind 是 Xaero 自带的默认绑定 (26.x
+        // 1 参重载内部即等价于此)
+        final var renderer = rendererProvider.getRenderer(
+                MultiTextureRenderTypeRendererProvider::defaultTextureBind, CustomRenderTypes.MAP);
         if (renderer == null)
             return;
         final var matrix = WorldMap.worldMapClientOnly.getMapScreenPoseStack().last().pose();

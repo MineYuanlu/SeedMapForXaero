@@ -4,7 +4,7 @@ import org.joml.Matrix3x2f;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.Identifier;
@@ -53,7 +53,7 @@ public final class HighlightHudRenderer {
     }
 
     /** 每帧在 HUD 末尾绘制全部可见高亮图标 + 距离文字。 */
-    private static void render(GuiGraphicsExtractor graphics) {
+    private static void render(GuiGraphics graphics) {
         lastFrameHighlightBlits = 0;
         final Minecraft mc = Minecraft.getInstance();
         final var level = mc.level;
@@ -68,7 +68,7 @@ public final class HighlightHudRenderer {
         final int guiW = graphics.guiWidth();
         final int guiH = graphics.guiHeight();
 
-        final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
+        final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$guiRenderState();
         // 新开一层 stratum: addBlitToCurrentLayer 只挂到 current, 保证本层图标在其它
         // HUD 元素之上 (与 StructureOverlayMixin 同模式)。
         guiRenderState.nextStratum();
@@ -103,7 +103,7 @@ public final class HighlightHudRenderer {
             final int tx = Math.round(sx);
             final int ty = Math.round(sy);
             final String str = I18n.get("xsm.highlight.distance", String.format("%.0f", dist));
-            graphics.text(mc.font, str, tx - mc.font.width(str) / 2, ty + half + 2,
+            graphics.drawString(mc.font, str, tx - mc.font.width(str) / 2, ty + half + 2,
                     0xFFFFFFFF, true);
         }
     }

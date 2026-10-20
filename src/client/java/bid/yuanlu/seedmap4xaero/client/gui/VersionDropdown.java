@@ -9,7 +9,7 @@ import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.resources.language.I18n;
 import xaero.map.MapProcessor;
@@ -94,7 +94,7 @@ public final class VersionDropdown {
         return expanded && mx >= x && mx < x + width && my >= y + height && my < listBottom();
     }
 
-    public void render(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY) {
+    public void render(GuiGraphics g, Font font, int mouseX, int mouseY) {
         // 收起态按钮本体
         g.fill(x, y, x + width, y + height, overButton(mouseX, mouseY) ? COL_BG_HOVER : COL_BG);
         g.fill(x, y, x + width, y + 1, COL_BORDER);
@@ -107,9 +107,9 @@ public final class VersionDropdown {
                 : I18n.get("xsm.gui.switching.version.auto", SharedConstants.getCurrentVersion().name());
         String text = I18n.get("xsm.gui.switching.version") + ": " + value;
         int ty = y + (height - font.lineHeight) / 2;
-        g.text(font, text, x + 5, ty, COL_TEXT);
+        g.drawString(font, text, x + 5, ty, COL_TEXT);
         String arrow = expanded ? "\u25B2" : "\u25BC";
-        g.text(font, arrow, x + width - 16, ty, COL_TEXT);
+        g.drawString(font, arrow, x + width - 16, ty, COL_TEXT);
 
         if (!expanded)
             return;
@@ -134,7 +134,7 @@ public final class VersionDropdown {
                     ? I18n.get("xsm.gui.switching.version.auto", SharedConstants.getCurrentVersion().name())
                     : Xsm.SUPPORTED_VERSIONS.get(entry - 1);
             int color = Objects.equals(entry == 0 ? null : label, selected) ? COL_TEXT_SELECTED : COL_TEXT;
-            g.text(font, label, x + 6, ry + (ROW_H - font.lineHeight) / 2, color);
+            g.drawString(font, label, x + 6, ry + (ROW_H - font.lineHeight) / 2, color);
         }
     }
 

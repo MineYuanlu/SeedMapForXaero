@@ -2,9 +2,7 @@ package bid.yuanlu.seedmap4xaero.client.nativeapi;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -163,29 +161,39 @@ public final class Xsm {
         return null;
     }
 
+    /** 读取 C 侧输出的 null 结尾字符串缓冲。 */
+    private static String cstr(byte[] buf) {
+        return cstrAt(buf, 0, buf.length);
+    }
+
+    /** 读取 C 侧输出的 null 结尾字符串缓冲（指定切片）。 */
+    private static String cstrAt(byte[] buf, int off, int maxLen) {
+        int len = 0;
+        while (len < maxLen && buf[off + len] != 0) {
+            len++;
+        }
+        return new String(buf, off, len, StandardCharsets.UTF_8);
+    }
+
     private static long lastSeed = Long.MIN_VALUE;
     private static int lastDim = Integer.MIN_VALUE;
     private static String lastAppliedVersion = null;
     private static String lastRejectedVersion = null;
 
     /**
-     * 版本选择器展示的 MC 版本（倒序，仅 26.1+；ViaVersion 跨版本场景）。
+     * 版本选择器展示的 MC 版本（倒序；ViaVersion 跨版本场景）。
      * <p>
-     * C 侧 {@code mcVersionMap} 支持更多旧版本（配置中已有的值仍可生效），
-     * 但 UI 仅提供 26.1+ 选项；新 MC 版本发布时在此追加。
+     * legacy 分支（Java 21 / 混淆 MC 线）仅提供 1.21.11；
+     * C 侧 {@code mcVersionMap} 支持更多旧版本（配置中已有的值仍可生效）。
      */
     public static final List<String> SUPPORTED_VERSIONS = List.of(
-            "26.3", "26.2", "26.1");
+            "1.21.11");
 
     public static void setGameVersion() {
         final var version = SharedConstants.getCurrentVersion().name();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment versionSegment = arena.allocateFrom(version);
-
-            boolean success = XsmNative.setGameVersion(versionSegment);
-            if (!success) {
-                throw new IllegalStateException("Unsupported game version: " + version);
-            }
+        boolean success = XsmNative.setGameVersion(version);
+        if (!success) {
+            throw new IllegalStateException("Unsupported game version: " + version);
         }
     }
 
@@ -200,13 +208,11 @@ public final class Xsm {
             return true;
         if (Objects.equals(target, lastRejectedVersion))
             return false;
-        try (Arena arena = Arena.ofConfined()) {
-            boolean success = XsmNative.setGameVersion(arena.allocateFrom(target));
-            if (!success) {
-                lastRejectedVersion = target;
-                LOGGER.warn("Unsupported MC version: {}, keeping current version ({})", target, lastAppliedVersion);
-                return false;
-            }
+        boolean success = XsmNative.setGameVersion(target);
+        if (!success) {
+            lastRejectedVersion = target;
+            LOGGER.warn("Unsupported MC version: {}, keeping current version ({})", target, lastAppliedVersion);
+            return false;
         }
         lastAppliedVersion = target;
         // C 侧 setGameVersion 已重置 gen_setWorld，强制后续重新 setWorld 并清空全部缓存
@@ -247,13 +253,9 @@ public final class Xsm {
             pairs[id * 2] = id;
             pairs[id * 2 + 1] = provider.getColor(id);
         }
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment seg = arena.allocate(256L * 2 * 4);
-            seg.copyFrom(MemorySegment.ofArray(pairs));
-            boolean success = XsmNative.setBiomeColorTable(seg, 256);
-            if (!success) {
-                LOGGER.error("Failed to set biome color table: {}", provider.name());
-            }
+        boolean success = XsmNative.setBiomeColorTable(pairs, 256);
+        if (!success) {
+            LOGGER.error("Failed to set biome color table: {}", provider.name());
         }
     }
 
@@ -264,13 +266,9 @@ public final class Xsm {
         if (Arrays.equals(lastBiomeDisabled, bits))
             return;
         lastBiomeDisabled = bits;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment seg = arena.allocate(bits.length);
-            seg.copyFrom(MemorySegment.ofArray(bits));
-            boolean success = XsmNative.setBiomeDisabled(seg, bits.length);
-            if (!success) {
-                LOGGER.error("Failed to set biome disabled: {}", disabled);
-            }
+        boolean success = XsmNative.setBiomeDisabled(bits, bits.length);
+        if (!success) {
+            LOGGER.error("Failed to set biome disabled: {}", disabled);
         }
     }
 
@@ -290,42 +288,35 @@ public final class Xsm {
      * @return 64×64 像素数组，每像素 ABGR {@code int}
      */
     public static int[] genCellImg(int scale, int worldX, int worldZ, int absY, boolean enableLighting) {
-        try (Arena arena = Arena.ofConfined()) {
-            // C 侧输出 24-bit RGB，每像素 3 字节
-            MemorySegment data = arena.allocate(64L * 64 * 3);
-            int result = XsmNative.genCellImg(scale, worldX, worldZ, absY, data, enableLighting);
-            if (result != 0) {
-                LOGGER.warn("genCellImg returned {} for scale={} worldX={} worldZ={} absY={}",
-                        result, scale, worldX, worldZ, absY);
-                return null;
-            }
-            int[] pixels = new int[64 * 64];
-            for (int i = 0; i < pixels.length; i++) {
-                long off = (long) i * 3;
-                int r = data.get(ValueLayout.JAVA_BYTE, off) & 0xFF;
-                int g = data.get(ValueLayout.JAVA_BYTE, off + 1) & 0xFF;
-                int b = data.get(ValueLayout.JAVA_BYTE, off + 2) & 0xFF;
-                pixels[i] = (0xFF << 24) | (b << 16) | (g << 8) | r;
-            }
-            return pixels;
+        // C 侧输出 24-bit RGB，每像素 3 字节
+        byte[] data = new byte[64 * 64 * 3];
+        int result = XsmNative.genCellImg(scale, worldX, worldZ, absY, data, enableLighting);
+        if (result != 0) {
+            LOGGER.warn("genCellImg returned {} for scale={} worldX={} worldZ={} absY={}",
+                    result, scale, worldX, worldZ, absY);
+            return null;
         }
+        int[] pixels = new int[64 * 64];
+        for (int i = 0; i < pixels.length; i++) {
+            int off = i * 3;
+            int r = data[off] & 0xFF;
+            int g = data[off + 1] & 0xFF;
+            int b = data[off + 2] & 0xFF;
+            pixels[i] = (0xFF << 24) | (b << 16) | (g << 8) | r;
+        }
+        return pixels;
     }
 
     public static @Nullable QueryPointCache queryPoint(int worldX, int worldZ) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment biomeName = arena.allocate(32);
-            MemorySegment height = arena.allocate(ValueLayout.JAVA_INT);
-            int ret = XsmNative.queryPoint(worldX, worldZ, biomeName, 32, height);
-            if (ret == 0) {
-                final var name = biomeName.getString(0);
-                if (name == null)
-                    return null;
-                return new QueryPointCache(name,
-                        height.get(ValueLayout.JAVA_INT, 0));
-            } else {
+        byte[] biomeName = new byte[32];
+        int[] height = new int[1];
+        int ret = XsmNative.queryPoint(worldX, worldZ, biomeName, 32, height);
+        if (ret == 0) {
+            final var name = cstr(biomeName);
+            if (name == null || name.isEmpty())
                 return null;
-            }
-        } catch (Throwable e) {
+            return new QueryPointCache(name, height[0]);
+        } else {
             return null;
         }
     }
@@ -333,19 +324,12 @@ public final class Xsm {
     public static int @Nullable [] queryExactChunkHeight(int chunkX, int chunkZ, int @NotNull [] heights) {
         if (heights == null || heights.length != 256)
             throw new IllegalArgumentException("heights must be an array of length 256");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment seg = arena.allocate(256 * 4L);
-            int ret = XsmNative.queryExactChunkHeight(chunkX, chunkZ, seg);
-            if (ret == 0) {
-                for (int i = 0; i < 256; i++) {
-                    heights[i] = seg.getAtIndex(ValueLayout.JAVA_INT, i);
-                }
-                return heights;
-            }
-        } catch (Throwable e) {
-            Xsm.LOGGER.warn("queryExactChunkHeight failed", e);
+        int ret = XsmNative.queryExactChunkHeight(chunkX, chunkZ, heights);
+        if (ret != 0) {
+            Xsm.LOGGER.warn("queryExactChunkHeight failed: {}", ret);
+            return null;
         }
-        return null;
+        return heights;
     }
 
     public interface RegionStructureSetter {
@@ -390,24 +374,20 @@ public final class Xsm {
         if (cap <= 0 || rx1 <= rx0 || rz1 <= rz0)
             return -1;
 
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment bx = arena.allocate(4L * cap);
-            MemorySegment bz = arena.allocate(4L * cap);
-            MemorySegment vr = arena.allocate(4L * cap);
-            MemorySegment next = arena.allocate(8);
-            int n = XsmNative.querySparseStructures(
-                    structureType,
-                    rx0, rz0, rx1, rz1,
-                    cex0, cez0, cex1, cez1,
-                    start, cap, bx, bz, vr, next);
-            long nextVal = next.get(ValueLayout.JAVA_LONG, 0);
-            for (int i = 0; i < n; i++) {
-                setter.set(bx.getAtIndex(ValueLayout.JAVA_INT, i),
-                        bz.getAtIndex(ValueLayout.JAVA_INT, i),
-                        vr.getAtIndex(ValueLayout.JAVA_INT, i));
-            }
-            return nextVal;
+        int[] bx = new int[cap];
+        int[] bz = new int[cap];
+        int[] vr = new int[cap];
+        long[] next = new long[1];
+        int n = XsmNative.querySparseStructures(
+                structureType,
+                rx0, rz0, rx1, rz1,
+                cex0, cez0, cex1, cez1,
+                start, cap, bx, bz, vr, next);
+        long nextVal = next[0];
+        for (int i = 0; i < n; i++) {
+            setter.set(bx[i], bz[i], vr[i]);
         }
+        return nextVal;
     }
 
     public interface SparseStructureSetter {
@@ -437,53 +417,45 @@ public final class Xsm {
         if (n <= 0)
             return;
 
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment found = arena.allocate(n);
-            MemorySegment bx = arena.allocate(4L * n);
-            MemorySegment bz = arena.allocate(4L * n);
-            MemorySegment vr = arena.allocate(4L * n);
+        byte[] found = new byte[n];
+        int[] bx = new int[n];
+        int[] bz = new int[n];
+        int[] vr = new int[n];
 
-            XsmNative.queryRegionStructuresGrid(
-                    structureType,
-                    rx0, rz0, rx1, rz1,
-                    ex0, ez0, ex1, ez1,
-                    found, bx, bz, vr);
+        XsmNative.queryRegionStructuresGrid(
+                structureType,
+                rx0, rz0, rx1, rz1,
+                ex0, ez0, ex1, ez1,
+                found, bx, bz, vr);
 
-            int index = 0;
-            for (int x = rx0; x < rx1; x++) {
-                boolean inX = ex0 <= x && x < ex1;
-                for (int z = rz0; z < rz1; z++) {
-                    if (inX && ez0 <= z && z < ez1)
-                        continue;
-                    int idx = index++;
-                    setter.set(x, z,
-                            found.get(ValueLayout.JAVA_BYTE, idx) != 0,
-                            bx.getAtIndex(ValueLayout.JAVA_INT, idx),
-                            bz.getAtIndex(ValueLayout.JAVA_INT, idx),
-                            vr.getAtIndex(ValueLayout.JAVA_INT, idx));
-                }
+        int index = 0;
+        for (int x = rx0; x < rx1; x++) {
+            boolean inX = ex0 <= x && x < ex1;
+            for (int z = rz0; z < rz1; z++) {
+                if (inX && ez0 <= z && z < ez1)
+                    continue;
+                int idx = index++;
+                setter.set(x, z,
+                        found[idx] != 0,
+                        bx[idx],
+                        bz[idx],
+                        vr[idx]);
             }
         }
     }
 
     public static @Nullable StructureType.Config getStructureConfig(int type) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment salt = arena.allocate(4);
-            MemorySegment regionSize = arena.allocate(4);
-            MemorySegment chunkRange = arena.allocate(4);
-            MemorySegment dim = arena.allocate(4);
-            MemorySegment rarity = arena.allocate(4);
-            int ok = XsmNative.xsmGetStructureConfig(
-                    type, salt, regionSize, chunkRange, dim, rarity);
-            if (ok == 0)
-                return null;
-            return new StructureType.Config(
-                    salt.get(ValueLayout.JAVA_INT, 0),
-                    regionSize.get(ValueLayout.JAVA_INT, 0),
-                    chunkRange.get(ValueLayout.JAVA_INT, 0),
-                    dim.get(ValueLayout.JAVA_INT, 0),
-                    rarity.get(ValueLayout.JAVA_FLOAT, 0));
-        }
+        int[] out = new int[4];
+        float[] rarity = new float[1];
+        int ok = XsmNative.xsmGetStructureConfig(type, out, rarity);
+        if (ok == 0)
+            return null;
+        return new StructureType.Config(
+                out[0],
+                out[1],
+                out[2],
+                out[3],
+                rarity[0]);
     }
 
     public static int getStructFEATURE_NUM() {
@@ -491,12 +463,10 @@ public final class Xsm {
     }
 
     public static @Nullable String biome2str(int biomeId) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment out = arena.allocate(64);
-            if (XsmNative.xsmBiome2str(biomeId, out, 64))
-                return out.getString(0);
-            return null;
-        }
+        byte[] out = new byte[64];
+        if (XsmNative.xsmBiome2str(biomeId, out, 64))
+            return cstr(out);
+        return null;
     }
 
     /**
@@ -509,21 +479,17 @@ public final class Xsm {
     public static @NotNull StrongholdPos[] queryStrongholdsRange(int from, int to) {
         if (to <= from)
             return new StrongholdPos[0];
-        try (Arena arena = Arena.ofConfined()) {
-            int cap = to - from;
-            MemorySegment x = arena.allocate(4L * cap);
-            MemorySegment z = arena.allocate(4L * cap);
-            int n = XsmNative.queryStrongholdsRange(from, to, x, z);
-            if (n < 0 || n > cap)
-                n = 0;
-            StrongholdPos[] out = new StrongholdPos[n];
-            for (int i = 0; i < n; i++) {
-                out[i] = new StrongholdPos(from + i,
-                        x.getAtIndex(ValueLayout.JAVA_INT, i),
-                        z.getAtIndex(ValueLayout.JAVA_INT, i));
-            }
-            return out;
+        int cap = to - from;
+        int[] x = new int[cap];
+        int[] z = new int[cap];
+        int n = XsmNative.queryStrongholdsRange(from, to, x, z);
+        if (n < 0 || n > cap)
+            n = 0;
+        StrongholdPos[] out = new StrongholdPos[n];
+        for (int i = 0; i < n; i++) {
+            out[i] = new StrongholdPos(from + i, x[i], z[i]);
         }
+        return out;
     }
 
     /**
@@ -532,15 +498,10 @@ public final class Xsm {
      * @return 出生点方块坐标; {@code null} = native 未就绪/非主世界/失败
      */
     public static @Nullable SpawnPos querySpawn() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment x = arena.allocate(4);
-            MemorySegment z = arena.allocate(4);
-            if (XsmNative.querySpawn(x, z) == 0)
-                return null;
-            return new SpawnPos(
-                    x.get(ValueLayout.JAVA_INT, 0),
-                    z.get(ValueLayout.JAVA_INT, 0));
-        }
+        int[] xz = new int[2];
+        if (XsmNative.querySpawn(xz) == 0)
+            return null;
+        return new SpawnPos(xz[0], xz[1]);
     }
 
     /**
@@ -575,69 +536,63 @@ public final class Xsm {
      * @return 箱子列表; 空列表 = 无战利品/不支持; {@code null} = native 错误
      */
     public static @Nullable List<ChestLoot> queryStructureLoot(int structureType, int blockX, int blockZ) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment data = arena.allocate(4L * LOOT_BUF_CAP);
-            MemorySegment written = arena.allocate(4);
-            MemorySegment chests = arena.allocate(4);
-            MemorySegment pieceNames = arena.allocate(128L * LOOT_NAME_SLOT);
-            MemorySegment lootTables = arena.allocate(128L * LOOT_NAME_SLOT);
-            int rc = XsmNative.xsmQueryStructureLoot(
-                    structureType, blockX, blockZ, LOOT_BUF_CAP, data, written, chests,
-                    pieceNames, lootTables);
-            if (rc != 0)
-                return rc == -2 ? List.of() : null;
-            int nChests = chests.get(ValueLayout.JAVA_INT, 0);
-            int w = written.get(ValueLayout.JAVA_INT, 0);
-            if (nChests <= 0)
-                return List.of();
+        int[] data = new int[LOOT_BUF_CAP];
+        int[] written = new int[1];
+        int[] chests = new int[1];
+        byte[] pieceNames = new byte[128 * LOOT_NAME_SLOT];
+        byte[] lootTables = new byte[128 * LOOT_NAME_SLOT];
+        int rc = XsmNative.xsmQueryStructureLoot(
+                structureType, blockX, blockZ, LOOT_BUF_CAP, data, written, chests,
+                pieceNames, lootTables);
+        if (rc != 0)
+            return rc == -2 ? List.of() : null;
+        int nChests = chests[0];
+        int w = written[0];
+        if (nChests <= 0)
+            return List.of();
 
-            List<ChestLoot> out = new ArrayList<>(nChests);
-            int o = 0;
-            for (int c = 0; c < nChests && o < w; c++) {
-                int chestX = data.getAtIndex(ValueLayout.JAVA_INT, o++);
-                int chestZ = data.getAtIndex(ValueLayout.JAVA_INT, o++);
-                long seedLo = Integer.toUnsignedLong(data.getAtIndex(ValueLayout.JAVA_INT, o++));
-                long seedHi = Integer.toUnsignedLong(data.getAtIndex(ValueLayout.JAVA_INT, o++));
-                long lootSeed = (seedHi << 32) | seedLo;
-                int itemCount = data.getAtIndex(ValueLayout.JAVA_INT, o++);
-                String pieceName = pieceNames.getString((long) c * LOOT_NAME_SLOT);
-                String lootTable = lootTables.getString((long) c * LOOT_NAME_SLOT);
-                List<LootItem> items = new ArrayList<>(itemCount);
-                for (int i = 0; i < itemCount && o < w; i++) {
-                    int gid = data.getAtIndex(ValueLayout.JAVA_INT, o++);
-                    int count = data.getAtIndex(ValueLayout.JAVA_INT, o++);
-                    int enchCount = data.getAtIndex(ValueLayout.JAVA_INT, o++);
-                    List<int[]> ench = new ArrayList<>(enchCount);
-                    for (int e = 0; e < enchCount && o < w; e++) {
-                        int id = data.getAtIndex(ValueLayout.JAVA_INT, o++);
-                        int level = data.getAtIndex(ValueLayout.JAVA_INT, o++);
-                        ench.add(new int[] { id, level });
-                    }
-                    items.add(new LootItem(gid, count, ench));
+        List<ChestLoot> out = new ArrayList<>(nChests);
+        int o = 0;
+        for (int c = 0; c < nChests && o < w; c++) {
+            int chestX = data[o++];
+            int chestZ = data[o++];
+            long seedLo = Integer.toUnsignedLong(data[o++]);
+            long seedHi = Integer.toUnsignedLong(data[o++]);
+            long lootSeed = (seedHi << 32) | seedLo;
+            int itemCount = data[o++];
+            String pieceName = cstrAt(pieceNames, c * LOOT_NAME_SLOT, LOOT_NAME_SLOT);
+            String lootTable = cstrAt(lootTables, c * LOOT_NAME_SLOT, LOOT_NAME_SLOT);
+            List<LootItem> items = new ArrayList<>(itemCount);
+            for (int i = 0; i < itemCount && o < w; i++) {
+                int gid = data[o++];
+                int count = data[o++];
+                int enchCount = data[o++];
+                List<int[]> ench = new ArrayList<>(enchCount);
+                for (int e = 0; e < enchCount && o < w; e++) {
+                    int id = data[o++];
+                    int level = data[o++];
+                    ench.add(new int[] { id, level });
                 }
-                out.add(new ChestLoot(chestX, chestZ, lootSeed, pieceName, lootTable, items));
+                items.add(new LootItem(gid, count, ench));
             }
-            return out;
+            out.add(new ChestLoot(chestX, chestZ, lootSeed, pieceName, lootTable, items));
         }
+        return out;
     }
 
     /** 查询 global item id 对应的物品名称 (如 {@code minecraft:apple})。 */
     public static @Nullable String itemName(int globalItemId) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment out = arena.allocate(64);
-            if (XsmNative.xsmItemName(globalItemId, out, 64))
-                return out.getString(0);
-            return null;
-        }
+        byte[] out = new byte[64];
+        if (XsmNative.xsmItemName(globalItemId, out, 64))
+            return cstr(out);
+        return null;
     }
 
     /** 查询附魔 id 对应的附魔名称 (如 {@code sharpness}, 无 {@code minecraft:} 前缀)。 */
     public static @Nullable String enchantmentName(int enchantmentId) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment out = arena.allocate(64);
-            if (XsmNative.xsmEnchantmentName(enchantmentId, out, 64))
-                return out.getString(0);
-            return null;
-        }
+        byte[] out = new byte[64];
+        if (XsmNative.xsmEnchantmentName(enchantmentId, out, 64))
+            return cstr(out);
+        return null;
     }
 }

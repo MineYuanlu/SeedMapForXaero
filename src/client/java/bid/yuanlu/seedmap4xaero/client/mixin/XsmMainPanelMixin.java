@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import bid.yuanlu.seedmap4xaero.client.gui.SeedMapPanel;
 import bid.yuanlu.seedmap4xaero.client.gui.XsmIconButton;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -99,8 +99,8 @@ public abstract class XsmMainPanelMixin {
         return xsm$topRightBtnY - 20;
     }
 
-    @Inject(method = "extractRenderState", at = @At("TAIL"))
-    private void xsm$onRenderTail(GuiGraphicsExtractor guiGraphics,
+    @Inject(method = "render", at = @At("TAIL"))
+    private void xsm$onRenderTail(GuiGraphics guiGraphics,
             int scaledMouseX, int scaledMouseY, float partialTicks, CallbackInfo ci) {
         if (xsm$panel != null) {
             xsm$panel.render(guiGraphics, scaledMouseX, scaledMouseY);

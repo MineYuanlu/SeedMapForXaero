@@ -88,7 +88,7 @@ jobs:
             build/test-results/test
 
   # ── Universal jar: 编一个 jar，供所有版本 E2E 复用 ───────────────────────
-  # 编译目标取全局最老 Xaero (1.40.14, 26.1.2 线)：引用的符号是全部支持版本集合的
+  # 编译目标取全局最老 Xaero (1.40.14, 1.21.11 线)：引用的符号是全部支持版本集合的
   # 子集，配合 fabric.mod.json 的 "minecraft": ">=26.1"，单个 jar 通用于全部版本。
   build-universal:
     needs: resolve
@@ -99,7 +99,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-java@v5
         with:
-          java-version: '25'
+          java-version: '21'
           distribution: 'microsoft'
       - uses: gradle/actions/setup-gradle@v4
       - name: Install dependencies
@@ -111,8 +111,8 @@ jobs:
           # 供 universal-e2e 使用（release 流程单独打全平台 native）。
           ./gradlew build -x compileNativeWindows \
             -PskipNativeWindows=true \
-            -PxaeroMapLine=26.1.2 \
-            -PxaeroMapVersion=1.40.14
+            -PxaeroMapLine=1.21.11 \
+            -PxaeroMapVersion=1.40.4
       - name: Upload universal jar
         uses: actions/upload-artifact@v7
         with:

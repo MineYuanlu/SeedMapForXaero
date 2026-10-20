@@ -2,7 +2,7 @@ package bid.yuanlu.seedmap4xaero.client.mixin;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.level.Level;
 
@@ -56,8 +56,8 @@ public class SeedMapCursorMixin {
     // @Redirect: 坐标文本 (ordinal=0, String overload)
     // ═══════════════════════════════════════════════════════════════
 
-    @Redirect(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/MapRenderHelper;drawCenteredStringWithBackground(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/gui/Font;Ljava/lang/String;IIIFFFF)V", ordinal = 0))
-    private void xsm$redirectCoordsText(GuiGraphicsExtractor gui, Font font, String str, int x, int y, int color,
+    @Redirect(method = "render", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/MapRenderHelper;drawCenteredStringWithBackground(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/gui/Font;Ljava/lang/String;IIIFFFF)V", ordinal = 0))
+    private void xsm$redirectCoordsText(GuiGraphics gui, Font font, String str, int x, int y, int color,
             float r, float g, float b, float a) {
         xsm$biomeAlreadyDrawn = false;
 
@@ -101,8 +101,8 @@ public class SeedMapCursorMixin {
     // @Redirect: 生物群系文本 (ordinal=1, String overload)
     // ═══════════════════════════════════════════════════════════════
 
-    @Redirect(method = "extractRenderState", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/MapRenderHelper;drawCenteredStringWithBackground(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/gui/Font;Ljava/lang/String;IIIFFFF)V", ordinal = 1))
-    private void xsm$redirectBiomeText(GuiGraphicsExtractor gui, Font font, String str, int x, int y, int color,
+    @Redirect(method = "render", at = @At(value = "INVOKE", target = "Lxaero/map/graphics/MapRenderHelper;drawCenteredStringWithBackground(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/gui/Font;Ljava/lang/String;IIIFFFF)V", ordinal = 1))
+    private void xsm$redirectBiomeText(GuiGraphics gui, Font font, String str, int x, int y, int color,
             float r, float g, float b, float a) {
         MapRenderHelper.drawCenteredStringWithBackground(gui, font, str, x, y, color, r, g, b, a);
     }
@@ -111,8 +111,8 @@ public class SeedMapCursorMixin {
     // @Inject (@At("RETURN")): 未探索区域生物群系保底
     // ═══════════════════════════════════════════════════════════════
 
-    @Inject(method = "extractRenderState", at = @At("RETURN"))
-    private void xsm$onReturn(GuiGraphicsExtractor gui, int scaledMouseX, int scaledMouseY, float partialTicks,
+    @Inject(method = "render", at = @At("RETURN"))
+    private void xsm$onReturn(GuiGraphics gui, int scaledMouseX, int scaledMouseY, float partialTicks,
             CallbackInfo ci) {
         xsm$biomeAlreadyDrawn = false;
         if (!xsm$isSeedMapEnabled())

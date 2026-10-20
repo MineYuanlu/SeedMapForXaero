@@ -1,7 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.mixin;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.resources.language.I18n;
@@ -112,8 +112,8 @@ public class GuiMapSwitchingMixin {
                     minecraft.keyboardHandler.setClipboard(String.valueOf(seed));
                     xsm$LOGGER.info("copy: copied seed={}", seed);
                     if (minecraft.player != null) {
-                        minecraft.player.sendOverlayMessage(
-                                Component.translatable("xsm.gui.switching.copied", seed));
+                        minecraft.player.displayClientMessage(
+                                Component.translatable("xsm.gui.switching.copied", seed), true);
                     }
                 }).bounds(width / 2 + 105, 148, 40, 20).build();
         xsm$seedCopyBtn.active = xsm$currentSeed != null;
@@ -129,7 +129,7 @@ public class GuiMapSwitchingMixin {
     }
 
     @Inject(method = "renderText", at = @At("TAIL"), remap = false)
-    private void xsm$onRenderTextTail(GuiGraphicsExtractor guiGraphics, Minecraft minecraft, int mouseX, int mouseY,
+    private void xsm$onRenderTextTail(GuiGraphics guiGraphics, Minecraft minecraft, int mouseX, int mouseY,
             int width, int height, CallbackInfo ci) {
         if (!this.active)
             return;

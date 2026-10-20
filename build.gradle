@@ -1,7 +1,9 @@
 import org.apache.tools.ant.taskdefs.condition.Os
 
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	// legacy 分支（混淆 MC 线 <=1.21.11）: remap 变体 loom + Mojang 官方映射,
+	// 产物 remapJar 自动重映射到 intermediary。26.x (unobf) 用 net.fabricmc.fabric-loom。
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
 	id 'maven-publish'
 	id 'me.modmuss50.mod-publish-plugin' version "${mod_publish_plugin_version}"
 }
@@ -48,48 +50,62 @@ fabricApi {
 }
 
 // 测试 mod 是独立 source set（gametest），production 运行只收集
-// jar/remapJar + productionRuntimeMods —— 打包成 jar 显式加入，否则测试类不加载。
+// remapJar/remapGametestModJar + productionRuntimeMods —— 打包成 jar 显式加入，否则测试类不加载。
+// remap-loom 下 production runtime 跑 intermediary 环境，gametest 类必须重映射。
 def gametestModJar = tasks.register("gametestModJar", Jar) {
 	group = "verification"
 	from sourceSets.gametest.output
 	archiveBaseName = "seed-map-for-xaero-gametest"
+	destinationDirectory = layout.buildDirectory.dir("gametest-mods-src")
+}
+
+def remapGametestModJar = tasks.register("remapGametestModJar", net.fabricmc.loom.task.RemapJarTask) {
+	group = "verification"
+	dependsOn gametestModJar
+	input = gametestModJar.flatMap { it.archiveFile }
+	archiveBaseName = "seed-map-for-xaero-gametest"
 	destinationDirectory = layout.buildDirectory.dir("gametest-mods")
+	addNestedDependencies = false
 }
 
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
 
 	// Better PVP 是可选独立 Xaero mod，其 POM 的 `+` 版本可能解析出不兼容旧版
 	// World Map 的版本；本 mod 不用它，排除以保证矩阵下 classpath 有效。
 	def xaeroMap = "xaero.map:xaeroworldmap-fabric-${project.xaeroMapLine}:${project.xaeroMapVersion}"
-	compileOnly(xaeroMap) { exclude group: 'xaero.pvp' }
-	runtimeOnly(xaeroMap) { exclude group: 'xaero.pvp' }
-	// 旧版 World Map POM 把 XaeroLib 声明为 runtime scope，compileOnly 不携带，
+	modCompileOnly(xaeroMap) { exclude group: 'xaero.pvp' }
+	modRuntimeOnly(xaeroMap) { exclude group: 'xaero.pvp' }
+	// 旧版 World Map POM 把 XaeroLib 声明为 runtime scope，modCompileOnly 不携带，
 	// 显式声明；`[1.1.0,)` 与 Xaero 自身下限一致，各线解析到最新。
-	compileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
-	runtimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	modCompileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	modRuntimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
 	// dev runtime 加 minimap: waypoint 转换 (SupportMods.minimap()) 需要真实 mod。
-	// 仅 runtimeOnly，compileOnly 不引用 (通过 SupportMods 反射式访问)。
+	// 仅 modRuntimeOnly，modCompileOnly 不引用 (通过 SupportMods 反射式访问)。
 	// 注意: minimap 与 worldmap 都内嵌共享的 xaero.common.* 包, 在扁平测试 JVM
 	// 类路径上会互相覆盖 (ServiceLoader 报 not a subtype), 故从 testRuntimeClasspath 排除。
-	runtimeOnly("xaero.minimap:xaerominimap-fabric-${project.xaeroMapLine}:${project.xaeroMinimapVersion}")
+	modRuntimeOnly("xaero.minimap:xaerominimap-fabric-${project.xaeroMapLine}:${project.xaeroMinimapVersion}")
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 
-	// production 运行的 mods 只来自 jar/remapJar + productionRuntimeMods，
+	// production 运行的 mods 只来自 remapJar + productionRuntimeMods，
 	// fabric-api / xaero / 测试 mod 都要显式声明。
 	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
 	productionRuntimeMods(xaeroMap) { exclude group: 'xaero.pvp' }
 	productionRuntimeMods("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
-	productionRuntimeMods files(gametestModJar)
+	productionRuntimeMods files(remapGametestModJar)
 }
 
 // minimap 只给 dev runClient 用; 排除出测试类路径 (见上方 runtimeOnly 注释)。
+// legacy 分支用 loom-remap 变体: 依赖 group 被改写为 remapped.xaero.minimap，
+// 只排除原 group 不生效，两个都要排除。
 configurations {
 	testRuntimeClasspath {
 		exclude group: 'xaero.minimap'
+		exclude group: 'remapped.xaero.minimap'
 	}
 }
 
@@ -122,11 +138,6 @@ tasks.register("runProductionClientGameTestUniversal", net.fabricmc.loom.task.pr
 	}
 }
 
-// ─── Native C build ─────────────────────────────────────────────────────────
-
-def skipNative = project.findProperty('skipNativeBuild') ?: 'false'
-def skipNativeWindows = project.findProperty('skipNativeWindows') ?: 'false'
-
 // gradle.local.properties（gitignored）里也可覆盖上面的属性，与 -P 同格式。
 def localPropsFile = file('gradle.local.properties')
 if (localPropsFile.exists()) {
@@ -135,42 +146,10 @@ if (localPropsFile.exists()) {
 	props.each { k, v -> project.ext[k] = v }
 }
 
-ext.JEXTRACT_VERSION = '25'
-ext.JEXTRACT_BUILD = '2'
-ext.JEXTRACT_REV = '4'
+// ─── Native C build ─────────────────────────────────────────────────────────
 
-def jextractUrl() {
-	def osPart = Os.isFamily(Os.FAMILY_MAC) ?
-		(System.getProperty("os.arch") == "aarch64" ? "macos-aarch64" : "macos-x64") :
-		Os.isFamily(Os.FAMILY_WINDOWS) ? "windows-x64" : "linux-x64"
-	return "https://download.java.net/java/early_access/jextract/${project.JEXTRACT_VERSION}/${project.JEXTRACT_BUILD}/" +
-		"openjdk-${project.JEXTRACT_VERSION}-jextract+${project.JEXTRACT_BUILD}-${project.JEXTRACT_REV}_${osPart}_bin.tar.gz"
-}
-
-def defaultJextractDir = file("build/jextract/jextract-${project.JEXTRACT_VERSION}")
-def defaultJextractBinary = file("${defaultJextractDir}/bin/jextract")
-def jextractBinary = project.findProperty('jextractPath')
-	? file(project.findProperty('jextractPath').toString()).absolutePath
-	: defaultJextractBinary.absolutePath
-
-task downloadJextract() {
-	description 'Download pre-built jextract binary from jdk.java.net.'
-	onlyIf { !project.hasProperty('jextractPath') && !defaultJextractBinary.exists() }
-	doLast {
-		defaultJextractDir.parentFile.mkdirs()
-		def tarball = file("${defaultJextractDir.parentFile}/jextract.tar.gz")
-		def url = jextractUrl()
-		logger.lifecycle("Downloading jextract from $url ...")
-		new URL(url).withInputStream { i -> tarball.withOutputStream { it << i } }
-		logger.lifecycle("Extracting jextract ...")
-		new ProcessBuilder('tar', '-xzf', tarball.absolutePath, '-C', defaultJextractDir.parentFile.absolutePath)
-			.inheritIO().start().waitFor()
-		tarball.delete()
-		new ProcessBuilder('chmod', '+x', defaultJextractBinary.absolutePath)
-			.inheritIO().start().waitFor()
-		logger.lifecycle("jextract ready at $defaultJextractBinary")
-	}
-}
+def skipNative = project.findProperty('skipNativeBuild') ?: 'false'
+def skipNativeWindows = project.findProperty('skipNativeWindows') ?: 'false'
 
 def defaultCCompiler() {
 	// Prefer clang if available (supports cubiomes C patterns on older GCC hosts)
@@ -289,37 +268,6 @@ task compileNativeAndroid {
 	}
 }
 
-task generateNativeBindings(type: Exec) {
-	description 'Run jextract on src/main/c/xsm/apis/all.h → XsmNative.java FFM bindings.'
-	dependsOn downloadJextract
-	workingDir projectDir
-	def includeArgs = file('src/main/c/includes.txt').readLines()
-		.collectMany { it.split(/\s+/) as List }
-	commandLine([jextractBinary,
-		'--output', 'src/client/java',
-		'--target-package', 'bid.yuanlu.seedmap4xaero.client.nativeapi',
-		'--header-class-name', 'XsmNative',
-		'--include-dir', 'src/main/c/xsm/apis',
-	] + includeArgs + ['all.h'])
-	doLast {
-		// 修正平台相关 C_LONG/C_LONG_DOUBLE —— API 不用 long/long double，
-		// 硬编码 LP64 变体（跨平台安全）。
-		def shared = file('src/client/java/bid/yuanlu/seedmap4xaero/client/nativeapi/XsmNative$shared.java')
-		if (shared.exists()) {
-			def text = shared.text
-			.replace('(ValueLayout.OfLong) Linker.nativeLinker().canonicalLayouts().get("long")',
-					 'ValueLayout.JAVA_LONG')
-			.replace('(ValueLayout.OfDouble) Linker.nativeLinker().canonicalLayouts().get("double")',
-					 'ValueLayout.JAVA_DOUBLE')
-			shared.text = text
-		}
-	}
-}
-
-tasks.named('compileClientJava') {
-	dependsOn generateNativeBindings
-}
-
 task compileNativeWindows {
 	description 'Cross-compile xsmcore.dll for Windows via MinGW.'
 	onlyIf { skipNative != 'true' && skipNativeWindows != 'true' }
@@ -368,10 +316,7 @@ processResources {
 }
 
 clean {
-	delete fileTree('src/client/java/bid/yuanlu/seedmap4xaero/client/nativeapi') {
-		include 'XsmNative.java'
-		exclude 'NativeLibLoader.java'
-	}
+	// XsmNative.java 在 legacy 分支是提交文件（手写 JNI stub），不再删除
 	delete 'src/main/c/build'
 	delete 'src/main/c/build-mingw'
 	delete 'src/main/c/build-linux-arm'
@@ -379,7 +324,7 @@ clean {
 	delete 'src/main/c/build-android-x86_64'
 }
 
-def targetJavaVersion = 25
+def targetJavaVersion = 21
 tasks.withType(JavaCompile).configureEach {
 	it.options.encoding = "UTF-8"
 	if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
@@ -421,7 +366,7 @@ publishing {
 
 publishMods {
 	displayName = "Release ${project.mod_version}"
-	file = jar.archiveFile
+	file = remapJar.archiveFile
 	type = STABLE
 	modLoaders.add('fabric')
 	changelog = providers.environmentVariable("CHANGELOG")
