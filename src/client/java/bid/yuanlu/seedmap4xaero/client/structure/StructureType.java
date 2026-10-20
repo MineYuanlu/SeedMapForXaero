@@ -214,7 +214,9 @@ public enum StructureType implements StructureInfo {
         // TODO: 2bit的 variant暂时没搞清楚对应关系
     },
     /** 要塞 */
-    STRONGHOLD(25, "stronghold", true, Integer.MAX_VALUE);
+    STRONGHOLD(25, "stronghold", true, Integer.MAX_VALUE),
+    /** 世界出生点 (Java 侧伪类型, 无 cubiomes 结构配置; id 超出 native FEATURE_NUM) */
+    WORLD_SPAWN(26, "world_spawn", true, Integer.MAX_VALUE);
 
     private static final class LoggerHolder {
         private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/StructureType");
@@ -228,15 +230,18 @@ public enum StructureType implements StructureInfo {
      * 无 native 的单元测试 JVM。
      */
     private static int safeFeatureNum() {
+        int enumMax = -1;
+        for (StructureType v : values())
+            enumMax = Math.max(enumMax, v.id);
+        // 结构类型总数 = max(native C 结构数, 枚举最大 id + 1)。
+        // WORLD_SPAWN 等 Java 侧伪类型 id 超出 native FEATURE_NUM, 取较大者以容纳它们。
+        final int enumCount = enumMax + 1;
         try {
-            return Xsm.getStructFEATURE_NUM();
+            return Math.max(Xsm.getStructFEATURE_NUM(), enumCount);
         } catch (Throwable t) {
-            int max = -1;
-            for (StructureType v : values())
-                max = Math.max(max, v.id);
             LoggerHolder.LOGGER.warn(
-                    "FEATURE_NUM from native unavailable, falling back to {}", max + 1);
-            return max + 1;
+                    "FEATURE_NUM from native unavailable, falling back to {}", enumCount);
+            return enumCount;
         }
     }
 
@@ -310,6 +315,8 @@ public enum StructureType implements StructureInfo {
      * 天生无配置的类型 (要塞 id25; 地物 id0 在 MC&gt;1.12 无 region config) 不告警。
      */
     public @Nullable Config config() {
+        if (this == WORLD_SPAWN)
+            return null; // Java 侧伪类型, 无 cubiomes 结构配置
         var c = lazyConfig;
         if (c != null)
             return c;

@@ -47,6 +47,28 @@ class NativeIntegrationTest extends NativeMcTest {
     }
 
     @Test
+    void spawnResolvableAndDeterministic() {
+        Xsm.setWorld(SEED, 0);
+        var a = Xsm.querySpawn();
+        var b = Xsm.querySpawn();
+        assertNotNull(a, "overworld spawn should resolve");
+        assertEquals(a.blockX(), b.blockX());
+        assertEquals(a.blockZ(), b.blockZ());
+        assertTrue(Math.abs(a.blockX()) < 4096 && Math.abs(a.blockZ()) < 4096,
+                "spawn should be near origin, got " + a);
+    }
+
+    @Test
+    void spawnNullOutsideOverworld() {
+        try {
+            Xsm.setWorld(SEED, -1);
+            assertNull(Xsm.querySpawn(), "no spawn in nether");
+        } finally {
+            Xsm.setWorld(SEED, 0);
+        }
+    }
+
+    @Test
     void biomeNamesResolve() {
         // 跨版本稳定的 biome 名称 (cubiomes 内部 id → name)
         assertEquals("plains", Xsm.biome2str(1));

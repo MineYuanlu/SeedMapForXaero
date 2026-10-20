@@ -19,7 +19,7 @@ struct Img {
   int w = 64, h = 64;
   bool ok = false;
   Img() {
-    d = (uint8_t*)malloc(w * h * 3);
+    d = (uint8_t*)malloc(w * h * 4);  // genCellImg 输出 RGBA 4B/px
     ok = d != nullptr;
   }
   ~Img() { free(d); }
@@ -53,10 +53,10 @@ static void checkGen(Img& img, int scale, int worldX, int worldZ) {
   auto code = genCellImg(scale, worldX, worldZ, 64, img.data(), true);
   REQUIRE_MESSAGE(code == 0, "genCellImg(", scale, ", ", worldX, ", ", worldZ,
                   ") = ", code);
-  // sanity: not all-zero
+  // sanity: not all-zero (只累加 RGB; alpha 恒 0xFF, 计入会掩盖全零 RGB)
   uint32_t sum = 0;
-  for (int i = 0; i < 64 * 64 * 3; i++)
-    sum += img.d[i];
+  for (int i = 0; i < 64 * 64; i++)
+    sum += img.d[i * 4] + img.d[i * 4 + 1] + img.d[i * 4 + 2];
   REQUIRE_MESSAGE(sum != 0, "genCellImg(", scale, ", ", worldX, ", ", worldZ,
                   ") all-zero");
 }
@@ -339,6 +339,33 @@ TEST_CASE("queryStrongholdsRange") {
     CHECK_MESSAGE(dx * dx + dz * dz < 27000LL * 27000LL,
                   "stronghold ", i, " out of range: (", x[i], ", ", z[i], ")");
   }
+}
+
+TEST_CASE("querySpawn") {
+  setupOrFail();
+
+  int32_t x = 0, z = 0;
+  REQUIRE_MESSAGE(querySpawn(&x, &z) == 1, "querySpawn failed");
+
+  // 确定性: 两次调用结果一致
+  int32_t x2 = 0, z2 = 0;
+  REQUIRE(querySpawn(&x2, &z2) == 1);
+  CHECK(x2 == x);
+  CHECK(z2 == z);
+
+  // 与直接 cubiomes getSpawn 结果一致
+  Generator g;
+  setupGenerator(&g, testMcEnum(), 0);
+  applySeed(&g, DIM_OVERWORLD, 0);
+  Pos sp = getSpawn(&g);
+  CHECK(sp.x == x);
+  CHECK(sp.z == z);
+
+  // 非主世界返回 0
+  setWorld(0, -1);
+  int32_t nx = 0, nz = 0;
+  CHECK(querySpawn(&nx, &nz) == 0);
+  setWorld(0, 0);
 }
 
 TEST_CASE("genCellImg scale=1 (generateRegion)") {

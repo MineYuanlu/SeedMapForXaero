@@ -39,8 +39,9 @@
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
   "xsm.cursor.coords_no_y": "X: %d Z: %d",
 
-  "xsm.debug.scale": "SeedMap scale=%d | 鼠标方块: %d %d %d",
+  "xsm.debug.scale": "SeedMap scale=%s | 鼠标方块: %s %s %s",
   "xsm.debug.fill_gap": "fillGaps: %s",
+  "xsm.debug.perf": "瓦片 %s/s | 均值 %sms | 生成队列 %s | 缓存 %s | 帧 %sms",
   "xsm.debug.all_explored": "(%d,%d) S%d 全部%d个tile均已探索，跳过补绘",
   "xsm.debug.filled_tiles": "(%d,%d) S%d 补绘%d/%d个未探索tile",
 
@@ -75,6 +76,7 @@
   "xsm.structure.trail_ruins": "古迹废墟",
   "xsm.structure.trial_chambers": "试炼密室",
   "xsm.structure.stronghold": "要塞",
+  "xsm.structure.world_spawn": "世界出生点",
 
   "xsm.group.default": "未分组",
   "xsm.group.done": "完成",
@@ -143,6 +145,17 @@
   "xsm.gui.panel.color.sat": "饱和",
   "xsm.gui.panel.color.val": "亮度",
   "xsm.gui.panel.color.alpha": "透明",
+
+  "xsm.gui.panel.perf_header": "性能",
+  "xsm.gui.panel.perf_threads": "生成线程",
+  "xsm.gui.panel.perf_threads_auto": "自动",
+  "xsm.gui.panel.perf_cache": "缓存容量",
+  "xsm.gui.panel.perf_prefetch": "预取视野外围",
+  "xsm.gui.panel.perf_pregen": "后台预生成",
+  "xsm.gui.panel.perf_radius": "预生成半径",
+  "xsm.gui.panel.perf_disk": "磁盘缓存(规划中)",
+  "xsm.gui.panel.perf_disk_max": "磁盘上限",
+  "xsm.gui.panel.perf_debug": "性能统计",
 
   "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
   "xsm.chestLoot.extraInfo.pieceName": "构件: %s",

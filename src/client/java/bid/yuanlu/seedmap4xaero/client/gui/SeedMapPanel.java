@@ -8,8 +8,11 @@ import org.jetbrains.annotations.Nullable;
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.perf.PerfConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureData;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureGroups;
@@ -29,7 +32,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.WidgetSprites;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -54,6 +56,9 @@ public class SeedMapPanel {
     // section expand state
     private static boolean biomeExpanded;
     private static boolean structureExpanded;
+    private static boolean perfExpanded;
+    /** 结构区内容实际渲染底界（renderStructSection 每帧回写，点击路由单一来源）。 */
+    private int structRenderedBottom;
 
     // scroll
     private static int biomeScrollOff;
@@ -117,6 +122,18 @@ public class SeedMapPanel {
     private float sliderValue = 1.0f;
     public boolean sliderDragging;
 
+    // ─── 性能区 (perf_config.json 全局配置) ─────────────────────
+    /** 滑条 id: 1=线程 2=缓存 3=预生成半径 4=磁盘上限。 */
+    private static final int PERF_SLIDER_THREADS = 1;
+    private static final int PERF_SLIDER_CACHE = 2;
+    private static final int PERF_SLIDER_RADIUS = 3;
+    /** TODO(disk-cache): 磁盘缓存未实现，暂不渲染/命中；保留分支供后续接入。 */
+    private static final int PERF_SLIDER_DISK = 4;
+    private static final int PERF_SLIDER_H = 12;
+    /** 性能区滑条标签固定宽度 (标签列)。 */
+    private static final int PERF_TRACK_X0 = PADDING + 60;
+    private static int perfSliderDrag = -1;
+
     // search edit boxes
     private EditBox biomeSearchField;
     private EditBox structSearchField;
@@ -152,6 +169,11 @@ public class SeedMapPanel {
     /** 设置结构列表滚动偏移 (render 路径钳制到 size - visible; E2E 截图定位用)。 */
     public void testScrollStructList(int offset) {
         structScrollOff = Math.max(0, offset);
+    }
+
+    /** 展开性能区 (E2E 截图用)。 */
+    public void testExpandPerf() {
+        perfExpanded = true;
     }
 
     /** 新建用户组并展开其编辑器; 返回组名 (失败 null)。 */
@@ -247,6 +269,10 @@ public class SeedMapPanel {
         if (colorSliderDrag > 0) {
             applyColorSliderDrag(mouseX);
         }
+        // perf slider drag: GuiMap 不派发 mouseDragged，与图标/颜色滑条一样逐帧轮询
+        if (perfSliderDrag > 0) {
+            applyPerfSlider(mouseX, perfSliderDrag);
+        }
 
         // refresh slider value from config
         sliderValue = ServerConfig.getStructureIconSize();
@@ -257,6 +283,8 @@ public class SeedMapPanel {
         y = renderBiomeSection(g, mouseX, mouseY, y);
         y += 5;
         y = renderStructSection(g, mouseX, mouseY, y);
+        y += 5;
+        renderPerfSection(g, mouseX, mouseY, y);
     }
 
     private void renderPanelBg(GuiGraphicsExtractor g) {
@@ -302,7 +330,7 @@ public class SeedMapPanel {
                 Identifier.withDefaultNamespace("widget/button"),
                 Identifier.withDefaultNamespace("widget/button_disabled"),
                 Identifier.withDefaultNamespace("widget/button_highlighted"));
-        g.blitSprite(RenderPipelines.GUI_TEXTURED,
+        CompatGui.blitSprite(g,
                 btnSprites.get(true, hoverSc),
                 schemeX, schemeY, schemeW, schemeH, 1.0f);
         g.text(font, "C", schemeX + 6, schemeY + 6, 0xFFFFFFFF);
@@ -464,11 +492,15 @@ public class SeedMapPanel {
         var L = structLayout(structHeaderY);
         renderTabBar(g, L, mx, my);
 
-        return switch (structTab) {
+        // 记录实际渲染底界供点击路由使用 (与屏幕恒一致, 避免点击侧重算与
+        // 分组 tab 实际行数/滚动钳制不一致)
+        int bottom = switch (structTab) {
             case 0 -> renderTypesTab(g, mx, my, L);
             case 1 -> renderGroupsTab(g, mx, my, L);
             default -> renderIconsTab(g, mx, my, L);
         };
+        structRenderedBottom = bottom;
+        return bottom;
     }
 
     // ─── Tab: 类型 ───────────────────────────────────────────
@@ -789,6 +821,120 @@ public class SeedMapPanel {
         return y + ITEM_H;
     }
 
+    // ─── 性能区 ──────────────────────────────────────────────
+
+    /** 性能区行几何 (单一来源: render / mouseClicked 共用)。 */
+    private record PerfLayout(int contentY, int threadsY, int cacheY, int prefetchY,
+            int pregenY, int radiusY,
+            // TODO(disk-cache): 磁盘缓存未实现，暂不展示。
+            // int diskY, int diskMaxY,
+            int debugY, int bottom) {
+    }
+
+    private PerfLayout perfLayout(int headerY) {
+        int contentY = headerY + HEADER_H + PADDING;
+        int y = contentY;
+        int threadsY = y;
+        y += PERF_SLIDER_H;
+        int cacheY = y;
+        y += PERF_SLIDER_H;
+        int prefetchY = y;
+        y += ITEM_H;
+        int pregenY = y;
+        y += ITEM_H;
+        int radiusY = y;
+        y += PERF_SLIDER_H;
+        // TODO(disk-cache): 磁盘缓存尚未实现，暂不展示开关与上限滑条；
+        // 保留 PerfConfig.diskCache* / PERF_SLIDER_DISK 供后续接入。
+        // int diskY = y;
+        // y += ITEM_H;
+        // int diskMaxY = y;
+        // y += PERF_SLIDER_H;
+        int debugY = y;
+        y += ITEM_H;
+        return new PerfLayout(contentY, threadsY, cacheY, prefetchY, pregenY,
+                radiusY, debugY, y);
+    }
+
+    private int renderPerfSection(GuiGraphicsExtractor g, int mx, int my, int headerY) {
+        boolean hoverHdr = hitHeader(mx, my, headerY);
+        if (hoverHdr)
+            g.fill(PADDING, headerY, PANEL_WIDTH - PADDING, headerY + HEADER_H, 0x22_FFFFFF);
+
+        String label = I18n.get("xsm.gui.panel.perf_header");
+        g.text(font, label, PADDING + 2, headerY + (HEADER_H - font.lineHeight) / 2, 0xFFFFFFFF);
+
+        String arrow = perfExpanded ? "▼" : "▶";
+        int arrX = PANEL_WIDTH - PADDING - font.width(arrow);
+        g.text(font, arrow, arrX, headerY + (HEADER_H - font.lineHeight) / 2, 0xFFFFFFFF);
+
+        if (!perfExpanded)
+            return headerY + HEADER_H;
+
+        var P = perfLayout(headerY);
+        int cores = Runtime.getRuntime().availableProcessors();
+        int threads = Math.min(PerfConfig.generationThreads(), cores);
+        renderPerfSlider(g, mx, my, P.threadsY(), PERF_SLIDER_THREADS,
+                threads / (float) cores,
+                threads == 0 ? I18n.get("xsm.gui.panel.perf_threads_auto") : String.valueOf(threads), true);
+        int mb = PerfConfig.cacheCapacityMB();
+        renderPerfSlider(g, mx, my, P.cacheY(), PERF_SLIDER_CACHE,
+                (mb - 64) / 448f, mb + "MB", true);
+        renderPerfCheckboxRow(g, mx, my, P.prefetchY(), "xsm.gui.panel.perf_prefetch",
+                PerfConfig.prefetchEnabled());
+        renderPerfCheckboxRow(g, mx, my, P.pregenY(), "xsm.gui.panel.perf_pregen",
+                PerfConfig.pregenEnabled());
+        int radius = PerfConfig.pregenRadiusBlocks();
+        renderPerfSlider(g, mx, my, P.radiusY(), PERF_SLIDER_RADIUS,
+                Integer.numberOfTrailingZeros(radius / 1024) / 6f,
+                String.valueOf(radius), PerfConfig.pregenEnabled());
+        // TODO(disk-cache): 磁盘缓存尚未实现，暂不展示。
+        // renderPerfCheckboxRow(g, mx, my, P.diskY(), "xsm.gui.panel.perf_disk",
+        //         PerfConfig.diskCacheEnabled());
+        // int dmb = PerfConfig.diskCacheMaxMB();
+        // renderPerfSlider(g, mx, my, P.diskMaxY(), PERF_SLIDER_DISK,
+        //         Integer.numberOfTrailingZeros(dmb / 32) / 7f,
+        //         dmb + "MB", PerfConfig.diskCacheEnabled());
+        renderPerfCheckboxRow(g, mx, my, P.debugY(), "xsm.gui.panel.perf_debug",
+                PerfConfig.debugOverlay());
+        return P.bottom();
+    }
+
+    /** 性能区滑条行 (标签 + 轨道 + thumb + 右侧值), 返回新的 y。 */
+    private void renderPerfSlider(GuiGraphicsExtractor g, int mx, int my, int y, int id,
+            float t, String valueText, boolean enabled) {
+        String label = I18n.get(switch (id) {
+            case PERF_SLIDER_THREADS -> "xsm.gui.panel.perf_threads";
+            case PERF_SLIDER_CACHE -> "xsm.gui.panel.perf_cache";
+            case PERF_SLIDER_RADIUS -> "xsm.gui.panel.perf_radius";
+            default -> "xsm.gui.panel.perf_disk_max";
+        });
+        int textCol = enabled ? 0xFFFFFFFF : 0xFF666666;
+        g.text(font, label, PADDING, y + (PERF_SLIDER_H - font.lineHeight) / 2, textCol);
+        int valW = font.width(valueText);
+        int trackEnd = PANEL_WIDTH - PADDING - valW - 5;
+        int trackY = y + (PERF_SLIDER_H - 4) / 2;
+        g.fill(PERF_TRACK_X0, trackY, trackEnd, trackY + 4, 0xFF444444);
+        int thumbX = PERF_TRACK_X0 + (int) ((trackEnd - PERF_TRACK_X0 - 6)
+                * Math.max(0, Math.min(1, t)));
+        boolean hover = enabled && mx >= PERF_TRACK_X0 && mx <= trackEnd
+                && my >= y && my <= y + PERF_SLIDER_H;
+        g.fill(thumbX, y, thumbX + 6, y + PERF_SLIDER_H,
+                hover || perfSliderDrag == id ? 0xFFAAAAAA : 0xFF888888);
+        g.text(font, valueText, PANEL_WIDTH - PADDING - valW,
+                y + (PERF_SLIDER_H - font.lineHeight) / 2, textCol);
+    }
+
+    private void renderPerfCheckboxRow(GuiGraphicsExtractor g, int mx, int my, int y,
+            String labelKey, boolean checked) {
+        boolean hover = mx >= PADDING && mx <= PANEL_WIDTH - PADDING
+                && my >= y && my <= y + ITEM_H;
+        renderCheckbox(g, PADDING, y + (ITEM_H - 9) / 2, checked, hover);
+        g.text(font, I18n.get(labelKey), PADDING + 12,
+                y + (ITEM_H - font.lineHeight) / 2,
+                checked ? 0xFFFFFFFF : 0xFF888888);
+    }
+
     private void renderCheckbox(GuiGraphicsExtractor g, int x, int y, boolean checked, boolean hovered) {
         int border = hovered ? 0xFFFFFFFF : 0xFF888888;
         int fill = checked ? 0xFFFFFFFF : 0xFF222222;
@@ -817,6 +963,7 @@ public class SeedMapPanel {
             return false;
         // any click on the panel ends a slider drag
         sliderDragging = false;
+        perfSliderDrag = -1; // 性能区命中会重新置位
 
         int mx = (int) mouseX;
         int my = (int) mouseY;
@@ -897,8 +1044,10 @@ public class SeedMapPanel {
             return true;
         }
 
-        if (!structureExpanded)
-            return true;
+        if (!structureExpanded) {
+            // 折叠时点击头部以下 → 性能区
+            return clickPerfSection(mx, my, structHeaderY + HEADER_H + 5);
+        }
 
         var L = structLayout(structHeaderY);
         int tab = hitTab(mx, my, L);
@@ -911,41 +1060,135 @@ public class SeedMapPanel {
             return true;
         }
 
-        if (structTab == 0) {
-            // structure list items
-            if (filteredStructures == null)
-                updateStructFilter();
-            int visible = L.typeVisible();
-            int size = filteredStructures.size();
-            int end = Math.min(structScrollOff + visible, size);
-            for (int i = structScrollOff; i < end; i++) {
-                int itemY = L.typeListY() + (i - structScrollOff) * ITEM_H;
-                if (my >= itemY && my <= itemY + ITEM_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING) {
-                    StructRow row = filteredStructures.get(i);
-                    var wc = ServerConfig.getActiveWorldConfig();
-                    if (wc != null) {
-                        StructureBitFlagView flags = wc.getDisabledStructures();
-                        if (row.isVariant()) {
-                            int v = row.variant();
-                            boolean cur = !flags.isStructureSet(row.type().id())
-                                    && !flags.isVariantSet(row.type().id(), v);
-                            wc.setVariantEnabled(row.type().id(), v, !cur);
-                        } else {
-                            boolean cur = !flags.isStructureSet(row.type().id());
-                            wc.setStructureEnabled(row.type().id(), !cur);
-                            updateStructFilter(); // 结构禁用 → 收拢变种行
+        // 结构区内容底界 = renderStructSection 每帧回写的实际渲染底界
+        // (点击越界 → 落入性能区; 不得在此重算, 见 renderStructSection 回写处)
+        int structBottom = structRenderedBottom;
+        if (my < structBottom) {
+            if (structTab == 0) {
+                // structure list items
+                if (filteredStructures == null)
+                    updateStructFilter();
+                int size = filteredStructures.size();
+                int end = Math.min(structScrollOff + L.typeVisible(), size);
+                for (int i = structScrollOff; i < end; i++) {
+                    int itemY = L.typeListY() + (i - structScrollOff) * ITEM_H;
+                    if (my >= itemY && my <= itemY + ITEM_H && mx >= PADDING && mx <= PANEL_WIDTH - PADDING) {
+                        StructRow row = filteredStructures.get(i);
+                        var wc = ServerConfig.getActiveWorldConfig();
+                        if (wc != null) {
+                            StructureBitFlagView flags = wc.getDisabledStructures();
+                            if (row.isVariant()) {
+                                int v = row.variant();
+                                boolean cur = !flags.isStructureSet(row.type().id())
+                                        && !flags.isVariantSet(row.type().id(), v);
+                                wc.setVariantEnabled(row.type().id(), v, !cur);
+                            } else {
+                                boolean cur = !flags.isStructureSet(row.type().id());
+                                wc.setStructureEnabled(row.type().id(), !cur);
+                                updateStructFilter(); // 结构禁用 → 收拢变种行
+                            }
                         }
+                        return true;
                     }
-                    return true;
                 }
+                return true;
+            } else if (structTab == 1) {
+                return clickGroupsTab(mx, my, L);
+            } else {
+                return clickIconsTab(mx, my, L);
             }
-        } else if (structTab == 1) {
-            return clickGroupsTab(mx, my, L);
-        } else {
-            return clickIconsTab(mx, my, L);
         }
 
+        return clickPerfSection(mx, my, structBottom + 5);
+    }
+
+    /** 性能区点击 (headerY = 区头 y); 始终消费 (面板内点击)。 */
+    private boolean clickPerfSection(int mx, int my, int headerY) {
+        if (hitHeader(mx, my, headerY)) {
+            perfExpanded = !perfExpanded;
+            return true;
+        }
+        if (!perfExpanded)
+            return true;
+        var P = perfLayout(headerY);
+        if (hitPerfRow(mx, my, P.prefetchY())) {
+            PerfConfig.setPrefetchEnabled(!PerfConfig.prefetchEnabled());
+            PerfConfig.flush();
+            return true;
+        }
+        if (hitPerfRow(mx, my, P.pregenY())) {
+            PerfConfig.setPregenEnabled(!PerfConfig.pregenEnabled());
+            PerfConfig.flush();
+            return true;
+        }
+        // TODO(disk-cache): 磁盘缓存开关未展示。
+        // if (hitPerfRow(mx, my, P.diskY())) {
+        //     PerfConfig.setDiskCacheEnabled(!PerfConfig.diskCacheEnabled());
+        //     PerfConfig.flush();
+        //     return true;
+        // }
+        if (hitPerfRow(mx, my, P.debugY())) {
+            PerfConfig.setDebugOverlay(!PerfConfig.debugOverlay());
+            PerfConfig.flush();
+            return true;
+        }
+        // 滑条: 半径在预生成关闭时不可交互
+        if (PerfConfig.pregenEnabled() && hitPerfSliderRow(mx, my, P.radiusY(), PERF_SLIDER_RADIUS))
+            return true;
+        // TODO(disk-cache): 磁盘上限滑条未展示。
+        // if (PerfConfig.diskCacheEnabled() && hitPerfSliderRow(mx, my, P.diskMaxY(), PERF_SLIDER_DISK))
+        //     return true;
+        hitPerfSliderRow(mx, my, P.threadsY(), PERF_SLIDER_THREADS);
+        hitPerfSliderRow(mx, my, P.cacheY(), PERF_SLIDER_CACHE);
         return true;
+    }
+
+    private static boolean hitPerfRow(int mx, int my, int rowY) {
+        return my >= rowY && my <= rowY + ITEM_H;
+    }
+
+    private boolean hitPerfSliderRow(int mx, int my, int rowY, int id) {
+        if (my < rowY || my >= rowY + PERF_SLIDER_H)
+            return false;
+        perfSliderDrag = id;
+        applyPerfSlider(mx, id);
+        return true;
+    }
+
+    /** 拖拽/点击轨道时按 mouseX 更新对应配置 (只改内存, mouseReleased 时 flush)。 */
+    private void applyPerfSlider(int mx, int id) {
+        int[] tb = perfTrackBounds(id);
+        float t = Math.max(0, Math.min(1,
+                (mx - tb[0]) / (float) Math.max(1, tb[1] - tb[0] - 6)));
+        switch (id) {
+            case PERF_SLIDER_THREADS -> {
+                int cores = Runtime.getRuntime().availableProcessors();
+                PerfConfig.setGenerationThreads(perfStopIndex(t, cores + 1));
+            }
+            case PERF_SLIDER_CACHE -> PerfConfig.setCacheCapacityMB(64 + perfStopIndex(t, 15) * 32);
+            case PERF_SLIDER_RADIUS -> PerfConfig.setPregenRadiusBlocks(1024 << perfStopIndex(t, 7));
+            case PERF_SLIDER_DISK -> PerfConfig.setDiskCacheMaxMB(32 << perfStopIndex(t, 8));
+        }
+    }
+
+    /** 滑条轨道边界 [start, end] (与 renderPerfSlider 推进一致; 值文本宽随当前配置)。 */
+    private int[] perfTrackBounds(int id) {
+        String valueText = switch (id) {
+            case PERF_SLIDER_THREADS -> {
+                int cores = Runtime.getRuntime().availableProcessors();
+                int threads = Math.min(PerfConfig.generationThreads(), cores);
+                yield threads == 0 ? I18n.get("xsm.gui.panel.perf_threads_auto") : String.valueOf(threads);
+            }
+            case PERF_SLIDER_CACHE -> PerfConfig.cacheCapacityMB() + "MB";
+            case PERF_SLIDER_RADIUS -> String.valueOf(PerfConfig.pregenRadiusBlocks());
+            default -> PerfConfig.diskCacheMaxMB() + "MB";
+        };
+        return new int[]{PERF_TRACK_X0, PANEL_WIDTH - PADDING - font.width(valueText) - 5};
+    }
+
+    /** t ∈ [0,1] → 离散档位 [0, stops-1]。 */
+    private static int perfStopIndex(float t, int stops) {
+        return Math.max(0, Math.min(stops - 1, Math.round(t * (stops - 1))));
     }
 
     /** 分组 tab 点击: 组行 (checkbox/展开编辑器) + 编辑器内部 + 新建组。 */
@@ -1143,11 +1386,16 @@ public class SeedMapPanel {
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && sliderDragging) {
+        if (button == CompatInput.MOUSE_LEFT && sliderDragging) {
             sliderDragging = false;
             return true;
         }
-        if (button == 0 && colorSliderDrag > 0) {
+        if (button == CompatInput.MOUSE_LEFT && perfSliderDrag > 0) {
+            perfSliderDrag = -1;
+            PerfConfig.flush(); // 拖拽结束落盘
+            return true;
+        }
+        if (button == CompatInput.MOUSE_LEFT && colorSliderDrag > 0) {
             colorSliderDrag = -1; // 颜色不在此处落盘: 完成 提交或离开编辑器时 flush
             return true;
         }
@@ -1155,8 +1403,12 @@ public class SeedMapPanel {
     }
 
     public boolean mouseDragged(double mouseX, double mouseY, int button) {
-        if (button == 0 && sliderDragging) {
+        if (button == CompatInput.MOUSE_LEFT && sliderDragging) {
             updateSlider((int) mouseX);
+            return true;
+        }
+        if (button == 0 && perfSliderDrag > 0) {
+            applyPerfSlider((int) mouseX, perfSliderDrag);
             return true;
         }
         return false;

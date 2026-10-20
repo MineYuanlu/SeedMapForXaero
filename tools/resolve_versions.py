@@ -4,7 +4,8 @@
 Sources:
   - piston-meta (Mojang): list of release Minecraft versions (>= min_minecraft)
   - Modrinth: for each MC version, the oldest + newest compatible
-    Xaero World Map (fabric) releases, and the newest fabric-api release.
+    Xaero World Map (fabric) releases, the newest Xaero Minimap release
+    (dev-runtime-only, see build.gradle), and the newest fabric-api release.
 
 Modes:
   --update   fetch upstream and rewrite versions.json
@@ -29,6 +30,7 @@ VERSIONS_FILE = os.path.join(ROOT_DIR, "versions.json")
 PISTON_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 MODRINTH_API = "https://api.modrinth.com/v2"
 XAERO_SLUG = "xaeros-world-map"
+XAERO_MINIMAP_SLUG = "xaeros-minimap"
 FABRIC_API_SLUG = "fabric-api"
 
 MIN_MINECRAFT = "26.1"
@@ -90,6 +92,20 @@ def pick_fabric_api(game_version: str) -> "str | None":
     return versions[-1]["version_number"]
 
 
+def pick_xaero_minimap(game_version: str) -> "str | None":
+    """Newest release Xaero Minimap mod version for one MC version.
+
+    version_number looks like "fabric-<mc>-<modver>"; the maven artifact is
+    xaerominimap-fabric-<line>:<modver> (modver only, no fabric prefix).
+    """
+    versions = [v for v in modrinth_versions(XAERO_MINIMAP_SLUG, game_version)
+                if v["version_type"] == "release"]
+    versions.sort(key=lambda v: v["date_published"])
+    parsed = [VERSION_RE.match(v["version_number"]) for v in versions]
+    parsed = [m for m in parsed if m]
+    return parsed[-1].group(2) if parsed else None
+
+
 def resolve() -> "list[dict]":
     rows = []
     for mc in mc_releases():
@@ -98,6 +114,11 @@ def resolve() -> "list[dict]":
             print(f"  WARN {mc}: no release Xaero build found, skipped")
             continue
         fabric_api = pick_fabric_api(mc)
+        minimap = pick_xaero_minimap(mc)
+        if minimap is None:
+            # 矩阵行不带 xaeroMinimapVersion key → 回落 gradle.properties 默认值；
+            # 世界图支持而 minimap 不支持的 MC 目前不存在，防御性告警即可
+            print(f"  WARN {mc}: no release Xaero Minimap build found")
         rows.append({
             "id": mc,
             "java": 25,
@@ -105,6 +126,7 @@ def resolve() -> "list[dict]":
             "xaeroArtifactLine": xaero["line"],
             "xaeroOldest": xaero["oldest"],
             "xaeroNewest": xaero["newest"],
+            "xaeroMinimap": minimap,
             "fabricApi": fabric_api,
         })
     return rows
@@ -142,14 +164,18 @@ def print_matrix(rows: "list[dict]", tag: str = "all") -> None:
         for t, ver in (("oldest", r["xaeroOldest"]), ("newest", r["xaeroNewest"])):
             if tag != "all" and t != tag:
                 continue
-            include.append({
+            entry = {
                 "mc": r["id"],
                 "java": r["java"],
                 "xaeroLine": r["xaeroArtifactLine"],
                 "xaeroVersion": ver,
                 "xaeroTag": t,
                 "fabricApi": r["fabricApi"],
-            })
+            }
+            if r.get("xaeroMinimap"):
+                # key 名与 -PxaeroMinimapVersion 一致（build.gradle 依赖坐标用）
+                entry["xaeroMinimapVersion"] = r["xaeroMinimap"]
+            include.append(entry)
     print(json.dumps({"include": include}, indent=2))
 
 
@@ -161,6 +187,7 @@ def cmd_update(_args) -> int:
     for r in rows:
         print(f"    {r['id']:6s} line={r['xaeroArtifactLine']:6s} "
               f"xaero={r['xaeroOldest']}..{r['xaeroNewest']} "
+              f"minimap={r['xaeroMinimap']} "
               f"fabricApi={r['fabricApi']}")
     return 0
 

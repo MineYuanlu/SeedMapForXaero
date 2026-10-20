@@ -65,7 +65,8 @@ XSM_API bool setBiomeDisabled(const uint8_t* const bitset, uint32_t size);
 /// @param worldX 世界坐标X
 /// @param worldZ 世界坐标Z
 /// @param absY 绝对高度（仅用于群系生成）
-/// @param data 生成的图像数据, 32位 RGB
+/// @param data 生成的图像数据, 32位 RGBA (4 字节/像素, R,G,B,A 字节序;
+///             Java 侧按 LE int32 读出即 ABGR, 与 NativeImage.setPixelABGR 一致)
 /// @param light 是否启用地形光照（Sobel坡面着色 + 深度暗化 + 水下染色）
 /// @return 错误码; 0=成功
 XSM_API uint32_t genCellImg(uint32_t scale, int32_t worldX, int32_t worldZ,
@@ -191,6 +192,17 @@ XSM_API uint32_t queryRegionStructuresGrid(
 /// @return 实际写入数量(可能小于 to-from, 如旧版仅 3 个要塞)
 XSM_API uint32_t queryStrongholdsRange(
     int32_t from, int32_t to,
+    int32_t* outBlockX,
+    int32_t* outBlockZ
+);
+
+/// @brief 查询世界出生点 (cubiomes getSpawn, 精确但较慢)
+/// @details 复现 MC 世界出生点算法: 先近似的适应度/群系搜索, 再扫描草地方块或
+/// y>63 的地表精修。仅主世界有效, 由调用方在后台线程执行。
+/// @param outBlockX 输出出生点方块坐标 X
+/// @param outBlockZ 输出出生点方块坐标 Z
+/// @return 1=成功; 0=世界未设置/非主世界/参数异常
+XSM_API int32_t querySpawn(
     int32_t* outBlockX,
     int32_t* outBlockZ
 );

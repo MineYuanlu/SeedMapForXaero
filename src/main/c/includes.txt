@@ -12,6 +12,7 @@
 --include-function xsmSetCustomStructures
 --include-function queryRegionStructuresGrid
 --include-function queryStrongholdsRange
+--include-function querySpawn
 --include-function querySparseStructures
 --include-function xsmBiome2str
 --include-function xsmQueryStructureLoot
