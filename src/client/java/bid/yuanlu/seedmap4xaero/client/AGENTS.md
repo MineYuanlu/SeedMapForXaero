@@ -6,7 +6,8 @@
 **`com.mojang.blaze3d.{textures,systems,pipeline}`、`renderpearl.*`、`levelgen.synth.*` 只允许在
 compat/ 内 import**（pr-check grep 强制）——强类型调用点的二进制描述符含类型 FQN，MC 一搬家
 universal jar 就在其它版本上 NoSuchMethod/FieldError，且编译期不可见。新缝 → compat 门面加
-反射封装，业务代码只调门面。设计与缝清单见 `doc/compat-layer.md`。
+反射封装，业务代码只调门面。MC 跨版本迁移的公有字段/访问器（如 26.2 的 `Minecraft.screen`
+→ `Gui.screen()`）同样只允许经 compat 读取。设计与缝清单见 `doc/compat-layer.md`。
 
 ## 10 client mixins
 

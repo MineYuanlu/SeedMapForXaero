@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache.CellKey;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
 import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
@@ -73,45 +74,53 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         try (TestSingleplayerContext singleplayer = context.worldBuilder()
                 .adjustSettings(ui -> ui.setSeed(Long.toString(KNOWN_SEED)))
                 .create()) {
-            waitForChunksRender(singleplayer);
-            context.waitTick();
+            try {
+                waitForChunksRender(singleplayer);
+                context.waitTick();
 
-            assertSeedResolved(context, singleplayer);
+                assertSeedResolved(context, singleplayer);
 
-            // 配置系统 v2: 预置 legacy .sm4x → 开图激活时真实迁移
-            seedLegacyConfigs(context);
+                // 配置系统 v2: 预置 legacy .sm4x → 开图激活时真实迁移
+                seedLegacyConfigs(context);
 
-            openWorldMap(context);
-            context.waitForScreen(GuiMap.class);
+                openWorldMap(context);
+                context.waitForScreen(GuiMap.class);
 
-            // 等若干 tick 让 tickWorldInfo → CellCache 生成链路跑起来
-            context.waitTicks(20);
+                // 等若干 tick 让 tickWorldInfo → CellCache 生成链路跑起来
+                context.waitTicks(20);
 
-            assertMapActivated();
-            assertCellCachePopulated(context);
-            assertStructureCachePopulated(context);
+                assertMapActivated();
+                assertCellCachePopulated(context);
+                assertStructureCachePopulated(context);
 
-            // 配置系统 v2: 迁移产物 + JSON 落盘 + marks region 分片
-            assertLegacyMigrated(context);
-            assertJsonConfigOnDisk(context);
+                // 配置系统 v2: 迁移产物 + JSON 落盘 + marks region 分片
+                assertLegacyMigrated(context);
+                assertJsonConfigOnDisk(context);
+                assertBackgroundPregenTick(context);
 
-            context.takeScreenshot("seed-map-final");
+                context.takeScreenshot("seed-map-final");
 
-            assertPanelScreenshots(context, singleplayer);
+                assertPanelScreenshots(context, singleplayer);
 
-            assertHighlightHudHiddenWhenBehind(context, singleplayer);
+                assertHighlightHudHiddenWhenBehind(context, singleplayer);
 
-            assertLootTitleTooltipNoCrash(context);
+                assertLootTitleTooltipNoCrash(context);
 
-            assertLootPaging(context);
+                assertLootPaging(context);
 
-            LOGGER.info("seed-map E2E assertions passed");
-
-            // 绕开 close() 死锁：MC 26 的 IntegratedServer.halt 先 executeBlocking 等 server 处理停止
-            // 任务，而 fabric client gametest 的 phaser 让 server 卡在 postRunTasks 等 render arrive。
-            // 在 server 线程内主动 halt（executeBlocking 检测当前线程即 server，直接执行不阻塞），
-            // 使 server 先脱离 phaser 协调，之后 close() 的 disconnect 才能顺利完成。
-            singleplayer.getServer().runOnServer(server -> server.halt(false));
+                LOGGER.info("seed-map E2E assertions passed");
+            } finally {
+                // 绕开 close() 死锁：MC 26 的 IntegratedServer.halt 先 executeBlocking 等 server 处理停止
+                // 任务，而 fabric client gametest 的 phaser 让 server 卡在 postRunTasks 等 render arrive。
+                // 在 server 线程内主动 halt（executeBlocking 检测当前线程即 server，直接执行不阻塞），
+                // 使 server 先脱离 phaser 协调，之后 close() 的 disconnect 才能顺利完成。
+                // 放在 finally：断言失败时同样先 halt，否则 close() 死锁会让 CI 一直卡住。
+                try {
+                    singleplayer.getServer().runOnServer(server -> server.halt(false));
+                } catch (Throwable t) {
+                    LOGGER.warn("server halt during gametest teardown failed", t);
+                }
+            }
         }
     }
 
@@ -359,6 +368,34 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         context.waitTick();
     }
 
+    /**
+     * 后台预生成 tick 路径：监听器每 tick 读取当前 screen（26.1 字段 / 26.2+ {@code Gui.screen()}），
+     * 26.2 曾因直接访问 {@code Minecraft.screen} 抛 {@code NoSuchFieldError}。开图时 pregen
+     * 会提前返回，但 screen 读取发生在提前返回之前，足以覆盖跨版本取值链。
+     */
+    private static void assertBackgroundPregenTick(ClientGameTestContext context) {
+        // PerfConfig 的落盘路径依赖 Minecraft.getInstance()，只能在客户端线程操作
+        context.runOnClient(client -> PerfConfig.setPregenEnabled(true));
+        try {
+            context.waitTicks(3);
+            context.runOnClient(client -> {
+                Object screen = CompatGui.currentScreen(client);
+                if (!(screen instanceof GuiMap))
+                    throw new AssertionError("background pregen failed to read current screen: " + screen);
+            });
+        } finally {
+            try {
+                context.runOnClient(client -> {
+                    PerfConfig.setPregenEnabled(false);
+                    PerfConfig.flush();
+                });
+            } catch (Throwable t) {
+                LOGGER.warn("background pregen E2E teardown failed", t);
+            }
+        }
+        LOGGER.info("background pregen tick E2E assertion passed");
+    }
+
     /** 要高亮的真实结构位置。 */
     private record StructureTarget(int blockX, int blockZ, StructureType type, int variant) {
     }
@@ -521,10 +558,11 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         context.waitTicks(5);
 
         context.runOnClient(client -> {
-            Object screen = currentScreen(client);
-            if (screen != SCREEN_UNKNOWN && !(screen instanceof GuiMap)) {
+            Object screen = CompatGui.currentScreen(client);
+            if (screen == null)
+                throw new AssertionError("cannot read current screen via compat layer");
+            if (!(screen instanceof GuiMap))
                 throw new AssertionError("client left map (crash) during loot title tooltip: " + screen);
-            }
             if (!LootPreviewState.hasWidget()) {
                 throw new AssertionError("loot widget disappeared during title hover");
             }
@@ -701,32 +739,6 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
 
     /** 战利品预览测试目标结构。 */
     private record LootTarget(StructureType type, int blockX, int blockZ) {
-    }
-
-    /** {@link #currentScreen} 判定失败时的哨兵 (无法跨版本读取当前 screen)。 */
-    private static final Object SCREEN_UNKNOWN = new Object();
-
-    /**
-     * 跨版本读取当前 screen：26.1 为公有字段 {@code Minecraft.screen}，26.2 移除
-     * {@code Minecraft.setScreen} 后该字段不再可直接引用。反射字段/取值器，均不可得时
-     * 返回哨兵 (调用方跳过该断言，崩溃仍由渲染异常中止测试兜底)。
-     */
-    private static Object currentScreen(Minecraft client) {
-        for (String field : new String[] { "screen", "currentScreen" }) {
-            try {
-                java.lang.reflect.Field f = Minecraft.class.getDeclaredField(field);
-                f.setAccessible(true);
-                return f.get(client);
-            } catch (ReflectiveOperationException ignored) {
-            }
-        }
-        for (String method : new String[] { "getScreen", "currentScreen" }) {
-            try {
-                return Minecraft.class.getMethod(method).invoke(client);
-            } catch (ReflectiveOperationException ignored) {
-            }
-        }
-        return SCREEN_UNKNOWN;
     }
 
     /** REGIONS 中离玩家最近且已加载的结构。 */

@@ -1,6 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.render;
 
 import org.joml.Matrix3x2f;
+import org.joml.Vector3fc;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.Minecraft;
@@ -21,7 +22,7 @@ import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
  * <p>
  * 与世界光柱 ({@link HighlightWorldRenderer}) 并存互不干扰: 光柱贯穿建筑高度标明
  * "结构在哪", 图标让玩家不看向光柱方向时也能察觉高亮存在。只画水平距离 (结构无 Y),
- * 目标在相机背后 (NDC z 越出 [0,1]) 或超 {@link #MAX_RENDER_DISTANCE} 时隐藏; 打开地图时
+ * 目标在相机背后 (水平朝向点积) 或超 {@link #MAX_RENDER_DISTANCE} 时隐藏; 打开地图时
  * GuiMap.shouldSkipWorldRender 世界不渲染但 HUD 仍触发, 地图覆盖其上, 无冲突。
  */
 public final class HighlightHudRenderer {
@@ -64,7 +65,9 @@ public final class HighlightHudRenderer {
             return;
 
         final var dim = level.dimension();
-        final var cam = ((GameRendererAccessor) mc.gameRenderer).xsm$mainCamera().position();
+        final var camera = ((GameRendererAccessor) mc.gameRenderer).xsm$mainCamera();
+        final var cam = camera.position();
+        final var forward = camera.forwardVector();
         final int guiW = graphics.guiWidth();
         final int guiH = graphics.guiHeight();
 
@@ -84,6 +87,10 @@ public final class HighlightHudRenderer {
             final double bz = key.blockZ() + 0.5;
             final double dist = Math.hypot(bx - cam.x, bz - cam.z);
             if (dist > MAX_RENDER_DISTANCE)
+                continue;
+            // 26.2/26.3 的 Projection 交换 near/far 做 reversed-Z，NDC z 的符号还取决于
+            // 驱动是否支持 GL_ARB_clip_control，不能靠 z 判前后。
+            if (isBehind(cam.x, cam.z, forward, bx, bz))
                 continue;
             final Vec3 ndc = mc.gameRenderer.projectPointToScreen(new Vec3(bx, cam.y, bz));
             final float[] s = ndcToScreen(ndc, guiW, guiH);
@@ -109,12 +116,20 @@ public final class HighlightHudRenderer {
     }
 
     /**
-     * NDC (相机前方的点 z∈[0,1]) → 屏幕坐标 (亚像素浮点); 目标在相机背后或越出
-     * 可见深度区间 (NDC z 越出 [0,1]) 返回 null。背后点在不同 MC 版本深度约定下
-     * 映射为 z&gt;1 (非线性深度) 或 z&lt;0 (线性深度), 故两侧都需排除。
+     * 目标是否在相机背后：用相机水平朝向与目标偏移的点积判定，不依赖 NDC z。
+     * 26.2/26.3 用 reversed-Z，且 NDC z 符号随 GL_ARB_clip_control 支持情况变化，
+     * z 无法稳定区分前后。
+     */
+    static boolean isBehind(double camX, double camZ, Vector3fc forward, double bx, double bz) {
+        return (bx - camX) * forward.x() + (bz - camZ) * forward.z() <= 0.0;
+    }
+
+    /**
+     * NDC → 屏幕坐标 (亚像素浮点)。仅做坐标映射，不做前后/深度裁剪
+     * （前后由 {@link #isBehind} 在调用前判定）；非有限值返回 null。
      */
     static float[] ndcToScreen(Vec3 ndc, int guiW, int guiH) {
-        if (ndc.z < 0.0 || ndc.z > 1.0)
+        if (!Double.isFinite(ndc.x) || !Double.isFinite(ndc.y) || !Double.isFinite(ndc.z))
             return null;
         float sx = (float) ((ndc.x + 1.0) * 0.5 * guiW);
         float sy = (float) ((1.0 - ndc.y) * 0.5 * guiH);
