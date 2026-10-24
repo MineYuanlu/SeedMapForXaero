@@ -29,6 +29,14 @@ import net.minecraft.resources.Identifier;
  * 参数类型 26.3 从 {@code blaze3d.pipeline} 迁到 {@code renderpearl.api.pipeline}，
  * 强类型调用点描述符跨版本断裂，必须经反射（pipeline 常量复用
  * {@link CompatTextures} 的解析缓存）。
+ *
+ * <p>
+ * 重载匹配按<strong>精确形参形状</strong>（含每个基本类型位）进行，绝不只看参数个数：
+ * 26.1/26.3 上 {@code blitSprite} 同时存在 7 参 {@code (…, float alpha)} 与
+ * {@code (…, int color)} 重载，{@code getMethods()} 顺序未定义（issue #32：
+ * 26.3 上先命中 int 版 → {@code invoke(float)} 抛 {@code WrongMethodTypeException}）。
+ * 优先取 float（alpha）版本；仅有 int（color）版本时降级为
+ * {@code color = alpha<<24 | 0xFFFFFF}（ARGB tint，语义等价）。
  */
 public final class CompatGui {
 
@@ -39,6 +47,7 @@ public final class CompatGui {
 	private static volatile boolean tooltipTakesBoolean;
 	private static volatile @Nullable MethodHandle blitTextureHandle;
 	private static volatile @Nullable MethodHandle blitSpriteHandle;
+	private static volatile boolean blitSpriteTakesColor;
 
 	/**
 	 * 等价于 {@code g.tooltip(font, lines, x, y, DefaultTooltipPositioner.INSTANCE, null)}
@@ -73,13 +82,23 @@ public final class CompatGui {
 		}
 	}
 
-	/** 等价于 {@code g.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x, y, w, h, alpha)}。 */
+	/**
+	 * 等价于 {@code g.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x, y, w, h, alpha)}；
+	 * 若运行时仅有 {@code (…, int color)} 重载，则换算
+	 * {@code color = (int)(alpha*255)<<24 | 0xFFFFFF}（ARGB tint，语义等价）。
+	 */
 	public static void blitSprite(@NotNull GuiGraphicsExtractor g, @NotNull Identifier sprite,
 			int x, int y, int w, int h, float alpha) {
 		try {
 			if (blitSpriteHandle == null)
 				xsm$resolveBlit();
-			blitSpriteHandle.invoke(g, CompatTextures.guiTexturedPipeline(), sprite, x, y, w, h, alpha);
+			if (blitSpriteTakesColor) {
+				final int a = Math.min(255, Math.max(0, Math.round(alpha * 255f)));
+				final int color = a << 24 | 0xFFFFFF;
+				blitSpriteHandle.invoke(g, CompatTextures.guiTexturedPipeline(), sprite, x, y, w, h, color);
+			} else {
+				blitSpriteHandle.invoke(g, CompatTextures.guiTexturedPipeline(), sprite, x, y, w, h, alpha);
+			}
 		} catch (Throwable e) {
 			throw new RuntimeException("CompatGui.blitSprite failed", e);
 		}
@@ -88,20 +107,60 @@ public final class CompatGui {
 	private static synchronized void xsm$resolveBlit() throws Throwable {
 		if (blitTextureHandle != null && blitSpriteHandle != null)
 			return;
-		blitTextureHandle = MethodHandles.lookup().unreflect(xsm$findOverlayMethod("blit", 10));
-		blitSpriteHandle = MethodHandles.lookup().unreflect(xsm$findOverlayMethod("blitSprite", 7));
+		final Method[] methods = GuiGraphicsExtractor.class.getMethods();
+		blitTextureHandle = MethodHandles.lookup().unreflect(xsm$findBlitTexture(methods));
+		final BlitSpriteMatch sprite = xsm$findBlitSprite(methods);
+		blitSpriteHandle = MethodHandles.lookup().unreflect(sprite.method());
+		blitSpriteTakesColor = sprite.takesColor();
 	}
 
-	/** 形参形状: blit → (pipeline, Identifier, int, int, float, float, int×4)；blitSprite → (…, int×4, float)。 */
-	private static @NotNull Method xsm$findOverlayMethod(@NotNull String name, int paramCount)
-			throws NoSuchMethodException {
-		for (final Method m : GuiGraphicsExtractor.class.getMethods()) {
+	/**
+	 * blitSprite 匹配结果：{@code takesColor=true} 表示命中 {@code (…, int color)} 重载，
+	 * 调用方需把 alpha 换算成 ARGB color。
+	 */
+	record BlitSpriteMatch(@NotNull Method method, boolean takesColor) {
+	}
+
+	/**
+	 * 按精确形参形状找 {@code blit(pipeline, Identifier, int, int, float, float, int×4)}
+	 * （10 参）。pipeline 参数为搬家类型（26.1 blaze3d / 26.3 renderpearl），不校验。
+	 */
+	static @NotNull Method xsm$findBlitTexture(@NotNull Method[] methods) throws NoSuchMethodException {
+		for (final Method m : methods) {
 			final Class<?>[] pt = m.getParameterTypes();
-			if (m.getName().equals(name) && pt.length == paramCount && pt[1] == Identifier.class) {
+			if (m.getName().equals("blit") && pt.length == 10 && pt[1] == Identifier.class
+					&& pt[2] == int.class && pt[3] == int.class
+					&& pt[4] == float.class && pt[5] == float.class
+					&& pt[6] == int.class && pt[7] == int.class && pt[8] == int.class && pt[9] == int.class) {
 				return m;
 			}
 		}
-		throw new NoSuchMethodException("GuiGraphicsExtractor." + name + "/" + paramCount + " not found");
+		throw new NoSuchMethodException(
+				"GuiGraphicsExtractor.blit(pipeline,Identifier,int,int,float,float,int×4) not found");
+	}
+
+	/**
+	 * 按精确形参形状找 7 参 {@code blitSprite(pipeline, Identifier, int×4, 末参)}：
+	 * 优先 {@code float}（alpha，26.1/26.3 均存在）；否则退到 {@code int}（color）。
+	 * 只看参数个数会让 {@code getMethods()} 的未定义顺序决定命中哪个重载（issue #32）。
+	 */
+	static @NotNull BlitSpriteMatch xsm$findBlitSprite(@NotNull Method[] methods) throws NoSuchMethodException {
+		Method color = null;
+		for (final Method m : methods) {
+			final Class<?>[] pt = m.getParameterTypes();
+			if (!m.getName().equals("blitSprite") || pt.length != 7 || pt[1] != Identifier.class
+					|| pt[2] != int.class || pt[3] != int.class || pt[4] != int.class || pt[5] != int.class) {
+				continue;
+			}
+			if (pt[6] == float.class)
+				return new BlitSpriteMatch(m, false);
+			if (pt[6] == int.class)
+				color = m;
+		}
+		if (color != null)
+			return new BlitSpriteMatch(color, true);
+		throw new NoSuchMethodException(
+				"GuiGraphicsExtractor.blitSprite(pipeline,Identifier,int×4,float|int) not found");
 	}
 
 	private static @NotNull MethodHandle xsm$resolve() throws Throwable {
