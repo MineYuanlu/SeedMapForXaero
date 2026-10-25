@@ -1,0 +1,92 @@
+name: Bug 报告（中文）
+description: 崩溃、显示异常、功能失效等问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索现有 issue。支持版本见 [README](https://github.com/MineYuanlu/SeedMapForXaero#支持版本)。
+
+        English users: please use the **Bug Report (English)** template.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 issue，并确认使用的是最新版模组
+          required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 运行平台
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Android（FCL）
+        - Android（Pojav / Zalith）
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mc-version
+    attributes:
+      label: Minecraft 版本
+      options:
+        - "26.3"
+        - "26.2"
+        - "26.1.2"
+        - "26.1.1"
+        - "26.1"
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: mod-version
+    attributes:
+      label: 模组版本
+      placeholder: 例如 0.7.1
+    validations:
+      required: true
+
+  - type: input
+    id: dependency-versions
+    attributes:
+      label: Xaero's World Map / Fabric API 版本（选填）
+      placeholder: 例如 Xaero 1.46.2 / Fabric API 0.162.0+26.3
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 发生了什么、预期是什么、怎么复现。渲染或结构问题请附种子、坐标和维度；Android 请注明启动器。
+      placeholder: |
+        问题：
+        复现步骤：
+        种子 / 坐标 / 维度：
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 崩溃报告（选填）
+      description: 可粘贴关键片段，或创建 issue 后拖入日志文件；也可以上传到 https://mclo.gs 后贴链接。请先删除服务器地址、账号等隐私信息。
+      render: text
+    validations:
+      required: false
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: 截图或视频（选填）
+      description: 渲染、图标、界面类问题建议附上截图。
+    validations:
+      required: false

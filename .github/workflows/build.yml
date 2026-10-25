@@ -9,6 +9,8 @@ on:
   push:
     branches: [master, develop]
     tags: ['v*']
+  # 手动触发供 refresh-toolchain 在工具链候选分支上拉起完整门禁（gh workflow run --ref）
+  workflow_dispatch:
 
 permissions:
   contents: read
