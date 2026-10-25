@@ -18,6 +18,7 @@ import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache.CellKey;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
 import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
@@ -74,48 +75,25 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
 
     @Override
     public void runTest(ClientGameTestContext context) {
+        try {
+            xsm$runTest(context);
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void xsm$runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext singleplayer = context.worldBuilder()
                 .adjustSettings(ui -> ui.setSeed(Long.toString(KNOWN_SEED)))
                 .create()) {
-            waitForChunksRender(singleplayer);
-            context.waitTick();
-
-            assertSeedResolved(context, singleplayer);
-            context.takeScreenshot("1-world-before-map");
-
-            // 配置系统 v2: 预置 legacy .sm4x → 开图激活时真实迁移
-            seedLegacyConfigs(context);
-
-            openWorldMap(context);
-            context.waitForScreen(GuiMap.class);
-
-            // 等若干 tick 让 tickWorldInfo → CellCache 生成链路跑起来
-            context.waitTicks(20);
-
-            assertMapActivated();
-            assertCellCachePopulated(context);
-            assertStructureCachePopulated(context);
-            context.takeScreenshot("2-seed-map-baselines");
-
-            // 配置系统 v2: 迁移产物 + JSON 落盘 + marks region 分片
-            assertLegacyMigrated(context);
-            assertJsonConfigOnDisk(context);
-
-            // 数据包自定义结构 (路线 A): 模拟 DatapackStructures.reload 注入
-            // (gametest 世界无数据包, 直接注入合成表), 验证 Java 注册表 →
-            // getStructureTypeSet → StructureCache → REGIONS 全链路。
-            // 过程截图人工验收: 地图上的琥珀菱形图标 + 面板类型列表自定义行。
-            assertCustomStructuresInjected(context);
-
-            context.takeScreenshot("3-seed-map-final");
-
-            assertPanelScreenshots(context, singleplayer);
-
-            assertHighlightHudHiddenWhenBehind(context, singleplayer);
-
-            assertLootTitleTooltipNoCrash(context);
-
-            assertLootPaging(context);
+            try {
+                xsm$runAssertions(context, singleplayer);
+            } catch (Throwable e) {
+                // 测试体异常时 try-with-resources 的 close() 会撞上 close() 死锁（见下方注释），
+                // 框架的重抛永远走不到——必须在这里立即落盘，否则失败原因被死锁吞掉
+                LOGGER.error("seed-map E2E FAILED", e);
+                throw e;
+            }
 
             LOGGER.info("seed-map E2E assertions passed");
 
@@ -125,6 +103,48 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
             // 使 server 先脱离 phaser 协调，之后 close() 的 disconnect 才能顺利完成。
             singleplayer.getServer().runOnServer(server -> server.halt(false));
         }
+    }
+
+    private void xsm$runAssertions(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
+        waitForChunksRender(singleplayer);
+        context.waitTick();
+
+        assertSeedResolved(context, singleplayer);
+        context.takeScreenshot("1-world-before-map");
+
+        // 配置系统 v2: 预置 legacy .sm4x → 开图激活时真实迁移
+        seedLegacyConfigs(context);
+
+        openWorldMap(context);
+        context.waitForScreen(GuiMap.class);
+
+        // 等若干 tick 让 tickWorldInfo → CellCache 生成链路跑起来
+        context.waitTicks(20);
+
+        assertMapActivated();
+        assertCellCachePopulated(context);
+        assertStructureCachePopulated(context);
+        context.takeScreenshot("2-seed-map-baselines");
+
+        // 配置系统 v2: 迁移产物 + JSON 落盘 + marks region 分片
+        assertLegacyMigrated(context);
+        assertJsonConfigOnDisk(context);
+
+        // 数据包自定义结构 (路线 A): 模拟 DatapackStructures.reload 注入
+        // (gametest 世界无数据包, 直接注入合成表), 验证 Java 注册表 →
+        // getStructureTypeSet → StructureCache → REGIONS 全链路。
+        // 过程截图人工验收: 地图上的琥珀菱形图标 + 面板类型列表自定义行。
+        assertCustomStructuresInjected(context);
+
+        context.takeScreenshot("3-seed-map-final");
+
+        assertPanelScreenshots(context, singleplayer);
+
+        assertHighlightHudHiddenWhenBehind(context, singleplayer);
+
+        assertLootTitleTooltipNoCrash(context);
+
+        assertLootPaging(context);
     }
 
     /**
@@ -474,7 +494,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     }
 
     /**
-     * 面板 UI 截图（人工验收）: 打开面板 → 类型/分组/组编辑器/图标 四张；
+     * 面板 UI 截图（人工验收）: 打开面板 → 生物群系展开/类型/分组/组编辑器/图标 五张；
      * 再给最近结构上组色遮罩，截一张无面板遮挡的地图视图验证图标 mask。
      * 结束后还原标记与组色。
      */
@@ -524,6 +544,28 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         context.runOnClient(client -> SeedMapPanel.activePanel().testExpandPerf());
         context.waitTick();
         context.takeScreenshot("panel-perf");
+
+        // 生物群系区展开截图: 展开帧每帧走 renderBiomeSection → CompatGui.blitSprite
+        // (issue #32: 26.3 上 blitSprite 重载误匹配在此崩溃)。断言计数增长 =
+        // 真实渲染帧确实驱动了该反射路径, 且客户端未崩。
+        long blitSpritesBefore = context.computeOnClient(client -> CompatGui.blitSpriteCallCount);
+        context.runOnClient(client -> SeedMapPanel.activePanel().testSetBiomeExpanded(true));
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            long called = CompatGui.blitSpriteCallCount - blitSpritesBefore;
+            if (called <= 0) {
+                throw new AssertionError("biome panel expanded but CompatGui.blitSprite not invoked ("
+                        + called + " calls) — issue #32 render path not exercised");
+            }
+            Object screen = currentScreen(client);
+            if (screen != SCREEN_UNKNOWN && !(screen instanceof GuiMap)) {
+                throw new AssertionError("client left map (crash) during biome panel render: " + screen);
+            }
+            LOGGER.info("biome panel expand drove {} blitSprite calls", called);
+        });
+        context.takeScreenshot("panel-biomes");
+        context.runOnClient(client -> SeedMapPanel.activePanel().testSetBiomeExpanded(false));
+        context.waitTick();
 
         // 图标组色遮罩: 最近结构标为 done + 半透明红覆盖
         context.runOnClient(client -> {
@@ -771,16 +813,17 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     /** 找一个战利品容器数 >= 2 的结构 (翻页测试需要多容器)。 */
     private static @Nullable LootTarget findMultiChestLootStructure(Minecraft client) {
         for (var entry : StructureCache.REGIONS.entrySet()) {
-            if (!LootPreviewState.isLootSupported(entry.getKey())) {
+            var type = StructureTypes.byId(entry.getKey());
+            if (type == null || !LootPreviewState.isLootSupported(type)) {
                 continue;
             }
             for (var pos : entry.getValue()) {
                 if (!pos.loaded()) {
                     continue;
                 }
-                var loot = LootPreviewState.queryLoot(entry.getKey(), pos.blockX(), pos.blockZ());
+                var loot = LootPreviewState.queryLoot(type, pos.blockX(), pos.blockZ());
                 if (loot != null && loot.size() >= 2) {
-                    return new LootTarget(entry.getKey(), pos.blockX(), pos.blockZ());
+                    return new LootTarget(type, pos.blockX(), pos.blockZ());
                 }
             }
         }
@@ -810,16 +853,17 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     /** 找一个能产出非空战利品的结构 (真实位置优先, 退化为栅格扫描沙漠神殿)。 */
     private static @Nullable LootTarget findLootStructure(Minecraft client) {
         for (var entry : StructureCache.REGIONS.entrySet()) {
-            if (!LootPreviewState.isLootSupported(entry.getKey())) {
+            var type = StructureTypes.byId(entry.getKey());
+            if (type == null || !LootPreviewState.isLootSupported(type)) {
                 continue;
             }
             for (var pos : entry.getValue()) {
                 if (!pos.loaded()) {
                     continue;
                 }
-                var loot = LootPreviewState.queryLoot(entry.getKey(), pos.blockX(), pos.blockZ());
+                var loot = LootPreviewState.queryLoot(type, pos.blockX(), pos.blockZ());
                 if (loot != null && !loot.isEmpty()) {
-                    return new LootTarget(entry.getKey(), pos.blockX(), pos.blockZ());
+                    return new LootTarget(type, pos.blockX(), pos.blockZ());
                 }
             }
         }
@@ -841,7 +885,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
     }
 
     /** 战利品预览测试目标结构。 */
-    private record LootTarget(StructureType type, int blockX, int blockZ) {
+    private record LootTarget(StructureInfo type, int blockX, int blockZ) {
     }
 
     /** {@link #currentScreen} 判定失败时的哨兵 (无法跨版本读取当前 screen)。 */

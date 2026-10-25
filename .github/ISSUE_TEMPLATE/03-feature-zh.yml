@@ -1,0 +1,30 @@
+name: 功能建议（中文）
+description: 新功能、改进建议或版本 / 启动器兼容性需求
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索现有 issue。版本适配、其他启动器支持等需求也可以直接用这个模板。
+
+        English users: please use the **Feature Request (English)** template.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 功能描述
+      description: 想增加或改进什么？解决什么问题、在什么场景下使用？
+      placeholder: |
+        功能：
+        使用场景：
+    validations:
+      required: true
+
+  - type: input
+    id: mc-version
+    attributes:
+      label: 相关 Minecraft / 启动器版本（选填）
+      placeholder: 例如 26.3 或 FCL 1.1.8
+    validations:
+      required: false

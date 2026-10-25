@@ -5,10 +5,20 @@ name: build
 # 单人开发流程：dev/xxx → develop → master → 手动发版。
 # develop 是合入 master 前的完整验证门禁，因此 develop 与 master 都跑全量构建；
 # tag 触发用于留档 release 引用构建。feature 分支/PR 的快速检查在 pr-check.yml。
+# 手动触发支持 inputs.ref 指定任意分支/tag/SHA（默认 = 触发时选的 ref），
+# 供在 push 到 develop 前对 feature 分支/提交跑全量门禁（matrix-test.yml 同）。
 on:
   push:
     branches: [master, develop]
     tags: ['v*']
+  # 手动触发供 refresh-toolchain 在工具链候选分支上拉起完整门禁（gh workflow run --ref）
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref (branch / tag / SHA) to build. Empty = dispatch ref.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -17,14 +27,14 @@ jobs:
   natives:
     uses: ./.github/workflows/reusable-native-build.yml
     with:
-      ref: ${{ github.ref }}
+      ref: ${{ inputs.ref || github.ref }}
     secrets: inherit
 
   package:
     needs: natives
     uses: ./.github/workflows/reusable-package.yml
     with:
-      ref: ${{ github.ref }}
+      ref: ${{ inputs.ref || github.ref }}
       artifact-name: seed-map-for-xaero
       run-ctests: true
       verify-natives: true

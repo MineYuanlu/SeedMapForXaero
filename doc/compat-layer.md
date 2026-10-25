@@ -32,12 +32,17 @@ JVM 方法/字段/构造器的二进制描述符**包含类型 FQN**。MC 26.3 �
 | 类 | 缝 | 说明 |
 | --- | --- | --- |
 | `CompatTextures` | `RenderSystem.getDevice()`、`GpuDevice.createTexture/createTextureView`、`CommandEncoder.writeToTexture`、`GpuTextureAndView` 构造器与 `view` 字段、`MultiTextureRenderTypeRenderer.begin`、`AbstractTexture.getTextureView/getSampler`、`TextureSetup.singleTexture`、`RenderPipelines.GUI_TEXTURED`、`BlitRenderState` 13 参构造器 | 纹理创建/上传/瓦片绘制/图标 blit 全链路 |
-| `CompatGui` | `GuiGraphicsExtractor.tooltip`（26.1 六参 / 26.3 七参）、`blit`/`blitSprite` 带 pipeline 重载 | tooltip 参数个数；pipeline 参数类型搬家 |
+| `CompatGui` | `GuiGraphicsExtractor.tooltip`（26.1 六参 / 26.3 七参）、`blit`/`blitSprite` 带 pipeline 重载 | tooltip 参数个数；pipeline 参数类型搬家；blitSprite 按**精确形参形状**匹配（见下） |
 | `CompatPose` | 无（`mulPose(Matrix4fc)` 是 26.1/26.3 类型交集） | `rotateYDegrees` 替代被删的 `mulPose(Quaternionf)` |
 | `CompatNoise` | 无（纯自实现） | 26.3 移除 `PerlinSimplexNoise` 的逐位对齐副本，见下 |
 
 重载匹配注意：`GpuDevice.createTexture` 有 `(String,…)` 与 `(Supplier<String>,…)` 两个 7 参
 重载，谓词必须区分 `parameterTypes()[0]`（26.3 上 `getMethods()` 顺序与 26.1 不同，E2E 抓过）。
+`blitSprite` 同理且更隐蔽：26.1/26.3 上 `(…, int×4, float)` 与 `(…, int×4, int)` 两个 7 参
+重载并存，只按参数个数匹配时 26.3 顺序未定义地命中 int 版 → `invoke(float)` 抛
+`WrongMethodTypeException`（issue #32，面板群系渲染稳定崩溃）。因此 `blit`/`blitSprite`
+一律按**精确形参形状**（逐位基本类型）匹配：优先取 float（alpha）版本，仅剩 int（color）
+版本时降级为 `color = alpha<<24 | 0xFFFFFF`（ARGB tint，语义等价）。
 
 ## FQN 稳定（可保持强类型）的判例
 
@@ -74,4 +79,7 @@ MC 26.3 彻底移除该类且无等价 API（`NoiseStack` 范式不同、无法�
 - 反射调用点务必把 `unreflect` 出的实例方法句柄的**接收者**作为首参传入（`CompatGui.tooltip`
   早期漏传 `GuiGraphicsExtractor` 导致 `WrongMethodTypeException` 崩溃，见 `blit*` 的正确写法）。
 - chest 战利品标题 tooltip 已有 E2E 覆盖（`SeedMapClientGameTest.assertLootTitleTooltipNoCrash`
-  驱动真实渲染帧命中标题）；面板 blitSprite 等其余低频 GUI 路径仍靠 26.1/26.3 双端人工开图兜底。
+  驱动真实渲染帧命中标题）；面板 blitSprite 路径的重载选择由 `CompatGuiMethodMatchTest`
+  覆盖（模拟 26.1/26.3 两种方法表），渲染路径由 E2E 的群系区展开截图覆盖
+  （`panel-biomes`，断言 `CompatGui.blitSpriteCallCount` 增长 + 未崩溃）。群系区之外
+  的低频 GUI 状态（tooltip 悬停变体等）仍靠 26.1/26.3 双端人工开图兜底。

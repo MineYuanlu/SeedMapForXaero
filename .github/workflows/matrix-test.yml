@@ -2,10 +2,18 @@ name: matrix-test
 
 # 版本矩阵测试（8 组合编译 + JUnit + C 单测 + 4 路 E2E 真实启动）。
 # 触发：develop / master 推送（全面门禁）+ 手动。feature 分支只跑 pr-check 快速检查。
+# 手动触发支持 inputs.ref 指定任意分支/tag/SHA（默认 = 触发时选的 ref），
+# 供在 push 到 develop 前对 feature 分支/提交跑全量门禁（build.yml 同）。
 on:
   push:
     branches: [master, develop]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref (branch / tag / SHA) to test. Empty = dispatch ref.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
       - name: Check versions.json freshness (advisory, never blocks)
         run: |
@@ -56,6 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
       - uses: actions/setup-java@v5
         with:
@@ -96,6 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
       - uses: actions/setup-java@v5
         with:
@@ -150,6 +161,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
       - uses: actions/setup-java@v5
         with:

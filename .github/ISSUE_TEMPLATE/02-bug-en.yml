@@ -1,0 +1,92 @@
+name: Bug Report (English)
+description: Crashes, rendering issues, or broken features
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search existing issues first. See the [supported versions section](https://github.com/MineYuanlu/SeedMapForXaero/blob/master/README.en.md#supported-versions).
+
+        中文用户请使用 **Bug 报告（中文）** 模板。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-submission check
+      options:
+        - label: I have searched existing issues and am using the latest mod version
+          required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Android (FCL)
+        - Android (Pojav / Zalith)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mc-version
+    attributes:
+      label: Minecraft version
+      options:
+        - "26.3"
+        - "26.2"
+        - "26.1.2"
+        - "26.1.1"
+        - "26.1"
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: mod-version
+    attributes:
+      label: Mod version
+      placeholder: e.g. 0.7.1
+    validations:
+      required: true
+
+  - type: input
+    id: dependency-versions
+    attributes:
+      label: Xaero's World Map / Fabric API version (optional)
+      placeholder: e.g. Xaero 1.46.2 / Fabric API 0.162.0+26.3
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, what did you expect, and how can it be reproduced? For rendering or structure issues, include the seed, coordinates, and dimension; on Android, mention the launcher.
+      placeholder: |
+        Problem:
+        Steps to reproduce:
+        Seed / coordinates / dimension:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / crash report (optional)
+      description: Paste the relevant part, drag the log file into this issue after creating it, or upload it to https://mclo.gs and paste the link. Remove server addresses, account names, and other private information first.
+      render: text
+    validations:
+      required: false
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Screenshots or video (optional)
+      description: Screenshots are helpful for rendering, icon, or UI issues.
+    validations:
+      required: false

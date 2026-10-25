@@ -1,0 +1,105 @@
+name: refresh-toolchain
+
+# 每周二 04:33 UTC 或手动触发：把 .github/toolchain-versions.json 更新为上游最新候选，
+# 在 ci/toolchain-bump 分支上拉起完整门禁（build 全平台 native + 打包，matrix-test
+# 版本矩阵 + E2E）。全绿才把候选快进推到 master；任一失败则本 workflow 红字退出
+# （触发失败邮件通知），master 与 JSON 保持不动——即"最后一次验证通过"的固定包语义。
+# 与 refresh-versions.yml 的差别：工具链升级必须先验证后提交，且推回 master 走快进。
+on:
+  schedule:
+    - cron: '33 4 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for upstream updates
+        id: check
+        run: |
+          if python3 tools/resolve_toolchain.py check; then
+            echo "has_updates=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_updates=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit candidate and push branch
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
+          python3 tools/resolve_toolchain.py update
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B ci/toolchain-bump
+          git add .github/toolchain-versions.json
+          git commit -m "chore(ci): bump toolchain versions (candidate)"
+          git push -f origin ci/toolchain-bump
+
+      - name: Trigger full gates on candidate
+        if: steps.check.outputs.has_updates == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run build.yml --ref ci/toolchain-bump
+          gh workflow run matrix-test.yml --ref ci/toolchain-bump
+
+      - name: Wait for gates to finish
+        if: steps.check.outputs.has_updates == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 上限约 2 小时（120 × 60s），超时视为失败（候选不提交，下周重试）
+          MAX_WAIT_ITERATIONS=120
+
+          await_run() {
+            local workflow="$1"
+            local run_id=""
+            for _ in $(seq 1 30); do
+              run_id=$(gh run list --workflow "$workflow" --branch ci/toolchain-bump \
+                --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+              [ -n "$run_id" ] && { echo "$run_id"; return 0; }
+              sleep 20
+            done
+            echo "::error::no $workflow run found on ci/toolchain-bump"
+            return 1
+          }
+
+          wait_conclusion() {
+            local run_id="$1" label="$2" i status conclusion
+            for i in $(seq 1 $MAX_WAIT_ITERATIONS); do
+              read -r status conclusion <<< "$(gh run view "$run_id" \
+                --json status,conclusion --jq '.status + " " + (.conclusion // "")')"
+              if [ "$status" = "completed" ]; then
+                if [ "$conclusion" = "success" ]; then
+                  echo "$label gate passed"
+                  return 0
+                fi
+                echo "::error::$label gate failed ($conclusion): $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id"
+                return 1
+              fi
+              sleep 60
+            done
+            echo "::error::$label gate timed out: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id"
+            return 1
+          }
+
+          BUILD_RUN=$(await_run build.yml)
+          MATRIX_RUN=$(await_run matrix-test.yml)
+          echo "build run: $BUILD_RUN, matrix-test run: $MATRIX_RUN"
+          wait_conclusion "$BUILD_RUN" "build"
+          wait_conclusion "$MATRIX_RUN" "matrix-test"
+
+      - name: Fast-forward master to verified candidate
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
+          # master 若在此期间前移会 non-ff 失败 → 本 job 红字，下周重新出候选重试
+          git push origin ci/toolchain-bump:master
