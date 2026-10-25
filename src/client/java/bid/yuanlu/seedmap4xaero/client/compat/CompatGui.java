@@ -50,6 +50,12 @@ public final class CompatGui {
 	private static volatile boolean blitSpriteTakesColor;
 
 	/**
+	 * {@link #blitSprite} 成功调用计数（E2E 断言用：群系区展开帧必经此路径，
+	 * 计数不增长 = issue #32 渲染路径未被驱动）。生产开销为一次 volatile 自增。
+	 */
+	public static volatile long blitSpriteCallCount;
+
+	/**
 	 * 等价于 {@code g.tooltip(font, lines, x, y, DefaultTooltipPositioner.INSTANCE, null)}
 	 * （26.1）/ {@code ..., null, false}（26.3）。
 	 */
@@ -99,6 +105,7 @@ public final class CompatGui {
 			} else {
 				blitSpriteHandle.invoke(g, CompatTextures.guiTexturedPipeline(), sprite, x, y, w, h, alpha);
 			}
+			blitSpriteCallCount++;
 		} catch (Throwable e) {
 			throw new RuntimeException("CompatGui.blitSprite failed", e);
 		}
