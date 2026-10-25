@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "updated": "2026-10-25T04:50:00Z",
+  "windows": {
+    "msys2": {
+      "packages": {
+        "mingw-w64-x86_64-crt": "14.0.0.r495.g63ebe6cdb-1",
+        "mingw-w64-x86_64-headers": "14.0.0.r495.g63ebe6cdb-1",
+        "mingw-w64-x86_64-libwinpthread": "14.0.0.r495.g63ebe6cdb-1",
+        "mingw-w64-x86_64-winpthreads": "14.0.0.r495.g63ebe6cdb-1",
+        "mingw-w64-x86_64-gcc": "16.2.0-6",
+        "mingw-w64-x86_64-binutils": "2.47-4",
+        "mingw-w64-x86_64-cmake": "4.4.4-3",
+        "mingw-w64-x86_64-ninja": "1.13.2-1"
+      }
+    }
+  },
+  "android": {
+    "ndk": "r27c"
+  }
+}

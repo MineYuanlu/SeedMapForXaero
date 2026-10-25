@@ -1,0 +1,30 @@
+name: Feature Request (English)
+description: New features, improvements, or version / launcher compatibility requests
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search existing issues first. Version or launcher compatibility requests can use this template too.
+
+        中文用户请使用 **功能建议（中文）** 模板。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What would you like to add or improve? What problem does it solve, and when would you use it?
+      placeholder: |
+        Feature:
+        Use case:
+    validations:
+      required: true
+
+  - type: input
+    id: mc-version
+    attributes:
+      label: Related Minecraft / launcher version (optional)
+      placeholder: e.g. 26.3 or FCL 1.1.8
+    validations:
+      required: false
