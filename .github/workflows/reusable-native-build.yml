@@ -79,11 +79,13 @@ jobs:
           submodules: recursive
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake unzip
-      - name: Download Android NDK
+      - name: Download Android NDK (version from toolchain-versions.json)
         run: |
-          curl -sL -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          NDK_VER=$(jq -r '.android.ndk' "$GITHUB_WORKSPACE/.github/toolchain-versions.json" | tr -d '\r')
+          echo "NDK version: ${NDK_VER}"
+          curl -sL -o /tmp/ndk.zip "https://dl.google.com/android/repository/android-ndk-${NDK_VER}-linux.zip"
           unzip -q /tmp/ndk.zip -d /tmp
-          echo "ANDROID_NDK=/tmp/android-ndk-r27c" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=/tmp/android-ndk-${NDK_VER}" >> "$GITHUB_ENV"
       - name: Build arm64-v8a (bionic)
         run: |
           cmake -S . -B build-android-arm64 -DCMAKE_BUILD_TYPE=Release \
@@ -124,7 +126,7 @@ jobs:
 
   # macOS：universal dylib（arm64 + x86_64 一个文件，Intel 与 Apple Silicon 通用）。
   compile-native-macos:
-    runs-on: macos-latest
+    runs-on: macos-15
     defaults:
       run:
         working-directory: src/main/c
@@ -151,7 +153,7 @@ jobs:
 
   # Windows x86_64 (MinGW)。
   compile-native-windows:
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v6
         with:
@@ -162,9 +164,28 @@ jobs:
           update: true
           install: >
             base-devel
+            jq
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
+      # 固定包语义：每次构建都把 toolchain-versions.json 记录的包安装为记录的精确版本
+      # （setup-msys2 先全量装好依赖，此处再覆盖为记录版本）。没有 pin 状态——
+      # 升级由 refresh-toolchain 每周用最新候选跑完整门禁，全绿才提交新版本；
+      # 候选测试失败时本文件维持不变，因此记录的组合永远是"最后一次验证通过"的。
+      # 参考: https://github.com/MineYuanlu/SeedMapForXaero/issues/33（crt r532 回归）
+      - name: Install msys2 packages at recorded versions
+        shell: msys2 {0}
+        run: |
+          urls=()
+          while IFS=$'\t' read -r name ver; do
+            urls+=("https://repo.msys2.org/mingw/mingw64/${name}-${ver}-any.pkg.tar.zst")
+          done < <(jq -r '.windows.msys2.packages | to_entries[] | "\(.key)\t\(.value)"' \
+            .github/toolchain-versions.json | tr -d '\r')
+          if [ ${#urls[@]} -gt 0 ]; then
+            pacman -U --noconfirm "${urls[@]}"
+          else
+            echo "no packages recorded, skipping"
+          fi
       - name: Build native library
         shell: msys2 {0}
         working-directory: src/main/c
