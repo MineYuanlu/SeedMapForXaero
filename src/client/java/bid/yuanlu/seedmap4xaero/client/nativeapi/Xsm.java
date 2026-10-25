@@ -500,12 +500,15 @@ public final class Xsm {
      * @return false = 参数被 C 侧校验拒绝
      */
     public static boolean setCustomStructures(int[] sets, int[] entries) {
+        if (sets.length % 9 != 0 || entries.length % 2 != 0)
+            throw new IllegalArgumentException(
+                    "custom structure arrays must be stride 9 (sets) / 2 (entries)");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment setsSeg = sets.length == 0 ? MemorySegment.NULL
                     : arena.allocateFrom(ValueLayout.JAVA_INT, sets);
             MemorySegment entSeg = entries.length == 0 ? MemorySegment.NULL
                     : arena.allocateFrom(ValueLayout.JAVA_INT, entries);
-            return XsmNative.xsmSetCustomStructures(setsSeg, sets.length / 7,
+            return XsmNative.xsmSetCustomStructures(setsSeg, sets.length / 9,
                     entSeg, entries.length / 2);
         }
     }

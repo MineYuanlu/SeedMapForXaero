@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
+import net.minecraft.client.Minecraft;
 import bid.yuanlu.seedmap4xaero.client.cache.BackgroundPregen;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.command.Sm4xCommand;
@@ -21,6 +22,7 @@ import bid.yuanlu.seedmap4xaero.client.structure.StructureVisitTracker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 
 /** 种子地图客户端入口。 */
 public class XaeroSeedMapClient implements ClientModInitializer {
@@ -45,6 +47,14 @@ public class XaeroSeedMapClient implements ClientModInitializer {
             ServerConfig.deactivate();
             StructureDataConfig.deactivate();
             DatapackStructures.clear();
+        });
+
+        // /reload 热更新: 数据包重载完成后重扫描结构集 (重载在服务端线程,
+        // 调度回客户端线程; reload() 幂等, 无数据包场景等价 clear)
+        ServerLifecycleEvents.END_DATA_PACK_RELOAD.register((server, resources, success) -> {
+            if (!success)
+                return;
+            Minecraft.getInstance().execute(DatapackStructures::reload);
         });
 
         // 周期刷盘 (rotate=false, 只写脏数据): 崩溃最多丢 FLUSH_INTERVAL_TICKS 的访问记录。

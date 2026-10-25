@@ -41,10 +41,12 @@ import net.minecraft.resources.Identifier;
  * </ol>
  * 构建结果注入 C 侧 ({@code xsmSetCustomStructures}) 与 Java 注册表
  * ({@link StructureTypes}), 并清缓存。预测不做 biome tag 校验 (已知假阳性,
- * 见 doc/datapak.md)。
+ * 见 doc/datapack.md)。
  * <p>
- * v1 不支持: frequency&lt;1 / exclusion_zone / 原版+自定义混排集合 / 同一结构
- * 多集合引用 (均 WARN 跳过); {@code /reload} 不热更新 (重进世界生效)。
+ * v1.1 起支持 {@code frequency<1} + {@code frequency_reduction_method}
+ * (4 种 vanilla reducer; YUNG's Better Mineshafts 即 {@code legacy_type_3})。
+ * v1 不支持: exclusion_zone / 原版+自定义混排集合 / 同一结构多集合引用
+ * (均 WARN 跳过); {@code /reload} 热更新 (见 WorldSwitchMixin)。
  */
 public final class DatapackStructures {
 
@@ -116,7 +118,8 @@ public final class DatapackStructures {
 
     /** 一个 structure_set 的解析中间态 (结构与集合的关联由最终 id 绑定)。 */
     private record PendingSet(String setId, int salt, int spacing, int separation, int spread,
-            int dim, List<String> structureIds, List<Integer> weights) {
+            int dim, float frequency, int freqMethod,
+            List<String> structureIds, List<Integer> weights) {
     }
 
     static ScanResult scan(DatapackSource source) {
@@ -174,17 +177,19 @@ public final class DatapackStructures {
                     hiddenStructures.contains(structureId)));
         }
 
-        final int[] sets = new int[pending.size() * 7];
+        final int[] sets = new int[pending.size() * 9];
         final List<Integer> entryList = new ArrayList<>(allStructures.size());
         for (int s = 0; s < pending.size(); s++) {
             PendingSet ps = pending.get(s);
-            sets[s * 7 + 0] = ps.salt();
-            sets[s * 7 + 1] = ps.spacing();
-            sets[s * 7 + 2] = ps.separation();
-            sets[s * 7 + 3] = ps.spread();
-            sets[s * 7 + 4] = ps.dim();
-            sets[s * 7 + 5] = entryList.size() / 2;
-            sets[s * 7 + 6] = ps.structureIds().size();
+            sets[s * 9 + 0] = ps.salt();
+            sets[s * 9 + 1] = ps.spacing();
+            sets[s * 9 + 2] = ps.separation();
+            sets[s * 9 + 3] = ps.spread();
+            sets[s * 9 + 4] = ps.dim();
+            sets[s * 9 + 5] = entryList.size() / 2;
+            sets[s * 9 + 6] = ps.structureIds().size();
+            sets[s * 9 + 7] = Float.floatToIntBits(ps.frequency());
+            sets[s * 9 + 8] = ps.freqMethod();
             // 集合内条目保持 JSON 顺序 (加权掷骰走表依赖顺序)
             for (int e = 0; e < ps.structureIds().size(); e++) {
                 entryList.add(idOf.get(ps.structureIds().get(e)));
@@ -213,11 +218,24 @@ public final class DatapackStructures {
         }
         final double frequency = placement.has("frequency")
                 ? placement.get("frequency").getAsDouble() : 1.0;
-        if (frequency < 1.0) {
-            LOGGER.warn("structure set {}: frequency {} < 1 unsupported, skipped (positions "
-                    + "would be wrong)", setKey, frequency);
+        if (frequency <= 0.0 || frequency > 1.0) {
+            LOGGER.warn("structure set {}: frequency {} out of (0,1], skipped", setKey, frequency);
             return null;
         }
+        final String methodStr = optString(placement, "frequency_reduction_method", "default");
+        final int freqMethod = switch (methodStr) {
+            case "default" -> 0;
+            case "legacy_type_1" -> 1;
+            case "legacy_type_2" -> 2;
+            case "legacy_type_3" -> 3;
+            default -> {
+                LOGGER.warn("structure set {}: unknown frequency_reduction_method '{}', skipped",
+                        setKey, methodStr);
+                yield -1;
+            }
+        };
+        if (freqMethod < 0)
+            return null;
         if (placement.has("exclusion_zone")) {
             LOGGER.warn("structure set {}: exclusion_zone unsupported, skipped", setKey);
             return null;
@@ -305,7 +323,8 @@ public final class DatapackStructures {
             }
         }
 
-        return new PendingSet(setKey, salt, spacing, separation, spread, dim, structureIds, weights);
+        return new PendingSet(setKey, salt, spacing, separation, spread, dim,
+                (float) frequency, freqMethod, structureIds, weights);
     }
 
     /** 原版集合被改 placement (如 YUNG's 改 salt): 与 cubiomes 配置比对, 不一致 WARN。 */

@@ -143,8 +143,8 @@ class DatapackStructuresScanTest {
         // id 分配: a=100, b=101, c=102 (字典序)
         // sets: [alpha(0)] [beta(1)]
         int[] sets = r.sets();
-        assertEquals(14, sets.length); // 2 sets × 7
-        // alpha: salt/spacing/separation/spread/dim/firstEntry/entryCount
+        assertEquals(18, sets.length); // 2 sets × 9
+        // alpha: salt/spacing/separation/spread/dim/firstEntry/entryCount/freqBits/method
         assertEquals(2358902, sets[0]);
         assertEquals(27, sets[1]);
         assertEquals(15, sets[2]);
@@ -152,14 +152,18 @@ class DatapackStructuresScanTest {
         assertEquals(0, sets[4]); // overworld
         assertEquals(0, sets[5]); // firstEntry
         assertEquals(2, sets[6]); // entryCount
+        assertEquals(Float.floatToIntBits(1.0f), sets[7]); // frequency 默认 1.0 (无频率门)
+        assertEquals(0, sets[8]); // method = default
         // beta
-        assertEquals(1, sets[7]);
-        assertEquals(40, sets[8]);
-        assertEquals(10, sets[9]);
-        assertEquals(1, sets[10]); // triangular
-        assertEquals(0, sets[11]);
-        assertEquals(2, sets[12]); // firstEntry = 2
-        assertEquals(1, sets[13]);
+        assertEquals(1, sets[9]);
+        assertEquals(40, sets[10]);
+        assertEquals(10, sets[11]);
+        assertEquals(1, sets[12]); // triangular
+        assertEquals(0, sets[13]);
+        assertEquals(2, sets[14]); // firstEntry = 2
+        assertEquals(1, sets[15]);
+        assertEquals(Float.floatToIntBits(1.0f), sets[16]);
+        assertEquals(0, sets[17]);
         // entries: [a=100 w1, b=101 w1, c=102 w1]
         int[] entries = r.entries();
         assertEquals(6, entries.length);
@@ -259,11 +263,6 @@ class DatapackStructuresScanTest {
         putStructure(src, "a", "[\"minecraft:plains\"]");
         putStructure(src, "b", "[\"minecraft:plains\"]");
         putStructure(src, "c", "[\"minecraft:plains\"]");
-        putStructure(src, "d", "[\"minecraft:plains\"]");
-        putSet(src, "freq", setJson(
-                "{\"type\": \"minecraft:random_spread\", \"salt\": 1, \"spacing\": 30, "
-                        + "\"separation\": 5, \"frequency\": 0.5}",
-                "terralith:a"));
         putSet(src, "excl", setJson(
                 "{\"type\": \"minecraft:random_spread\", \"salt\": 1, \"spacing\": 30, "
                         + "\"separation\": 5, \"exclusion_zone\": {\"other_set\": \"x:y\", \"chunk_count\": 3}}",
@@ -278,7 +277,59 @@ class DatapackStructuresScanTest {
                 "terralith:d"));
 
         assertTrue(DatapackStructures.scan(src).types().isEmpty(),
-                "frequency/exclusion/非法 separation/concentric_rings 全部跳过");
+                "exclusion/非法 separation/concentric_rings 全部跳过");
+    }
+
+    @Test
+    void frequencyBelowOneKeptWithMethod() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "a", "[\"minecraft:plains\"]");
+        putStructure(src, "b", "[\"minecraft:plains\"]");
+        // YUNG's Better Mineshafts 形状: spacing=1, frequency=0.003, legacy_type_3
+        putSet(src, "yungs", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 593751784, \"spacing\": 1, "
+                        + "\"separation\": 0, \"frequency\": 0.003, "
+                        + "\"frequency_reduction_method\": \"legacy_type_3\"}",
+                "terralith:a"));
+        // default method (缺省字段)
+        putSet(src, "def", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 7, \"spacing\": 20, "
+                        + "\"separation\": 4, \"frequency\": 0.5}",
+                "terralith:b"));
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertEquals(2, r.types().size());
+        int[] sets = r.sets();
+        assertEquals(18, sets.length);
+        // 集合按 id 字典序: def 在前, yungs 在后
+        assertEquals(Float.floatToIntBits(0.5f), sets[7]);
+        assertEquals(0, sets[8]); // default
+        assertEquals(593751784, sets[9]);
+        assertEquals(Float.floatToIntBits(0.003f), sets[16]);
+        assertEquals(3, sets[17]); // legacy_type_3
+    }
+
+    @Test
+    void invalidFrequencyOrMethodSkipped() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "a", "[\"minecraft:plains\"]");
+        putStructure(src, "b", "[\"minecraft:plains\"]");
+        putSet(src, "zero", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 1, \"spacing\": 10, "
+                        + "\"separation\": 2, \"frequency\": 0.0}",
+                "terralith:a"));
+        putSet(src, "bigfreq", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 1, \"spacing\": 10, "
+                        + "\"separation\": 2, \"frequency\": 1.5}",
+                "terralith:b"));
+        assertTrue(DatapackStructures.scan(src).types().isEmpty());
+
+        putSet(src, "zero", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 1, \"spacing\": 10, "
+                        + "\"separation\": 2, \"frequency_reduction_method\": \"bogus\"}",
+                "terralith:a"));
+        assertTrue(DatapackStructures.scan(src).types().isEmpty(),
+                "未知 frequency_reduction_method 跳过");
     }
 
     @Test

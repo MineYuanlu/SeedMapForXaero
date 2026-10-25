@@ -337,14 +337,30 @@ Terralith 是完全数据驱动的，MC 客户端运行时会话里**动态注�
 | 摄取管线 | ✅ `client/datapack/` 新包：单机 ResourceManager 扫描 → structure_set 解析 + biome tag 递归维度归类 + 原版跳过表 + `c:` 元数据 → 注入 |
 | 图标 | ✅ `c:structure_icons` 物品贴图启发式（item/block 两路径）+ 运行时 DynamicTexture sheet（20px/16px 两张）+ 琥珀菱形回退图标 |
 | 测试 | ✅ C 单测 + JVM 解析测试（内存源）+ native 集成测试 + E2E gametest 模拟注入用例 |
+| frequency<1（v1.1） | ✅ 4 种 `frequency_reduction_method` 全支持；native 对拍测试用 `java.util.Random` 复刻 reducer 与 C 侧逐 chunk 一致（YUNG's salt 593751784 / freq 0.003） |
+| `/reload` 热更新（v1.1） | ✅ `ServerLifecycleEvents.END_DATA_PACK_RELOAD`（成功时）调度回客户端线程调 `reload()` |
 | 多人手动导入 | ⬜ v2（M4：用户指定 zip/目录） |
 
-**v1 已知限制**（§5.3 成本决策的既定取舍）：
+#### 7.1 v1.1 追加（frequency<1 支持）
+
+**调研修正**：直接核查 [YUNG's Better Mineshafts 源码](https://github.com/YUNG-GANG/YUNGs-Better-Mineshafts)发现其**并不修改原版 `mineshafts` set**（v1 假设错误），而是自带纯自定义 set `bettermineshafts:mineshafts`（13 结构等权、random_spread、spacing=1、`frequency: 0.003` + `frequency_reduction_method: legacy_type_3`），原版矿井由 mixin/tag 抑制。因此 v1 拿不下 YUNG's 的真正原因是 **frequency<1 被跳过**，而非"原版 set 被覆盖"。
+
+**语义锁定（MC 26.x 字节码，javap 实证）**：`StructurePlacement.applyAdditionalChunkRestrictions(chunkX, chunkZ, seed)` 在 frequency<1 时调 `FrequencyReductionMethod.shouldGenerate(seed, salt, chunkX, chunkZ, frequency)`，四种 reducer（reducer 形参序 = `(seed, salt, x, z, freq)`，x/z 为**候选 chunk** 坐标）：
+
+| method | RNG 序列 | 判定 |
+|---|---|---|
+| `default` | `setLargeFeatureWithSalt(seed, salt, x, z)`（注意 26.x 实参序：salt 落乘 341873128712 槽、z 落纯加数槽） | `nextFloat() < freq` |
+| `legacy_type_1` | `setLargeFeatureSeed(seed, x, z)` | `nextDouble() < freq` |
+| `legacy_type_2` | `setLargeFeatureWithSalt(seed, x, z, 10387320)`（硬编码 salt，忽略 set salt） | `nextFloat() < freq` |
+| `legacy_type_3` | `setSeed((int)((x>>4) ^ ((z>>4)<<4)) ^ seed)`，丢弃 1 次 `nextInt()` | `nextInt((int)(1/freq)) == 0` |
+
+频率门 RNG 与网格偏移、加权掷骰各自独立实例，互不消费。**重掷路径**：vanilla 在首选条目 biome 校验失败时会移除条目并以同一 RandomSource 重掷（`ChunkGenerator.lambda$createStructures$0` 字节码：`ArrayList` 拷贝 + `remove` + 循环）——这即"多结构集合图标极端情况可能标错"的机理，无 biome 校验（路线 B）无法复刻，维持首掷语义。
+
+**已知限制**（§5.3 成本决策的既定取舍；v1.1 更新）：
 
 1. 假阳性：无 biome tag 校验（消除需路线 B 气候采样器）
-2. 多结构集合图标为首选预测（位置正确，图标极端情况可能标错）
-3. 原版 set 被覆盖（改 salt，如 YUNG's）：保持原版预测 + WARN（v1.1 做抑制后可拿下 YUNG's 兼容）
-4. `/reload` 不热更新（重进世界生效）
-5. frequency<1 / exclusion_zone / 原版+自定义混排集合：跳过 + WARN
+2. 多结构集合图标为首选预测：位置正确，但首选条目 biome 校验失败时 vanilla 会移除重掷（§7.1），真实施可能为第 2+ 掷条目——需路线 B
+3. 原版 set 被覆盖（改 salt，如 Structurify）：保持原版预测 + WARN。YUNG's 实测不改原版 set（§7.1），其兼容已由 frequency<1 支持达成
+4. exclusion_zone / 原版+自定义混排集合：跳过 + WARN（frequency<1 已支持）
 
 **顺带修复的潜伏 bug**：`Xsm.setGameVersion()`（无参）重置了 C 侧 `gen_setWorld` 但未重置 Java 侧 `setWorld` 去重哨兵——同 (seed, dim) 的后续 setWorld 被跳过导致世界未设置（`applyGameVersion` 有 `resetWorldState()` 协议，无参版本遗漏；此前被测试类执行顺序掩盖）。

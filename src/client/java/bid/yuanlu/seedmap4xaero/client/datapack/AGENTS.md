@@ -3,7 +3,7 @@
 单机世界切换时扫描集成服务器数据包的 `worldgen/structure_set`，构建
 `CustomStructureType` 注入 C 侧 (`xsmSetCustomStructures`) 与 Java 注册表
 (`StructureTypes`)。**预测不做 biome tag 校验**（已知假阳性，设计文档
-`doc/datapak.md`）。
+`doc/datapack.md`）。
 
 ## Classes
 
@@ -16,11 +16,15 @@
 
 ## 解析规则（scan）
 
-- placement 仅支持 `minecraft:random_spread`；`frequency < 1` /
+- placement 仅支持 `minecraft:random_spread`；`frequency` ∈ (0,1] 全支持
+  （`frequency_reduction_method` 4 种 vanilla reducer，语义按 MC 26.x 字节码锁定；
+  YUNG's Better Mineshafts = `legacy_type_3` + spacing 1 + frequency 0.003）；
+  `frequency_reduction_method` 未知值 → WARN + 跳过。
   `exclusion_zone` / 原版+自定义混排 / 同一结构多集合引用 → **WARN + 跳过**
   （预测会错不如不预测）。`locate_offset` 忽略（只影响 /locate 显示）。
 - 全 `minecraft:` 结构的原版集合 → 跳过（cubiomes 已预测）；placement 与
-  cubiomes 不一致（如 YUNG's 改 salt）→ WARN（预测仍走原版，v1.1 再做抑制）。
+  cubiomes 不一致（如 Structurify 改 salt）→ WARN（预测仍走原版）。
+  实测 YUNG's **不改**原版 set，而是自带纯自定义 set（见 v1.1 调研）。
 - 维度归类：structure JSON 的 `biomes` → tag 递归展开（栈合并，`replace:true`
   清空低层）→ 全 nether 群系 = -1 / 全 end = 1 / 其余 0；缺失定义按主世界。
 - id 分配：全部结构按 id 字典序从 `CustomStructureType.MIN_ID`(100) 顺序分配
@@ -33,8 +37,9 @@
 
 ## C 侧注入契约
 
-sets 每组 7 int：`[salt, spacing, separation, spreadType(0=linear/1=triangular),
-dim, firstEntry, entryCount]`；entries 按集合分组连续，每组 2 int：
+sets 每组 9 int：`[salt, spacing, separation, spreadType(0=linear/1=triangular),
+dim, firstEntry, entryCount, frequency(float 位型, 0x3F800000=1.0),
+freqMethod(0=default/1=legacy_type_1/2=legacy_type_2/3=legacy_type_3)]`；entries 按集合分组连续，每组 2 int：
 `[id, weight]`——**集合内条目必须保持 JSON 顺序**（加权掷骰走表依赖顺序）。
 字段映射：`regionSize=spacing`、`chunkRange=spacing-separation`。
 
@@ -42,7 +47,8 @@ dim, firstEntry, entryCount]`；entries 按集合分组连续，每组 2 int：
 
 - `WorldSwitchMixin`（世界切换/离开）→ `reload()` / `clear()`
 - `XaeroSeedMapClient` DISCONNECT → `clear()`
-- `/reload` **不热更新**（重进世界生效）
+- `/reload` 热更新：`ServerLifecycleEvents.END_DATA_PACK_RELOAD`（成功时）调度回
+客户端线程调 `reload()`（`XaeroSeedMapClient` 注册）
 - 注入后 `CacheHelper.invalidateAll()` + `HighlightedStructures.clear()`
 
 ## Gotchas

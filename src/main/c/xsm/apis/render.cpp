@@ -90,6 +90,14 @@ bool gen_setWorld = false;        ///< 是否已经设置世界信息
 
 // ===== 数据包自定义结构 (见 render.h XSM_CUSTOM_STRUCT_*) =====
 
+/// int32 位型 ↔ float 位型 (注入契约以 int 数组承载 float frequency)
+static inline float bitCastFloat(int32_t bits) {
+  float f;
+  static_assert(sizeof(f) == sizeof(bits), "float/int32 size mismatch");
+  memcpy(&f, &bits, sizeof(f));
+  return f;
+}
+
 /// 一个 structure_set (random_spread)
 struct CustomSetInfo {
   int32_t salt;
@@ -99,8 +107,48 @@ struct CustomSetInfo {
   int32_t dim;           ///< cubiomes 维度约定: 0=主世界 -1=下界 1=末地
   int32_t first;         ///< entries 起始索引
   int32_t count;         ///< entries 数量
+  float frequency;       ///< frequency&lt;1 时启用频率门 (vanilla frequency 字段)
+  int32_t freqMethod;    ///< FrequencyReductionMethod 序数: 0=default 1=legacy_type_1 2=legacy_type_2 3=legacy_type_3
   int64_t totalWeight;
 };
+
+/// vanilla StructurePlacement.applyAdditionalChunkRestrictions (frequency < 1):
+/// 语义按 MC 26.x 字节码锁定 —— shouldGenerate(seed, salt, x, z, frequency)。
+/// @param x/z 候选 chunk 坐标 (网格掷出的那个 chunk)
+static inline bool customFrequencyPass(uint64_t seed, int32_t salt, int32_t x,
+                                       int32_t z, float freq, int32_t method) {
+  uint64_t rng;
+  switch (method) {
+    case 0:  // DEFAULT: setLargeFeatureWithSalt(seed, salt, x, z); nextFloat < freq
+      // 注意 vanilla 26.x 实参顺序: salt 落在乘 341873128712 槽、z 落在纯加数槽
+      setSeed(&rng, (uint64_t)(int64_t)salt * 341873128712ULL +
+                        (uint64_t)(int64_t)x * 132897987541ULL +
+                        seed + (uint64_t)(int64_t)z);
+      return nextFloat(&rng) < freq;
+    case 1: {  // LEGACY_TYPE_1: setLargeFeatureSeed(seed, x, z); nextDouble < freq
+      setSeed(&rng, seed);
+      const uint64_t a = nextLong(&rng);
+      const uint64_t b = nextLong(&rng);
+      setSeed(&rng, (uint64_t)(int64_t)x * a ^ (uint64_t)(int64_t)z * b ^ seed);
+      return nextDouble(&rng) < (double)freq;
+    }
+    case 2:  // LEGACY_TYPE_2: setLargeFeatureWithSalt(seed, x, z, 10387320); nextFloat < freq
+      setSeed(&rng, (uint64_t)(int64_t)x * 341873128712ULL +
+                        (uint64_t)(int64_t)z * 132897987541ULL +
+                        seed + 10387320u);
+      return nextFloat(&rng) < freq;
+    default: {  // LEGACY_TYPE_3 (pillager_outpost 式): setSeed((int)((x>>4) ^ ((z>>4)<<4)) ^ seed);
+                // 丢弃一次 nextInt(); nextInt((int)(1/freq)) == 0
+      const int32_t v = (x >> 4) ^ ((z >> 4) << 4);
+      setSeed(&rng, (uint64_t)(int64_t)v ^ seed);
+      skipNextN(&rng, 1);
+      // Java (int)(1.0f/freq) 截断 + 溢出饱和语义 (freq 极小时 1/f 可能超 int 范围)
+      const float inv = 1.0f / freq;
+      const int bound = (inv >= 1.0f && inv < 2147483648.0f) ? (int)inv : INT32_MAX;
+      return nextInt(&rng, bound) == 0;
+    }
+  }
+}
 /// structure_set 中的一个被选结构
 struct CustomEntryInfo {
   int32_t id;
@@ -379,7 +427,7 @@ bool xsmSetCustomStructures(const int32_t* sets, int32_t nSets,
 
   int32_t expectFirst = 0;
   for (int32_t s = 0; s < nSets; s++) {
-    const int32_t* in = sets + (size_t)s * 7;
+    const int32_t* in = sets + (size_t)s * 9;
     CustomSetInfo& out = table->sets[s];
     out.salt = in[0];
     out.spacing = in[1];
@@ -388,6 +436,8 @@ bool xsmSetCustomStructures(const int32_t* sets, int32_t nSets,
     out.dim = in[4];
     out.first = in[5];
     out.count = in[6];
+    out.frequency = bitCastFloat(in[7]);
+    out.freqMethod = in[8];
     // 分组必须按顺序连续覆盖 entries
     if (out.first != expectFirst) return false;
     if (out.count < 1 || out.first + out.count > nEntries) return false;
@@ -397,6 +447,8 @@ bool xsmSetCustomStructures(const int32_t* sets, int32_t nSets,
     if (out.spread != 0 && out.spread != 1) return false;
     if (out.dim != DIM_OVERWORLD && out.dim != DIM_NETHER && out.dim != DIM_END)
       return false;
+    if (!(out.frequency > 0.0f) || out.frequency > 1.0f) return false;
+    if (out.freqMethod < 0 || out.freqMethod > 3) return false;
     out.totalWeight = 0;
     for (int32_t e = 0; e < out.count; e++) {
       const CustomEntryInfo ent = {entries[(size_t)(out.first + e) * 2],
@@ -768,7 +820,17 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
         const int chunkZ = z * s.spacing +
                            customEvaluateSpread(&rng, maxOffset, s.spread);
 
-        // 2. 多结构集合: setLargeFeatureSeed 加权掷骰取首选
+        // 2. frequency < 1: vanilla StructurePlacement.applyAdditionalChunkRestrictions
+        //    (独立 RNG, 与网格/加权掷骰互不干扰; exclusion_zone 在 Java 侧已跳过)
+        if (s.frequency < 1.0f &&
+            !customFrequencyPass(tn.g.seed, s.salt, chunkX, chunkZ, s.frequency,
+                                 s.freqMethod)) {
+          outFound[idx] = 0;
+          if (outVariant) outVariant[idx] = 0;
+          continue;
+        }
+
+        // 3. 多结构集合: setLargeFeatureSeed 加权掷骰取首选
         //    (vanilla WeightedRandom; 单结构集合无掷骰)
         if (s.count > 1) {
           uint64_t sel;
@@ -787,7 +849,7 @@ uint32_t queryRegionStructuresGrid(int32_t structureType, int32_t rx0,
           }
         }
 
-        // 3. 不做 biome tag 校验 (已知假阳性, 见 doc/datapak.md)
+        // 4. 不做 biome tag 校验 (已知假阳性, 见 doc/datapack.md)
         outFound[idx] = 1;
         outBlockX[idx] = chunkX << 4;
         outBlockZ[idx] = chunkZ << 4;

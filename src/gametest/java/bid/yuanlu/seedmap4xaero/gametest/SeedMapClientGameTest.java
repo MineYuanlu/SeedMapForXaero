@@ -408,7 +408,8 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         context.runOnClient(client -> {
             // 1. 注入: 2 个单条目集合 (无加权掷骰 → 每 region 两结构都有候选,
             //    截图确定性可见), spacing=16 (256 格/region, 出生点视野必覆盖)
-            int[] sets = { 2358902, 16, 7, 0, 0, 0, 1, 2358903, 16, 7, 0, 0, 1, 1 };
+            int[] sets = { 2358902, 16, 7, 0, 0, 0, 1, 1065353216, 0,
+                    2358903, 16, 7, 0, 0, 1, 1, 1065353216, 0 };
             int[] entries = { customId, 1, customId + 1, 1 };
             if (!Xsm.setCustomStructures(sets, entries)) {
                 throw new AssertionError("Xsm.setCustomStructures rejected the table");

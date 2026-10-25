@@ -655,7 +655,7 @@ static int refPickStructure(int64_t weights[], int n, uint64_t worldSeed,
 
 TEST_CASE("xsmSetCustomStructures: validation") {
   setupOrFail();
-  const int32_t oneSet[7] = {10387312, 34, 8, 0, 0, 0, 1};
+  const int32_t oneSet[9] = {10387312, 34, 8, 0, 0, 0, 1, 1065353216, 0};
   const int32_t oneEnt[2] = {100, 1};
   CHECK(xsmSetCustomStructures(oneSet, 1, oneEnt, 1));
   CHECK(xsmSetCustomStructures(nullptr, 0, nullptr, 0));  // 清除
@@ -668,25 +668,25 @@ TEST_CASE("xsmSetCustomStructures: validation") {
   CHECK(!xsmSetCustomStructures(oneSet, 1, idHigh, 1));          // id >= 1000
   CHECK(!xsmSetCustomStructures(oneSet, 1, w0, 1));              // weight < 1
 
-  const int32_t sepEq[7] = {0, 4, 4, 0, 0, 0, 1};
-  const int32_t noSpace[7] = {0, 0, 0, 0, 0, 0, 1};
-  const int32_t badDim[7] = {0, 4, 2, 0, 7, 0, 1};
-  const int32_t badSpread[7] = {0, 4, 2, 5, 0, 0, 1};
+  const int32_t sepEq[9] = {0, 4, 4, 0, 0, 0, 1, 1065353216, 0};
+  const int32_t noSpace[9] = {0, 0, 0, 0, 0, 0, 1, 1065353216, 0};
+  const int32_t badDim[9] = {0, 4, 2, 0, 7, 0, 1, 1065353216, 0};
+  const int32_t badSpread[9] = {0, 4, 2, 5, 0, 0, 1, 1065353216, 0};
   CHECK(!xsmSetCustomStructures(sepEq, 1, oneEnt, 1));           // sep >= spacing
   CHECK(!xsmSetCustomStructures(noSpace, 1, oneEnt, 1));         // spacing < 1
   CHECK(!xsmSetCustomStructures(badDim, 1, oneEnt, 1));          // dim 非法
   CHECK(!xsmSetCustomStructures(badSpread, 1, oneEnt, 1));       // spread 非法
 
   // 分组不连续: 第二组 first 应为 1
-  const int32_t gapSets[14] = {0, 4, 2, 0, 0, 0, 1, 0, 6, 3, 0, 0, 0, 1};
+  const int32_t gapSets[18] = {0, 4, 2, 0, 0, 0, 1, 1065353216, 0, 0, 6, 3, 0, 0, 0, 1, 1065353216, 0};
   const int32_t twoEnt[4] = {100, 1, 101, 1};
   CHECK(!xsmSetCustomStructures(gapSets, 2, twoEnt, 2));
   // 条目未全部被分组覆盖
-  const int32_t halfSets[7] = {0, 4, 2, 0, 0, 0, 1};
+  const int32_t halfSets[9] = {0, 4, 2, 0, 0, 0, 1, 1065353216, 0};
   CHECK(!xsmSetCustomStructures(halfSets, 1, twoEnt, 2));
   // id 重复
   const int32_t dupEnt[4] = {100, 1, 100, 2};
-  const int32_t okTwo[14] = {0, 4, 2, 0, 0, 0, 2, 0, 6, 3, 0, 0, 2, 1};
+  const int32_t okTwo[18] = {0, 4, 2, 0, 0, 0, 2, 1065353216, 0, 0, 6, 3, 0, 0, 2, 1, 1065353216, 0};
   const int32_t threeEnt[6] = {100, 1, 101, 1, 102, 1};
   CHECK(!xsmSetCustomStructures(okTwo, 2, dupEnt, 2));
 
@@ -700,9 +700,9 @@ TEST_CASE("custom grid == cubiomes getFeaturePos (linear)") {
   // 以当前版本 Village 实际配置构造等价自定义集 (salt/spacing/separation)
   StructureConfig vc;
   REQUIRE(getStructureConfig(Village, testMcEnum(), &vc));
-  const int32_t sets[7] = {vc.salt, vc.regionSize,
+  const int32_t sets[9] = {vc.salt, vc.regionSize,
                            (int32_t)vc.regionSize - vc.chunkRange, 0,
-                           vc.dim, 0, 1};
+                           vc.dim, 0, 1, 1065353216, 0};
   const int32_t ent[2] = {100, 1};
   REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1));
 
@@ -730,9 +730,9 @@ TEST_CASE("custom grid == cubiomes getLargeStructurePos (triangular)") {
   setupOrFail();
   StructureConfig mc;
   REQUIRE(getStructureConfig(Monument, testMcEnum(), &mc));
-  const int32_t sets[7] = {mc.salt, mc.regionSize,
+  const int32_t sets[9] = {mc.salt, mc.regionSize,
                            (int32_t)mc.regionSize - mc.chunkRange, 1,
-                           mc.dim, 0, 1};
+                           mc.dim, 0, 1, 1065353216, 0};
   const int32_t ent[2] = {100, 1};
   REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1));
 
@@ -759,7 +759,7 @@ TEST_CASE("custom grid == cubiomes getLargeStructurePos (triangular)") {
 TEST_CASE("custom multi-entry selection") {
   setupOrFail();
   // 3 结构等权集合 (salt=2358902, spacing=27, separation=15 — Terralith regular 同款参数)
-  const int32_t sets[7] = {2358902, 27, 15, 0, 0, 0, 3};
+  const int32_t sets[9] = {2358902, 27, 15, 0, 0, 0, 3, 1065353216, 0};
   const int32_t ent[6] = {100, 1, 101, 1, 102, 1};
   REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1 * 3));
 
@@ -821,7 +821,7 @@ TEST_CASE("custom multi-entry selection") {
 TEST_CASE("custom structures: dim filter + clear") {
   setupOrFail();
   // 下界集合, 主世界查询应返回 0
-  const int32_t sets[7] = {12345, 20, 8, 0, DIM_NETHER, 0, 1};
+  const int32_t sets[9] = {12345, 20, 8, 0, DIM_NETHER, 0, 1, 1065353216, 0};
   const int32_t ent[2] = {100, 1};
   int8_t found[4];
   int32_t bx[4], bz[4];
@@ -844,4 +844,69 @@ TEST_CASE("custom structures: dim filter + clear") {
   n = queryRegionStructuresGrid(100, 0, 0, 2, 2, 0, 0, 0, 0,
                                 found, bx, bz, nullptr);
   CHECK(n == 0);
+}
+
+TEST_CASE("xsmSetCustomStructures: frequency/method validation") {
+  setupOrFail();
+  const int32_t ent[2] = {100, 1};
+  const int32_t ok[9] = {0, 4, 2, 0, 0, 0, 1, 1065353216, 0};
+  CHECK(xsmSetCustomStructures(ok, 1, ent, 1));
+  CHECK(xsmSetCustomStructures(nullptr, 0, nullptr, 0));
+
+  // frequency <= 0 / > 1 / NaN 位型拒绝
+  const int32_t fZero[9] = {0, 4, 2, 0, 0, 0, 1, 0, 0};
+  const int32_t fNeg[9] = {0, 4, 2, 0, 0, 0, 1, (int32_t)0xBF800000u, 0};  // -1.0f
+  const int32_t fBig[9] = {0, 4, 2, 0, 0, 0, 1, 0x3FC00000, 0};  // 1.5f
+  const int32_t fNaN[9] = {0, 4, 2, 0, 0, 0, 1, 0x7FC00000, 0};
+  CHECK(!xsmSetCustomStructures(fZero, 1, ent, 1));
+  CHECK(!xsmSetCustomStructures(fNeg, 1, ent, 1));
+  CHECK(!xsmSetCustomStructures(fBig, 1, ent, 1));
+  CHECK(!xsmSetCustomStructures(fNaN, 1, ent, 1));
+
+  // freqMethod 越界拒绝 (0..3 合法)
+  const int32_t m4[9] = {0, 4, 2, 0, 0, 0, 1, 1065353216, 4};
+  const int32_t mNeg[9] = {0, 4, 2, 0, 0, 0, 1, 1065353216, -1};
+  CHECK(!xsmSetCustomStructures(m4, 1, ent, 1));
+  CHECK(!xsmSetCustomStructures(mNeg, 1, ent, 1));
+}
+
+TEST_CASE("custom grid: frequency gate wiring (legacy_type_3)") {
+  setupOrFail();
+  // freq=0.25, legacy_type_3: bound=(int)(1/0.25)=4, 期望命中 = (v ^ seed) 流
+  // setSeed → skipNextN(1) → nextInt(4)==0 (与 gate 同公式, 验证接线/坐标正确)
+  const float freq = 0.25f;
+  const int32_t freqBits = 0x3E800000;  // 0.25f
+  const int32_t salt = 593751784, spacing = 1, separation = 0;
+  const int32_t sets[9] = {salt, spacing, separation, 0, 0, 0, 1, freqBits, 3};
+  const int32_t ent[2] = {100, 1};
+  REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1));
+  const uint64_t seed = 0x123456789ABCDEFULL;
+  REQUIRE(setWorld(seed, 0));
+
+  // 独立复算 6x6 区域内每个 chunk 的期望
+  int mismatch = 0, hits = 0;
+  for (int32_t x = 0; x < 48; x++) {
+    for (int32_t z = 0; z < 48; z++) {
+      int8_t f[1];
+      int32_t bx[1], bz[1];
+      uint32_t n = queryRegionStructuresGrid(100, x, z, x + 1, z + 1, 0, 0, 0, 0,
+                                             f, bx, bz, nullptr);
+      // 期望: spacing=1, sep=0 → 候选 chunk 即 (x, z); 门用候选 chunk 坐标
+      uint64_t rng;
+      const int32_t v = (x >> 4) ^ ((z >> 4) << 4);
+      setSeed(&rng, (uint64_t)(int64_t)v ^ seed);
+      skipNextN(&rng, 1);
+      const bool expectPass = nextInt(&rng, 4) == 0;
+      CHECK(n == (expectPass ? 1u : 0u));
+      if (n != (expectPass ? 1u : 0u)) mismatch++;
+      if (n) {
+        hits++;
+        CHECK(bx[0] == x * 16);
+        CHECK(bz[0] == z * 16);
+      }
+    }
+  }
+  CHECK(mismatch == 0);
+  CHECK(hits > 0);   // 0.25 频率下 36 chunk 必有命中
+  xsmSetCustomStructures(nullptr, 0, nullptr, 0);
 }

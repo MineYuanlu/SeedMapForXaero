@@ -115,16 +115,19 @@ XSM_API int32_t xsmGetStructFEATURE_NUM(void);
  *
  * ID 约定: [XSM_CUSTOM_STRUCT_MIN_ID, XSM_CUSTOM_STRUCT_MAX_ID) 为数据包
  * 自定义结构保留, 与 cubiomes 枚举 (0..FEATURE_NUM) 不冲突。
- * 预测算法 = vanilla random_spread 网格 + (多结构集合时) setLargeFeatureSeed
- * 加权掷骰取首选; 不做 biome tag 校验 (已知假阳性, 见 doc/datapak.md)。
+ * 预测算法 = vanilla random_spread 网格 + frequency<1 频率门 +
+ * (多结构集合时) setLargeFeatureSeed 加权掷骰取首选;
+ * 不做 biome tag 校验 (已知假阳性, 见 doc/datapack.md)。
  */
 #define XSM_CUSTOM_STRUCT_MIN_ID 100
 #define XSM_CUSTOM_STRUCT_MAX_ID 1000
 
 /// @brief 设置/清除数据包自定义结构集 (世界切换时由 Java 重注入)
-/// @param sets 集合数组, 每组 7 个 int32 (连续存放):
+/// @param sets 集合数组, 每组 9 个 int32 (连续存放):
 ///   [salt, spacing, separation, spreadType(0=linear/1=triangular),
-///    dim(0=主世界/-1=下界/1=末地), firstEntry, entryCount]
+///    dim(0=主世界/-1=下界/1=末地), firstEntry, entryCount,
+///    frequency(float 位型, 0x3F800000=1.0),
+///    freqMethod(0=default/1=legacy_type_1/2=legacy_type_2/3=legacy_type_3)]
 /// @param nSets 集合数量 (0 = 清除全部)
 /// @param entries 条目数组, 按集合分组连续存放(与 sets 的
 ///   firstEntry/entryCount 对应), 每组 2 个 int32:
