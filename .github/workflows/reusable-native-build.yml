@@ -179,11 +179,14 @@ jobs:
       # 候选测试失败时本文件维持不变，因此记录的组合永远是"最后一次验证通过"的。
       # JSON 取 workflow 自身所在提交的版本，与构建目标 ref 解耦（旧提交也能构建）。
       # 参考: https://github.com/MineYuanlu/SeedMapForXaero/issues/33（crt r532 回归）
-      - name: Install msys2 packages at recorded versions
-        shell: msys2 {0}
+      - name: Restore toolchain-versions.json from caller commit
+        shell: pwsh
         run: |
           git fetch --no-tags --depth=1 origin ${{ github.sha }}
           git checkout ${{ github.sha }} -- .github/toolchain-versions.json
+      - name: Install msys2 packages at recorded versions
+        shell: msys2 {0}
+        run: |
           urls=()
           while IFS=$'\t' read -r name ver; do
             urls+=("https://repo.msys2.org/mingw/mingw64/${name}-${ver}-any.pkg.tar.zst")
