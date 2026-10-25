@@ -32,7 +32,11 @@ JVM 方法/字段/构造器的二进制描述符**包含类型 FQN**。MC 26.3 �
 | 类 | 缝 | 说明 |
 | --- | --- | --- |
 | `CompatTextures` | `RenderSystem.getDevice()`、`GpuDevice.createTexture/createTextureView`、`CommandEncoder.writeToTexture`、`GpuTextureAndView` 构造器与 `view` 字段、`MultiTextureRenderTypeRenderer.begin`、`AbstractTexture.getTextureView/getSampler`、`TextureSetup.singleTexture`、`RenderPipelines.GUI_TEXTURED`、`BlitRenderState` 13 参构造器 | 纹理创建/上传/瓦片绘制/图标 blit 全链路 |
+<<<<<<< HEAD
 | `CompatGui` | `GuiGraphicsExtractor.tooltip`（26.1 六参 / 26.3 七参）、`blit`/`blitSprite` 带 pipeline 重载 | tooltip 参数个数；pipeline 参数类型搬家；blitSprite 按**精确形参形状**匹配（见下） |
+=======
+| `CompatGui` | `GuiGraphicsExtractor.tooltip`（26.1 六参 / 26.3 七参）、`blit`/`blitSprite` 带 pipeline 重载、`Minecraft.screen`（26.1 字段）→ `Minecraft.gui.screen()`（26.2+ 访问器） | tooltip 参数个数；pipeline 参数类型搬家；当前 screen 字段 26.2 移除 |
+>>>>>>> cf74303
 | `CompatPose` | 无（`mulPose(Matrix4fc)` 是 26.1/26.3 类型交集） | `rotateYDegrees` 替代被删的 `mulPose(Quaternionf)` |
 | `CompatNoise` | 无（纯自实现） | 26.3 移除 `PerlinSimplexNoise` 的逐位对齐副本，见下 |
 
@@ -74,6 +78,9 @@ MC 26.3 彻底移除该类且无等价 API（`NoiseStack` 范式不同、无法�
 
 - `CellCache` TTL 驱逐的 GPU 纹理依赖 GC 释放：26.1/26.3 的 `GpuDevice` 均无 destroy API，
   非兼容层可解，属 MC 侧资源管理方式。
+- `GameRenderer.projectPointToScreen` 的 NDC z 不可用于跨版本判前后：26.2/26.3 的 `Projection`
+  交换 near/far 做 reversed-Z，且 `isZZeroToOne` 取决于驱动是否支持 `GL_ARB_clip_control`。
+  HUD 前后判定必须用 `Camera.forwardVector()` 点积（`HighlightHudRenderer.isBehind`）。
 - `CompatGui.tooltip` 26.3 的第 7 参（单行 -2px 微调）传 `false`，与 26.1 观感一致；
   多行 tooltip 场景无差异。
 - 反射调用点务必把 `unreflect` 出的实例方法句柄的**接收者**作为首参传入（`CompatGui.tooltip`

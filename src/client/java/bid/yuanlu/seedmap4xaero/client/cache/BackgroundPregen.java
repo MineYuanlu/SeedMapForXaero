@@ -1,5 +1,6 @@
 package bid.yuanlu.seedmap4xaero.client.cache;
 
+import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.perf.PerfConfig;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -37,7 +38,7 @@ public final class BackgroundPregen {
         if (!PerfConfig.pregenEnabled())
             return;
         // 地图打开时由渲染路径自身的请求/prefetch 驱动，无需后台补充
-        if (mc.screen instanceof xaero.map.gui.GuiMap)
+        if (CompatGui.currentScreen(mc) instanceof xaero.map.gui.GuiMap)
             return;
         final LocalPlayer player = mc.player;
         if (player == null)
