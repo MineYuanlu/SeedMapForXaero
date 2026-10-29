@@ -84,14 +84,13 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
                 .create()) {
             try {
                 xsm$runAssertions(context, singleplayer);
+
+                LOGGER.info("seed-map E2E assertions passed");
             } catch (Throwable e) {
                 // 测试体异常时 try-with-resources 的 close() 会撞上 close() 死锁（见下方注释），
                 // 框架的重抛永远走不到——必须在这里立即落盘，否则失败原因被死锁吞掉
                 LOGGER.error("seed-map E2E FAILED", e);
                 throw e;
-            }
-
-                LOGGER.info("seed-map E2E assertions passed");
             } finally {
                 // 绕开 close() 死锁：MC 26 的 IntegratedServer.halt 先 executeBlocking 等 server 处理停止
                 // 任务，而 fabric client gametest 的 phaser 让 server 卡在 postRunTasks 等 render arrive。
