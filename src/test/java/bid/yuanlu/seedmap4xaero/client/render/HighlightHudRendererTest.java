@@ -1,10 +1,12 @@
 package bid.yuanlu.seedmap4xaero.client.render;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.joml.Vector3f;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -27,14 +29,31 @@ class HighlightHudRendererTest {
     }
 
     @Test
-    void behindCameraReturnsNull() {
-        assertNull(HighlightHudRenderer.ndcToScreen(new Vec3(0, 0, 2.0), 1000, 800));
+    void targetInFrontIsNotBehind() {
+        // 相机朝 -Z (MC 北), 目标在 -Z 侧 → 前方
+        assertFalse(HighlightHudRenderer.isBehind(0, 0, new Vector3f(0, 0, -1), 0, -10));
     }
 
     @Test
-    void behindCameraNegativeZReturnsNull() {
-        // 回归: 26.2 线性深度下背后点 z<0, 旧的 z>1 检查漏过导致镜像图标
-        assertNull(HighlightHudRenderer.ndcToScreen(new Vec3(0, 0, -0.5), 1000, 800));
+    void mirroredTargetBehindIsBehind() {
+        assertTrue(HighlightHudRenderer.isBehind(0, 0, new Vector3f(0, 0, -1), 0, 10));
+    }
+
+    @Test
+    void mapsRegardlessOfDepthConvention() {
+        // 26.2/26.3 reversed-Z 下前方点 z 可为负; 映射不应因此丢弃 (前后由 isBehind 判定)
+        float[] reversed = HighlightHudRenderer.ndcToScreen(new Vec3(0.25, 0, -0.998), 1000, 800);
+        assertNotNull(reversed);
+        assertEquals(625.0f, reversed[0], 1e-3f);
+        assertEquals(400.0f, reversed[1], 1e-6f);
+        // 26.1 常规深度下前方点 z 为正
+        assertNotNull(HighlightHudRenderer.ndcToScreen(new Vec3(0.25, 0, 0.998), 1000, 800));
+    }
+
+    @Test
+    void nonFiniteNdcReturnsNull() {
+        assertNull(HighlightHudRenderer.ndcToScreen(new Vec3(Double.NaN, 0, 0), 1000, 800));
+        assertNull(HighlightHudRenderer.ndcToScreen(new Vec3(0, 0, Double.NaN), 1000, 800));
     }
 
     @Test

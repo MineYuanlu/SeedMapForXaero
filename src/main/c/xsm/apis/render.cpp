@@ -458,7 +458,9 @@ uint32_t genCellImg(uint32_t scale, int32_t worldX, int32_t worldZ, uint32_t abs
              PIXEL_PER_TILE, PIXEL_PER_TILE, (int)absY, 1});
 
   XSM_TIME_POINT(t4);
-  biomesToImage(data, biomeColorTableMask, cache.get(), PIXEL_PER_TILE,
+  // RGB 中间缓冲: biomesToImage/applyTerrainLighting 输出 3B/px
+  unsigned char rgb[PIXEL_PER_TILE * PIXEL_PER_TILE * 3];
+  biomesToImage(rgb, biomeColorTableMask, cache.get(), PIXEL_PER_TILE,
                 PIXEL_PER_TILE, 1, 1);
 
   XSM_TIME_POINT(t5);
@@ -476,9 +478,19 @@ uint32_t genCellImg(uint32_t scale, int32_t worldX, int32_t worldZ, uint32_t abs
           heights[pz * HSTRIDE + px] = floorf(getSurfaceHeight(&tn.g, wx, wz));
         }
     }
-    applyTerrainLighting(data, heights, cache.get(),
+    applyTerrainLighting(rgb, heights, cache.get(),
                          PIXEL_PER_TILE, PIXEL_PER_TILE,
                          (float)scale, 63.0f);
+  }
+
+  // RGBA 扩展: 输出 4B/px，Java 侧按 LE int32 读出即 ABGR
+  // （与 NativeImage.setPixelABGR 内存布局一致，Java 可整块 bulk copy）
+  constexpr int NPIX = PIXEL_PER_TILE * PIXEL_PER_TILE;
+  for (int i = 0; i < NPIX; i++) {
+    data[i * 4] = rgb[i * 3];
+    data[i * 4 + 1] = rgb[i * 3 + 1];
+    data[i * 4 + 2] = rgb[i * 3 + 2];
+    data[i * 4 + 3] = 0xFF;
   }
 
   XSM_TIME_ADD(timing_check, t1, t2);

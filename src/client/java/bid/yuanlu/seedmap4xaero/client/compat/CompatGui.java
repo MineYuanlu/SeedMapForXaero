@@ -2,14 +2,19 @@ package bid.yuanlu.seedmap4xaero.client.compat;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.resources.Identifier;
@@ -43,11 +48,35 @@ public final class CompatGui {
 	private CompatGui() {
 	}
 
+	private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/CompatGui");
+
 	private static volatile @Nullable MethodHandle tooltipHandle;
 	private static volatile boolean tooltipTakesBoolean;
 	private static volatile @Nullable MethodHandle blitTextureHandle;
 	private static volatile @Nullable MethodHandle blitSpriteHandle;
+	private static volatile @Nullable MethodHandle screenHandle;
+	private static volatile boolean screenResolved;
 	private static volatile boolean blitSpriteTakesColor;
+
+	/**
+	 * 跨版本读取当前 screen：26.1 为 {@code Minecraft.screen} 字段；26.2+ 该字段被
+	 * 移除，改由 {@code Minecraft.gui} 的 {@code screen()} 访问器暴露。
+	 *
+	 * <p>
+	 * 解析按运行时字段类型（{@code Screen}）与访问器返回类型扫描，首次调用后缓存
+	 * MethodHandle。两者皆不可得时返回 {@code null}（调用方自行决定降级行为），
+	 * 不抛异常以免拖垮每 tick 调用方。
+	 */
+	public static @Nullable Screen currentScreen(@NotNull Minecraft mc) {
+		try {
+			if (screenHandle == null)
+				xsm$resolveScreen();
+			final MethodHandle handle = screenHandle;
+			return handle == null ? null : (Screen) handle.invoke(mc);
+		} catch (Throwable e) {
+			throw new RuntimeException("CompatGui.currentScreen failed", e);
+		}
+	}
 
 	/**
 	 * {@link #blitSprite} 成功调用计数（E2E 断言用：群系区展开帧必经此路径，
@@ -119,6 +148,47 @@ public final class CompatGui {
 		final BlitSpriteMatch sprite = xsm$findBlitSprite(methods);
 		blitSpriteHandle = MethodHandles.lookup().unreflect(sprite.method());
 		blitSpriteTakesColor = sprite.takesColor();
+	}
+
+	private static synchronized void xsm$resolveScreen() {
+		if (screenResolved)
+			return;
+		screenResolved = true;
+		final MethodHandles.Lookup lookup = MethodHandles.lookup();
+		try {
+			// 26.1：Minecraft 直接持有当前 Screen 字段
+			for (final Field f : Minecraft.class.getDeclaredFields()) {
+				if (Screen.class.isAssignableFrom(f.getType())) {
+					f.setAccessible(true);
+					screenHandle = lookup.unreflectGetter(f);
+					return;
+				}
+			}
+			// 26.2+：Screen 移到 GUI 门面（Minecraft.gui），经无参访问器读取
+			for (final Field f : Minecraft.class.getDeclaredFields()) {
+				final Class<?> holder = f.getType();
+				if (!"Gui".equals(holder.getSimpleName()))
+					continue;
+				for (final Method m : holder.getMethods()) {
+					if (m.getParameterCount() == 0 && Screen.class.isAssignableFrom(m.getReturnType())) {
+						f.setAccessible(true);
+						screenHandle = MethodHandles.filterReturnValue(
+								lookup.unreflectGetter(f), lookup.unreflect(m));
+						return;
+					}
+				}
+			}
+			// 兜底：Minecraft 自身暴露的取值器
+			for (final Method m : Minecraft.class.getMethods()) {
+				if (m.getParameterCount() == 0 && Screen.class.isAssignableFrom(m.getReturnType())) {
+					screenHandle = lookup.unreflect(m);
+					return;
+				}
+			}
+			LOGGER.warn("CompatGui.currentScreen: no Screen accessor found (MC GUI API changed?)");
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			LOGGER.warn("CompatGui.currentScreen resolution failed", e);
+		}
 	}
 
 	/**

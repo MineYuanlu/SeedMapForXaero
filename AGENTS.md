@@ -96,10 +96,10 @@ Folder-scoped docs (see the `AGENTS.md` in each tree — loaded automatically wh
 ```
 src/client/java/bid/yuanlu/seedmap4xaero/
 ├── client/            # mixin + render pipeline (client/AGENTS.md)
-│   ├── configs/       # AGENTS.md: config persistence & multiplayer
+│   ├── configs/       # AGENTS.md: config persistence (JSON v2) & multiplayer; perf/ = 全局性能配置
 │   ├── command/       # AGENTS.md: /sm4x 客户端命令（种子历史 list/remove）
 │   ├── nativeapi/     # Xsm.java (System.load + FFM wrappers), XsmNative.java (generated)
-│   ├── cache/         # AGENTS.md: caches, sparse structures, strongholds, tile coords
+│   ├── cache/         # AGENTS.md: LRU 瓦片缓存/调度器/预生成, sparse structures, strongholds, tile coords
 │   ├── compat/        # 跨版本兼容层: 版本敏感 MC API 唯一允许的 import 点 (doc/compat-layer.md)
 │   ├── mixin/         # mixins — table in client/AGENTS.md
 │   ├── render/        # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
@@ -122,7 +122,8 @@ tools/                # resolve_versions.py, gen_biomes_icon.py, gen_structures_
 
 - All UI strings go through i18n (`Component.translatable` / `I18n.get`) — add both `en_us.json` and `zh_cn.json`
 - LSP maybe shows false errors when edit java files — only `./gradlew build` is authoritative
-- Config persistence is **JSON v2** (`server_config.json` / `structure_settings.json` / `marks/` regional shards); legacy binary `.sm4x` auto-migrates on load, then renames to `*.legacy`. Load fallback chain: `.json` → `.json.old` → `.sm4x` (migrate) → `.sm4x.old` → fresh (details in `configs/AGENTS.md`)
+- Config persistence is **JSON v2** (`server_config.json` / `structure_settings.json` / `global/perf_config.json` / `marks/` regional shards); legacy binary `.sm4x` auto-migrates on load, then renames to `*.legacy`. Load fallback chain: `.json` → `.json.old` → `.sm4x` (migrate) → `.sm4x.old` → fresh (details in `configs/AGENTS.md`)
+- 性能设计（内存模型/调度/prefetch 论证/磁盘缓存规范）见 `doc/perf.md`
 
 ## Dependencies
 
