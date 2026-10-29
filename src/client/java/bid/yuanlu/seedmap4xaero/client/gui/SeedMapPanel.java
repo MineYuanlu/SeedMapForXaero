@@ -155,6 +155,18 @@ public class SeedMapPanel {
         groupCountCooldown = 0;
     }
 
+    /**
+     * 展开/收起生物群系区 (E2E 面板截图前置状态)。展开帧每帧走
+     * {@code renderBiomeSection → CompatGui.blitSprite}（issue #32 崩溃路径）。
+     */
+    public void testSetBiomeExpanded(boolean expanded) {
+        biomeExpanded = expanded;
+        biomeScrollOff = 0;
+        if (expanded) {
+            updateBiomeFilter();
+        }
+    }
+
     /** 切换结构区 Tab (0=类型 1=分组 2=图标)。 */
     public void testSelectStructTab(int tab) {
         structTab = Math.max(0, Math.min(2, tab));

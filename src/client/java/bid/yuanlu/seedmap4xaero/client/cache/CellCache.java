@@ -38,7 +38,7 @@ public class CellCache {
     public static final int KIND_BACKGROUND = 1;
     /** 视野外圈环 / 后台预生成（最低档）。 */
     public static final int KIND_PREFETCH = 2;
-    /** 待生成瓦片上限（CPU 像素尖峰 ≤ 512×16KB = 8MB）；可见 cell 豁免见 getOrRequest。 */
+    /** 待生成瓦片上限（CPU 像素尖峰 ≤ 512×16KB = 8MB）；满时 getOrRequest/prefetch 均拒绝入队。 */
     static final int MAX_PENDING = 512;
     /** 每帧纹理上传上限（削平弹瓦片瞬间的主线程尖峰）。 */
     private static final int MAX_UPLOADS_PER_FRAME = 8;

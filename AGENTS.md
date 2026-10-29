@@ -48,6 +48,14 @@ CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 | pull_request | ✅ 快速检查 | — | — |
 | 手动 | — | ✅ | build-test-jar / release |
 
+手动触发支持在任意分支/提交跑全量门禁（不必 push 到 develop）：`matrix-test.yml` / `build.yml` / `build-test-jar.yml` 均有可选 `ref` input（分支/tag/SHA，默认 = dispatch 时选的 ref）：
+
+```bash
+gh workflow run matrix-test.yml --ref dev/xxx          # 版本矩阵 + E2E
+gh workflow run build.yml --ref dev/xxx                # 全平台 native + 打包
+gh workflow run build.yml --ref dev/xxx -f ref=<SHA>   # 任意提交（-f ref 优先于 --ref）
+```
+
 ### CI 工具链固定（toolchain-versions.json）
 
 `.github/toolchain-versions.json` 记录"最后一次验证通过"的 CI 工具链版本（**固定包语义，非 pin**，无 pin/解钉状态）：Windows msys2 编译链各包精确版本 + Android NDK 版本。`reusable-native-build.yml` 每次构建按记录精确安装（msys2 为 setup-msys2 装好依赖后 `pacman -U` 覆盖；NDK 为按记录下载）。`refresh-toolchain.yml` 每周二用 `tools/resolve_toolchain.py` 算出最新候选，在 `ci/toolchain-bump` 分支跑完整门禁（build + matrix-test），全绿才快进推 master，失败则红字退出（邮件通知）、JSON 维持不变。未入 JSON 的项（刻意维持浮动）：Linux apt（ubuntu-24.04 内稳定）、JDK 25（major 属支持矩阵决策）、macOS brew cmake（无轻量快照手段，低风险）。macOS/Windows runner label 已钉死（macos-15 / windows-2025）。
