@@ -19,7 +19,7 @@ struct Img {
   int w = 64, h = 64;
   bool ok = false;
   Img() {
-    d = (uint8_t*)malloc(w * h * 3);
+    d = (uint8_t*)malloc(w * h * 4);  // genCellImg 输出 RGBA 4B/px
     ok = d != nullptr;
   }
   ~Img() { free(d); }
@@ -53,10 +53,10 @@ static void checkGen(Img& img, int scale, int worldX, int worldZ) {
   auto code = genCellImg(scale, worldX, worldZ, 64, img.data(), true);
   REQUIRE_MESSAGE(code == 0, "genCellImg(", scale, ", ", worldX, ", ", worldZ,
                   ") = ", code);
-  // sanity: not all-zero
+  // sanity: not all-zero (只累加 RGB; alpha 恒 0xFF, 计入会掩盖全零 RGB)
   uint32_t sum = 0;
-  for (int i = 0; i < 64 * 64 * 3; i++)
-    sum += img.d[i];
+  for (int i = 0; i < 64 * 64; i++)
+    sum += img.d[i * 4] + img.d[i * 4 + 1] + img.d[i * 4 + 2];
   REQUIRE_MESSAGE(sum != 0, "genCellImg(", scale, ", ", worldX, ", ", worldZ,
                   ") all-zero");
 }
