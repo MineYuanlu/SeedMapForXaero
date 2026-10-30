@@ -48,15 +48,35 @@ public final class CompatGui {
 	private CompatGui() {
 	}
 
+	private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/CompatGui");
+
 	private static volatile @Nullable MethodHandle tooltipHandle;
 	private static volatile boolean tooltipTakesBoolean;
 	private static volatile @Nullable MethodHandle blitTextureHandle;
 	private static volatile @Nullable MethodHandle blitSpriteHandle;
-
-	private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/CompatGui");
 	private static volatile @Nullable MethodHandle screenHandle;
 	private static volatile boolean screenResolved;
 	private static volatile boolean blitSpriteTakesColor;
+
+	/**
+	 * 跨版本读取当前 screen：26.1 为 {@code Minecraft.screen} 字段；26.2+ 该字段被
+	 * 移除，改由 {@code Minecraft.gui} 的 {@code screen()} 访问器暴露。
+	 *
+	 * <p>
+	 * 解析按运行时字段类型（{@code Screen}）与访问器返回类型扫描，首次调用后缓存
+	 * MethodHandle。两者皆不可得时返回 {@code null}（调用方自行决定降级行为），
+	 * 不抛异常以免拖垮每 tick 调用方。
+	 */
+	public static @Nullable Screen currentScreen(@NotNull Minecraft mc) {
+		try {
+			if (screenHandle == null)
+				xsm$resolveScreen();
+			final MethodHandle handle = screenHandle;
+			return handle == null ? null : (Screen) handle.invoke(mc);
+		} catch (Throwable e) {
+			throw new RuntimeException("CompatGui.currentScreen failed", e);
+		}
+	}
 
 	/**
 	 * {@link #blitSprite} 成功调用计数（E2E 断言用：群系区展开帧必经此路径，
@@ -130,33 +150,6 @@ public final class CompatGui {
 		blitSpriteTakesColor = sprite.takesColor();
 	}
 
-	/**
-	 * blitSprite 匹配结果：{@code takesColor=true} 表示命中 {@code (…, int color)} 重载，
-	 * 调用方需把 alpha 换算成 ARGB color。
-	 */
-	record BlitSpriteMatch(@NotNull Method method, boolean takesColor) {
-	}
-
-	/**
-	 * 跨版本读取当前 screen：26.1 为 {@code Minecraft.screen} 字段；26.2+ 该字段被
-	 * 移除，改由 {@code Minecraft.gui} 的 {@code screen()} 访问器暴露。
-	 *
-	 * <p>
-	 * 解析按运行时字段类型（{@code Screen}）与访问器返回类型扫描，首次调用后缓存
-	 * MethodHandle。两者皆不可得时返回 {@code null}（调用方自行决定降级行为），
-	 * 不抛异常以免拖垮每 tick 调用方。
-	 */
-	public static @Nullable Screen currentScreen(@NotNull Minecraft mc) {
-		try {
-			if (screenHandle == null)
-				xsm$resolveScreen();
-			final MethodHandle handle = screenHandle;
-			return handle == null ? null : (Screen) handle.invoke(mc);
-		} catch (Throwable e) {
-			throw new RuntimeException("CompatGui.currentScreen failed", e);
-		}
-	}
-
 	private static synchronized void xsm$resolveScreen() {
 		if (screenResolved)
 			return;
@@ -196,6 +189,13 @@ public final class CompatGui {
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			LOGGER.warn("CompatGui.currentScreen resolution failed", e);
 		}
+	}
+
+	/**
+	 * blitSprite 匹配结果：{@code takesColor=true} 表示命中 {@code (…, int color)} 重载，
+	 * 调用方需把 alpha 换算成 ARGB color。
+	 */
+	record BlitSpriteMatch(@NotNull Method method, boolean takesColor) {
 	}
 
 	/**

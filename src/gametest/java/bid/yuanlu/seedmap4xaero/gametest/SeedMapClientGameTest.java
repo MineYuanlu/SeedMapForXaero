@@ -88,6 +88,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
                 .create()) {
             try {
                 xsm$runAssertions(context, singleplayer);
+
                 LOGGER.info("seed-map E2E assertions passed");
             } catch (Throwable e) {
                 // 测试体异常时 try-with-resources 的 close() 会撞上 close() 死锁（见下方注释），
@@ -133,6 +134,7 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         // 配置系统 v2: 迁移产物 + JSON 落盘 + marks region 分片
         assertLegacyMigrated(context);
         assertJsonConfigOnDisk(context);
+        assertBackgroundPregenTick(context);
 
         // 后台预生成 tick 路径 (26.2+ screen 读取 compat 覆盖)
         assertBackgroundPregenTick(context);
@@ -594,6 +596,9 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
                         + called + " calls) — issue #32 render path not exercised");
             }
             Object screen = CompatGui.currentScreen(client);
+            if (screen == null) {
+                throw new AssertionError("cannot read current screen via compat layer");
+            }
             if (!(screen instanceof GuiMap)) {
                 throw new AssertionError("client left map (crash) during biome panel render: " + screen);
             }

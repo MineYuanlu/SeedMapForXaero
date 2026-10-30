@@ -32,11 +32,7 @@ JVM 方法/字段/构造器的二进制描述符**包含类型 FQN**。MC 26.3 �
 | 类 | 缝 | 说明 |
 | --- | --- | --- |
 | `CompatTextures` | `RenderSystem.getDevice()`、`GpuDevice.createTexture/createTextureView`、`CommandEncoder.writeToTexture`、`GpuTextureAndView` 构造器与 `view` 字段、`MultiTextureRenderTypeRenderer.begin`、`AbstractTexture.getTextureView/getSampler`、`TextureSetup.singleTexture`、`RenderPipelines.GUI_TEXTURED`、`BlitRenderState` 13 参构造器 | 纹理创建/上传/瓦片绘制/图标 blit 全链路 |
-<<<<<<< HEAD
-| `CompatGui` | `GuiGraphicsExtractor.tooltip`（26.1 六参 / 26.3 七参）、`blit`/`blitSprite` 带 pipeline 重载 | tooltip 参数个数；pipeline 参数类型搬家；blitSprite 按**精确形参形状**匹配（见下） |
-=======
-| `CompatGui` | `GuiGraphicsExtractor.tooltip`（26.1 六参 / 26.3 七参）、`blit`/`blitSprite` 带 pipeline 重载、`Minecraft.screen`（26.1 字段）→ `Minecraft.gui.screen()`（26.2+ 访问器） | tooltip 参数个数；pipeline 参数类型搬家；当前 screen 字段 26.2 移除 |
->>>>>>> cf74303
+| `CompatGui` | `GuiGraphicsExtractor.tooltip`（26.1 六参 / 26.3 七参）、`blit`/`blitSprite` 带 pipeline 重载、`Minecraft.screen`（26.1 字段）→ `Minecraft.gui.screen()`（26.2+ 访问器） | tooltip 参数个数；pipeline 参数类型搬家；blitSprite 按**精确形参形状**匹配（见下）；当前 screen 字段 26.2 移除 |
 | `CompatPose` | 无（`mulPose(Matrix4fc)` 是 26.1/26.3 类型交集） | `rotateYDegrees` 替代被删的 `mulPose(Quaternionf)` |
 | `CompatNoise` | 无（纯自实现） | 26.3 移除 `PerlinSimplexNoise` 的逐位对齐副本，见下 |
 
