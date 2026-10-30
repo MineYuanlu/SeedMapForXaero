@@ -57,9 +57,21 @@ public final class DatapackStructures {
 
     // ─── 生命周期 (世界切换钩子) ───────────────────────────────
 
-    /** 世界切换/激活: 扫描数据包并注入; 多人 (无集成服务器) 等价于清除。 */
-    public static void reload() {
-        DatapackSource source;
+    /** 重扫结果统计（供 /sm4x datapack 等交互反馈）。 */
+    public record ReloadResult(int structures, int sets, boolean failed) {
+        public static final ReloadResult EMPTY = new ReloadResult(0, 0, false);
+    }
+
+    /**
+     * 世界切换/激活: 扫描数据包并注入。
+     * <p>
+     * 数据源选择（显式优先级）：手动导入列表非空 → {@code PathDatapackSource}
+     * （覆盖一切）；否则单机集成服务器 RM；多人无导入 → 等价清除。
+     */
+    public static ReloadResult reload() {
+        DatapackSource source = DatapackImports.buildSource();
+        if (source != null)
+            return reloadFrom(source);
         try {
             source = ResourceManagerSource.ofIntegratedServer();
         } catch (Throwable t) {
@@ -68,28 +80,34 @@ public final class DatapackStructures {
         }
         if (source == null) {
             clear();
-            return;
+            return ReloadResult.EMPTY;
         }
+        return reloadFrom(source);
+    }
+
+    private static ReloadResult reloadFrom(DatapackSource source) {
         try {
             ScanResult result = scan(source);
             if (result.types().isEmpty()) {
                 clearInternal();
                 LOGGER.debug("no custom structure sets found in datapacks");
-                return;
+                return ReloadResult.EMPTY;
             }
             if (!Xsm.setCustomStructures(result.sets(), result.entries())) {
                 LOGGER.error("C side rejected custom structure table; custom structures disabled");
                 clearInternal();
-                return;
+                return new ReloadResult(0, result.setCount(), true);
             }
             StructureTypes.setCustomTypes(result.types());
             CacheHelper.invalidateAll();
             HighlightedStructures.clear();
             LOGGER.info("injected {} datapack structures ({} structure sets) — positions are "
                     + "predictions without biome validation", result.types().size(), result.setCount());
+            return new ReloadResult(result.types().size(), result.setCount(), false);
         } catch (Throwable t) {
             LOGGER.warn("datapack structure scan failed; custom structures disabled", t);
             clearInternal();
+            return new ReloadResult(0, 0, true);
         }
     }
 
@@ -327,10 +345,19 @@ public final class DatapackStructures {
                 (float) frequency, freqMethod, structureIds, weights);
     }
 
-    /** 原版集合被改 placement (如 YUNG's 改 salt): 与 cubiomes 配置比对, 不一致 WARN。 */
+    /** 原版集合被改 placement (如 Structurify 改 salt): 与 cubiomes 配置比对, 不一致 WARN。 */
     private static void warnIfVanillaPlacementChanged(Identifier setId, int salt, int spacing,
             int separation, int spread) {
-        final StructureType type = VANILLA_SETS.get(setId.getPath());
+        // setId 是完整资源 id (path = "worldgen/structure_set/<name>.json"), 表键是裸名
+        final String path = setId.getPath();
+        final String prefix = "worldgen/structure_set/";
+        if (!path.startsWith(prefix) || !path.endsWith(".json")) {
+            LOGGER.warn("structure set {}: unexpected resource id layout, skipped vanilla "
+                    + "placement check", setId);
+            return;
+        }
+        final String setName = path.substring(prefix.length(), path.length() - ".json".length());
+        final StructureType type = VANILLA_SETS.get(setName);
         if (type == null) {
             LOGGER.warn("structure set {}: unknown vanilla structure set (custom placement?), "
                     + "cubiomes prediction may be inaccurate", setId);

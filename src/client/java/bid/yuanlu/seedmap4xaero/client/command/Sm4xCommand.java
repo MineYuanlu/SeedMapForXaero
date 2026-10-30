@@ -9,11 +9,13 @@ import java.util.List;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.LongArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ConfigData;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.MarksStore;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
+import bid.yuanlu.seedmap4xaero.client.datapack.DatapackImports;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -48,7 +50,8 @@ public final class Sm4xCommand {
                 ctx.getSource().sendFeedback(Component.translatable("xsm.command.help"));
                 return 1;
             })
-            .then(cmdHistory());
+            .then(cmdHistory())
+            .then(cmdDatapack());
     }
 
     /** {@code /sm4x history …}: 种子历史 / 结构数据。 */
@@ -89,6 +92,66 @@ public final class Sm4xCommand {
                     handler.accept(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "page"));
                     return 1;
                 }));
+    }
+
+    /** {@code /sm4x datapack [list] | add <path> | remove <index>}: 手动数据包导入。 */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdDatapack() {
+        return ClientCommands.literal("datapack")
+            .executes(ctx -> {
+                listDatapackImports(ctx.getSource());
+                return 1;
+            })
+            .then(ClientCommands.literal("list")
+                .executes(ctx -> {
+                    listDatapackImports(ctx.getSource());
+                    return 1;
+                }))
+            .then(ClientCommands.literal("add")
+                .then(ClientCommands.argument("path", StringArgumentType.greedyString())
+                    .executes(ctx -> {
+                        sendResult(ctx.getSource(), DatapackImports.add(
+                                StringArgumentType.getString(ctx, "path")));
+                        return 1;
+                    })))
+            .then(ClientCommands.literal("remove")
+                .then(ClientCommands.argument("index", IntegerArgumentType.integer(1))
+                    .executes(ctx -> {
+                        // 展示层 1-based, 内核 0-based
+                        sendResult(ctx.getSource(), DatapackImports.remove(
+                                IntegerArgumentType.getInteger(ctx, "index") - 1));
+                        return 1;
+                    })));
+    }
+
+    // ─── datapack list / 结果反馈 ─────────────────────────────
+
+    private static void listDatapackImports(FabricClientCommandSource src) {
+        List<String> entries = DatapackImports.entries();
+        if (entries.isEmpty()) {
+            src.sendFeedback(Component.translatable("xsm.command.datapack.list.empty"));
+            return;
+        }
+        var msg = Component.empty();
+        msg.append(Component.translatable("xsm.command.datapack.list.title"));
+        for (int i = 0; i < entries.size(); i++) {
+            String path = entries.get(i);
+            msg.append(Component.literal("\n"));
+            // [i] path — 点击复制路径 (remove 前核对)
+            msg.append(Component.literal("[" + (i + 1) + "] ").withStyle(ChatFormatting.AQUA));
+            msg.append(Component.literal(path).withStyle(style -> style
+                .withClickEvent(new ClickEvent.CopyToClipboard(path))
+                .withHoverEvent(new HoverEvent.ShowText(
+                        Component.translatable("xsm.command.seed.copy_hint")))));
+        }
+        src.sendFeedback(msg);
+    }
+
+    /** 内核 Result → 聊天反馈（success 绿 / fail 红）。 */
+    private static void sendResult(FabricClientCommandSource src, DatapackImports.Result result) {
+        if (result.success())
+            src.sendFeedback(Component.translatable(result.messageKey(), result.messageArgs()));
+        else
+            src.sendError(Component.translatable(result.messageKey(), result.messageArgs()));
     }
 
     // ─── history seed list ───────────────────────────────────

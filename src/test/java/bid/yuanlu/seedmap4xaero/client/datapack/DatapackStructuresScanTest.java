@@ -24,7 +24,8 @@ import net.minecraft.resources.Identifier;
 /**
  * {@link DatapackStructures#scan} 的纯 JVM 解析测试 (内存数据源, 不依赖 native)。
  * 覆盖: 注入构建 / 维度归类 (biome tag 递归) / 原版集合跳过 / 非法集合跳过 /
- * c: 元数据 (图标 + 隐藏) / C 扁平数组布局。
+ * c: 元数据 (图标 + 隐藏) / C 扁平数组布局 / 容错分支 (损坏 JSON / 缺字段 /
+ * weight 钳制 / 跨维度 / tag 环 / 坏图标条目 / 显式 frequency=1.0)。
  * <p>
  * 注意 scan() 不触碰 Xsm/StructureTypes 全局状态, 可安全并行其它套件。
  */
@@ -406,6 +407,216 @@ class DatapackStructuresScanTest {
         } finally {
             StructureTypes.setCustomTypes(List.of());
         }
+    }
+
+    // ─── 容错分支 ─────────────────────────────────────────────
+
+    @Test
+    void corruptSetJsonSkippedOthersStillInjected() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "ok", "[\"minecraft:plains\"]");
+        // 截断 JSON → 解析抛异常
+        putSet(src, "a_corrupt", "{\"placement\": ");
+        // 合法 JSON 但根不是对象 → getAsJsonObject 抛异常
+        putSet(src, "b_notobj", "[1, 2, 3]");
+        putSet(src, "c_ok", setJson(RANDOM_SPREAD, "terralith:ok"));
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertEquals(1, r.types().size(), "损坏集合 warn+跳过, 正常集合仍注入");
+        assertEquals("terralith:ok", r.types().get(0).key());
+        assertEquals(1, r.setCount());
+    }
+
+    @Test
+    void missingPlacementSkipped() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "a", "[\"minecraft:plains\"]");
+        putSet(src, "no_placement", "{\"structures\": [{\"structure\": \"terralith:a\", \"weight\": 1}]}");
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertTrue(r.types().isEmpty(), "缺 placement 的集合跳过");
+        assertEquals(0, r.setCount());
+    }
+
+    @Test
+    void emptyStructuresSkipped() {
+        MemorySource src = new MemorySource();
+        putSet(src, "empty_arr", "{\"placement\": " + RANDOM_SPREAD + ", \"structures\": []}");
+        putSet(src, "missing_field", "{\"placement\": " + RANDOM_SPREAD + "}");
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertTrue(r.types().isEmpty(), "structures 空数组/字段缺失均跳过");
+        assertEquals(0, r.setCount());
+    }
+
+    @Test
+    void spreadTypePrefixedAcceptedUnknownSkipped() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "lin_a", "[\"minecraft:plains\"]");
+        putStructure(src, "tri_a", "[\"minecraft:plains\"]");
+        putStructure(src, "ring_a", "[\"minecraft:plains\"]");
+        putStructure(src, "bog_a", "[\"minecraft:plains\"]");
+        // 带 minecraft: 前缀的合法值应接受
+        putSet(src, "lin1", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 1, \"spacing\": 20, "
+                        + "\"separation\": 5, \"spread_type\": \"minecraft:linear\"}",
+                "terralith:lin_a"));
+        putSet(src, "tri1", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 2, \"spacing\": 20, "
+                        + "\"separation\": 5, \"spread_type\": \"minecraft:triangular\"}",
+                "terralith:tri_a"));
+        // 真正未知的值跳过
+        putSet(src, "rings", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 3, \"spacing\": 20, "
+                        + "\"separation\": 5, \"spread_type\": \"minecraft:concentric_rings\"}",
+                "terralith:ring_a"));
+        putSet(src, "bogus", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 4, \"spacing\": 20, "
+                        + "\"separation\": 5, \"spread_type\": \"space:zigzag\"}",
+                "terralith:bog_a"));
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertEquals(2, r.types().size(), "仅前缀合法值的两集合注入");
+        assertEquals(2, r.setCount());
+        // 集合按 id 字典序: bogus < lin1 < rings < tri1 → 注入顺序 lin1, tri1
+        assertEquals(1, r.sets()[0]);
+        assertEquals(0, r.sets()[3]); // minecraft:linear → 0
+        assertEquals(2, r.sets()[9]);
+        assertEquals(1, r.sets()[12]); // minecraft:triangular → 1
+    }
+
+    @Test
+    void weightClampedAndMissingStructureEntrySkipped() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "neg", "[\"minecraft:plains\"]");
+        putStructure(src, "zero", "[\"minecraft:plains\"]");
+        putStructure(src, "implicit", "[\"minecraft:plains\"]");
+        putStructure(src, "heavy", "[\"minecraft:plains\"]");
+        // 首条目缺 structure 字段 → 静默跳过该条目; weight 缺失/0/负钳制为 1
+        putSet(src, "weights", "{\"placement\": " + RANDOM_SPREAD + ", \"structures\": ["
+                + "{\"weight\": 3},"
+                + "{\"structure\": \"terralith:neg\", \"weight\": -5},"
+                + "{\"structure\": \"terralith:zero\", \"weight\": 0},"
+                + "{\"structure\": \"terralith:implicit\"},"
+                + "{\"structure\": \"terralith:heavy\", \"weight\": 3}"
+                + "]}");
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertEquals(4, r.types().size());
+        assertEquals(4, r.sets()[6], "entryCount 不含缺 structure 的条目");
+        // 条目保持 JSON 顺序; id 按字典序 heavy(100) < implicit(101) < neg(102) < zero(103)
+        int[] entries = r.entries();
+        assertEquals(8, entries.length);
+        assertEquals(102, entries[0]);
+        assertEquals(1, entries[1], "weight -5 钳制为 1");
+        assertEquals(103, entries[2]);
+        assertEquals(1, entries[3], "weight 0 钳制为 1");
+        assertEquals(101, entries[4]);
+        assertEquals(1, entries[5], "weight 缺省为 1");
+        assertEquals(100, entries[6]);
+        assertEquals(3, entries[7], "合法正权重原样保留");
+        // Java 侧类型权重同钳制
+        assertEquals(3, r.types().get(0).weight());
+        assertEquals(1, r.types().get(2).weight());
+    }
+
+    @Test
+    void crossDimensionSetSkipped() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "nether_thing", "[\"minecraft:nether_wastes\"]");
+        putStructure(src, "over_thing", "[\"minecraft:plains\"]");
+        putSet(src, "cross", setJson(RANDOM_SPREAD, "terralith:nether_thing", "terralith:over_thing"));
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertTrue(r.types().isEmpty(), "同集合结构归类到不同维度 → 整集合跳过");
+        assertEquals(0, r.setCount());
+    }
+
+    @Test
+    void modifiedVanillaPlacementSetSkipped() {
+        MemorySource src = new MemorySource();
+        // 全 minecraft: 结构 (villages 集合在实现对照表内), 但 salt/spacing 与 vanilla 真值不同
+        putSet(src, "villages", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 999999, \"spacing\": 48, "
+                        + "\"separation\": 4}",
+                "minecraft:village", "minecraft:pillager_outpost"));
+        putStructure(src, "custom", "[\"minecraft:plains\"]");
+        putSet(src, "zcustom", setJson(RANDOM_SPREAD, "terralith:custom"));
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        // 原版集合保持原版预测 (仍跳过不注入), 自定义集合正常注入
+        assertEquals(1, r.types().size());
+        assertEquals("terralith:custom", r.types().get(0).key());
+        assertEquals(1, r.setCount());
+    }
+
+    @Test
+    void cyclicBiomeTagTerminatesGracefully() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "cyclic", "\"#t:a\"");
+        // tag 环: a → b → a; 递归深度超限 (depth > 8) 处截断
+        src.putStack("t:tags/worldgen/biome/a.json", "{\"values\": [\"#t:b\"]}");
+        src.putStack("t:tags/worldgen/biome/b.json",
+                "{\"values\": [\"#t:a\", \"minecraft:soul_sand_valley\"]}");
+        putSet(src, "cycle", setJson(RANDOM_SPREAD, "terralith:cyclic"));
+
+        // 不死循环/不抛异常; 归类用截断前已收集的群系 → 下界
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertEquals(1, r.types().size());
+        assertEquals(-1, r.types().get(0).config().dim());
+    }
+
+    @Test
+    void hideStackMergesAndBadIconEntriesIgnored() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "good_struct", "[\"minecraft:plains\"]");
+        putStructure(src, "hide_a", "[\"minecraft:plains\"]");
+        putStructure(src, "hide_b", "[\"minecraft:plains\"]");
+        putStructure(src, "noitem_struct", "[\"minecraft:plains\"]");
+        putSet(src, "meta", setJson(RANDOM_SPREAD,
+                "terralith:good_struct", "terralith:hide_a", "terralith:hide_b",
+                "terralith:noitem_struct"));
+        // hide_from_map 两包层 (replace:false) → 两层 values 合并生效
+        src.putStack("c:tags/worldgen/structure/hide_from_map.json",
+                "{\"replace\": false, \"values\": [\"terralith:hide_a\"]}",
+                "{\"replace\": false, \"values\": [\"terralith:hide_b\"]}");
+        // 坏图标条目 (非对象/缺 item/非法 id) 逐条忽略, 好条目仍解析
+        src.put("c:worldgen/structure_icons.json",
+                "{\"terralith:good_struct\": {\"item\": \"minecraft:diamond\"}, "
+                        + "\"terralith:hide_a\": \"not-an-object\", "
+                        + "\"terralith:noitem_struct\": {\"other\": true}, "
+                        + "\"terralith:hide_b\": {\"item\": \"!!!\"}}");
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertEquals(4, r.types().size());
+        // 字典序: good_struct(100) < hide_a(101) < hide_b(102) < noitem_struct(103)
+        CustomStructureType good = r.types().get(0);
+        CustomStructureType hideA = r.types().get(1);
+        CustomStructureType hideB = r.types().get(2);
+        CustomStructureType noitem = r.types().get(3);
+        assertTrue(hideA.isHidden());
+        assertTrue(hideB.isHidden(), "两层 hide 值合并生效");
+        assertFalse(good.isHidden());
+        assertEquals("minecraft:diamond", good.iconItem().toString());
+        assertNull(noitem.iconItem(), "缺 item 字段的图标条目被忽略");
+        // 隐藏结构仍进 C 表 (保证同集合掷骰正确)
+        assertEquals(8, r.entries().length);
+    }
+
+    @Test
+    void explicitFrequencyOneKept() {
+        MemorySource src = new MemorySource();
+        putStructure(src, "a", "[\"minecraft:plains\"]");
+        putSet(src, "freq_one", setJson(
+                "{\"type\": \"minecraft:random_spread\", \"salt\": 42, \"spacing\": 30, "
+                        + "\"separation\": 8, \"frequency\": 1.0}",
+                "terralith:a"));
+
+        DatapackStructures.ScanResult r = DatapackStructures.scan(src);
+        assertEquals(1, r.types().size(), "显式 frequency=1.0 在 (0,1] 内, 集合保留");
+        assertEquals(1, r.setCount());
+        assertEquals(0x3F800000, r.sets()[7]); // 1.0f 位型
+        assertEquals(0, r.sets()[8]); // method = default
     }
 
     // ─── 工具 ─────────────────────────────────────────────────

@@ -1,7 +1,6 @@
 {
   "xsm.button.sm": "SM",
   "xsm.button.settings": "Seed Map Settings",
-
   "xsm.gui.switching.seed": "Seed",
   "xsm.gui.switching.confirm": "Confirm",
   "xsm.gui.switching.copy": "Copy",
@@ -9,7 +8,6 @@
   "xsm.gui.switching.current_seed": "Current World Seed:",
   "xsm.gui.switching.version": "World Version",
   "xsm.gui.switching.version.auto": "Follow client (%s)",
-
   "xsm.gui.panel.search_biomes": "Filter Biomes",
   "xsm.gui.panel.search_structures": "Filter Structures",
   "xsm.gui.panel.biomes_header": "Biomes: %s",
@@ -22,33 +20,26 @@
   "xsm.gui.panel.loot_mode.detail": "Detail",
   "xsm.gui.panel.loot_mode.tiled_peek": "Tiled Peek",
   "xsm.gui.panel.loot_mode.tiled_detail": "Tiled Detail",
-
   "xsm.value.on": "ON",
   "xsm.value.off": "OFF",
-
   "xsm.menu.to_waypoint": "Convert to Waypoint",
   "xsm.menu.highlight": "Highlight in World",
   "xsm.menu.unhighlight": "Remove Highlight",
-
   "xsm.menu.group.done": "Mark as Done",
   "xsm.menu.group.hidden": "Mark as Hidden",
   "xsm.menu.group.special": "Mark as Special",
   "xsm.menu.group_clear": "Clear Mark",
   "xsm.highlight.distance": "%sm",
-
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
   "xsm.cursor.coords_no_y": "X: %d Z: %d",
-
   "xsm.debug.scale": "SeedMap scale=%s | Mouse Block: %s %s %s",
   "xsm.debug.fill_gap": "fillGaps: %s",
   "xsm.debug.perf": "tiles %s/s | avg %sms | gen queue %s | cache %s | frame %sms",
   "xsm.debug.all_explored": "(%d,%d) S%d all %d tiles explored, skip fill",
   "xsm.debug.filled_tiles": "(%d,%d) S%d filled %d/%d unexplored tiles",
-
   "xsm.color_provider.native": "Native",
   "xsm.color_provider.minecraft_native": "Minecraft Native",
   "xsm.color_provider.legacy_hardcoded": "Legacy (Hardcoded)",
-
   "xsm.structure.feature": "Feature",
   "xsm.structure.desert_pyramid": "Desert Pyramid",
   "xsm.structure.jungle_temple": "Jungle Temple",
@@ -77,7 +68,6 @@
   "xsm.structure.trial_chambers": "Trial Chambers",
   "xsm.structure.stronghold": "Stronghold",
   "xsm.structure.world_spawn": "World Spawn",
-
   "xsm.group.default": "Ungrouped",
   "xsm.group.done": "Done",
   "xsm.group.hidden": "Hidden",
@@ -108,16 +98,13 @@
   "xsm.structure.bastion.hoglin_stable": "Hoglin Stable",
   "xsm.structure.bastion.treasure": "Treasure Room",
   "xsm.structure.bastion.bridge": "Bridge",
-
   "xsm.biome.unknown": "Unknown Biome (%d)",
-
   "xsm.hover.visited": "Visited (within %dm)",
   "xsm.hover.unvisited": "Not visited",
   "xsm.hover.group": "Group: %s",
   "xsm.hover.datapack_predicted": "Datapack structure %s — predicted position (not biome-validated)",
   "xsm.structure.custom": "Datapack Structure",
-
-  "xsm.command.help": "Usage: /sm4x history seed list [page] | /sm4x history structure list [page] | /sm4x history structure remove <seed>",
+  "xsm.command.help": "Usage: /sm4x history seed list [page] | /sm4x history structure list [page] | /sm4x history structure remove <seed> | /sm4x datapack add <zip|folder>",
   "xsm.command.empty": "No data yet.",
   "xsm.command.history.seed.title": "Seed history:",
   "xsm.command.history.structure.title": "Structure data:",
@@ -130,7 +117,6 @@
   "xsm.command.remove.success": "Removed %2$s record(s) of seed %1$s",
   "xsm.command.remove.not_found": "Seed %s has no structure data",
   "xsm.command.remove.active": "Seed %s is currently in use and cannot be removed",
-
   "xsm.gui.panel.tab_types": "Types",
   "xsm.gui.panel.tab_groups": "Groups",
   "xsm.gui.panel.tab_icons": "Icons",
@@ -145,7 +131,6 @@
   "xsm.gui.panel.color.sat": "Sat",
   "xsm.gui.panel.color.val": "Val",
   "xsm.gui.panel.color.alpha": "Alpha",
-
   "xsm.gui.panel.perf_header": "Performance",
   "xsm.gui.panel.perf_threads": "Threads",
   "xsm.gui.panel.perf_threads_auto": "Auto",
@@ -156,11 +141,20 @@
   "xsm.gui.panel.perf_disk": "Disk cache (planned)",
   "xsm.gui.panel.perf_disk_max": "Disk cap",
   "xsm.gui.panel.perf_debug": "Perf overlay",
-
   "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
   "xsm.chestLoot.extraInfo.pieceName": "Piece: %s",
   "xsm.chestLoot.extraInfo.chestPos": "Position: %s",
   "xsm.chestLoot.extraInfo.lootTable": "Loot Table: %s",
   "xsm.chestLoot.extraInfo.lootSeed": "Loot Seed: %s",
-  "xsm.chestLoot.stewEffect": "Stew Effect: %s (lvl %s)"
+  "xsm.chestLoot.stewEffect": "Stew Effect: %s (lvl %s)",
+  "xsm.command.datapack.no_world": "Not in a world — join a world first",
+  "xsm.command.datapack.not_found": "Path not found: %s",
+  "xsm.command.datapack.bad_zip": "Not a readable zip file: %s",
+  "xsm.command.datapack.duplicate": "Already imported: %s",
+  "xsm.command.datapack.bad_index": "Invalid index (1..%s)",
+  "xsm.command.datapack.scan_failed": "Import saved, but the scan failed",
+  "xsm.command.datapack.add.success": "Imported — %s structure set(s), %s structure(s) predicted",
+  "xsm.command.datapack.remove.success": "Removed %s — now %s structure set(s), %s structure(s)",
+  "xsm.command.datapack.list.title": "Datapack imports for this world (priority: low → high):",
+  "xsm.command.datapack.list.empty": "No datapack imports for this world. Try /sm4x datapack add <zip|folder>"
 }

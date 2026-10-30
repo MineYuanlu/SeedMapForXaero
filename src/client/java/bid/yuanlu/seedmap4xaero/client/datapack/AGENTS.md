@@ -1,18 +1,26 @@
-# datapack — 数据包结构集摄取 (路线 A)
+# datapack — 数据包结构集摄取 (路线 A + v2 手动导入)
 
-单机世界切换时扫描集成服务器数据包的 `worldgen/structure_set`，构建
-`CustomStructureType` 注入 C 侧 (`xsmSetCustomStructures`) 与 Java 注册表
-(`StructureTypes`)。**预测不做 biome tag 校验**（已知假阳性，设计文档
-`doc/datapack.md`）。
+扫描数据包的 `worldgen/structure_set`，构建 `CustomStructureType` 注入 C 侧
+(`xsmSetCustomStructures`) 与 Java 注册表 (`StructureTypes`)。**预测不做
+biome tag 校验**（已知假阳性，设计文档 `doc/datapack.md`）。
 
 ## Classes
 
 - `DatapackSource` — 数据源抽象：`readAllJson(folder)`（每 id 最高优先级层，
   worldgen 定义用）/ `readJsonStack(id)`（全部包层低→高，tag 合并用）/
-  `readJson(id)`（单层）。v1 仅 `ResourceManagerSource`（集成服务器 RM），
-  多人 zip/目录导入留 v2。
+  `readJson(id)`（单层）。**id 语义 = vanilla 文件级 id**（path 含目录前缀与
+  `.json` 后缀；`readJson` 入参也带 `.json`）。
+- `ResourceManagerSource` — 单机实现（集成服务器 ResourceManager）。
+- `PathDatapackSource` — v2 手动导入实现：N 个 root（zip/目录）合并，
+  root 顺序 = 优先级低→高（后 add 覆盖先 add）；zip 句柄按需开用完关；
+  不校验 pack.mcmeta。资源定位 `data/<ns>/<path>`。
+- `DatapackImports` — **v2 统一内核（命令与 UI 的唯一入口）**：`entries()` /
+  `add(raw)` / `remove(index)`，返回 `Result`（i18n key + 参数）供展示层
+  翻译（命令→chat、UI→toast）；变更后自动 flush + reload。校验：未激活世界
+  拒绝 / 路径存在 / zip 可打开 / 去重。UI 递进时平移接入此层，勿绕过。
 - `DatapackStructures` — 编排器：`reload()`（世界激活钩子，见
-  `WorldSwitchMixin`）/ `clear()`（幂等清除）。`scan(source)` 纯函数可 JVM 单测。
+  `WorldSwitchMixin`；**数据源选择 = 手动导入优先 → 单机 RM → 清除**，返回
+  `ReloadResult` 统计）/ `clear()`（幂等清除）。`scan(source)` 纯函数可 JVM 单测。
 
 ## 解析规则（scan）
 
@@ -49,6 +57,7 @@ freqMethod(0=default/1=legacy_type_1/2=legacy_type_2/3=legacy_type_3)]`；entrie
 - `XaeroSeedMapClient` DISCONNECT → `clear()`
 - `/reload` 热更新：`ServerLifecycleEvents.END_DATA_PACK_RELOAD`（成功时）调度回
 客户端线程调 `reload()`（`XaeroSeedMapClient` 注册）
+- 手动导入 add/remove（命令/UI）→ `DatapackImports` 内核自动 reload
 - 注入后 `CacheHelper.invalidateAll()` + `HighlightedStructures.clear()`
 
 ## Gotchas

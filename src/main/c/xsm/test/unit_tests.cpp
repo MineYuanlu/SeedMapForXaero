@@ -910,3 +910,82 @@ TEST_CASE("custom grid: frequency gate wiring (legacy_type_3)") {
   CHECK(hits > 0);   // 0.25 频率下 36 chunk 必有命中
   xsmSetCustomStructures(nullptr, 0, nullptr, 0);
 }
+
+TEST_CASE("custom grid: frequency gate x multi-entry selection") {
+  setupOrFail();
+  // 3 等权条目 + freq=0.25 legacy_type_3 + spacing=1/sep=0 (候选 chunk = region 格坐标)
+  // 验证: gate 与加权掷骰 RNG 相互独立 — gate 过的 region 恰 1 赢家且与 refPickStructure
+  // 一致; gate 不过的 region 全部 id 均无命中
+  const float freq = 0.25f;
+  const int32_t freqBits = 0x3E800000;
+  const int32_t sets[9] = {593751784, 1, 0, 0, 0, 0, 3, freqBits, 3};
+  const int32_t ent[6] = {100, 1, 101, 1, 102, 1};
+  REQUIRE(xsmSetCustomStructures(sets, 1, ent, 3));
+  const uint64_t seed = 0xDEADBEEFCAFEULL;
+  REQUIRE(setWorld(seed, 0));
+
+  int hits = 0, picked[3] = {0, 0, 0};
+  for (int32_t x = 0; x < 32; x++) {
+    for (int32_t z = 0; z < 32; z++) {
+      // 独立复算 gate (同 wiring 测试公式)
+      uint64_t rng;
+      const int32_t v = (x >> 4) ^ ((z >> 4) << 4);
+      setSeed(&rng, (uint64_t)(int64_t)v ^ seed);
+      skipNextN(&rng, 1);
+      const bool expectPass = nextInt(&rng, 4) == 0;
+
+      int foundSum = 0;
+      for (int e = 0; e < 3; e++) {
+        const SingleHit h(100 + e, x, z);
+        foundSum += h.found;
+        if (h.found) {
+          picked[e]++;
+          const int64_t weights[3] = {1, 1, 1};
+          const int pick = refPickStructure((int64_t *)weights, 3, seed, x, z);
+          CHECK_MESSAGE(pick == e, "winner mismatch at ", x, ",", z,
+                        " impl=", e, " ref=", pick);
+          CHECK(h.bx == x * 16);
+          CHECK(h.bz == z * 16);
+        }
+      }
+      if (expectPass) {
+        CHECK_MESSAGE(foundSum == 1, "gate-pass region ", x, ",", z,
+                      " should have exactly 1 winner, got ", foundSum);
+        if (foundSum == 1) hits++;
+      } else {
+        CHECK_MESSAGE(foundSum == 0, "gate-fail region ", x, ",", z,
+                      " must have no hit, got ", foundSum);
+      }
+    }
+  }
+  CHECK(hits > 0);
+  // gate 通过的 chunk 内掷骰 3 选 1, 全 3 条目都应出现过 (宽松)
+  CHECK(picked[0] > 0);
+  CHECK(picked[1] > 0);
+  CHECK(picked[2] > 0);
+  xsmSetCustomStructures(nullptr, 0, nullptr, 0);
+}
+
+TEST_CASE("custom structures: end dim filter") {
+  setupOrFail();
+  const int32_t sets[9] = {777001, 20, 8, 0, DIM_END, 0, 1, 1065353216, 0};
+  const int32_t ent[2] = {100, 1};
+  REQUIRE(xsmSetCustomStructures(sets, 1, ent, 1));
+  const uint64_t seed = 4242;
+  int8_t found[4];
+  int32_t bx[4], bz[4];
+
+  // 主世界 / 下界查询: 0
+  REQUIRE(setWorld(seed, DIM_OVERWORLD));
+  CHECK(queryRegionStructuresGrid(100, 0, 0, 2, 2, 0, 0, 0, 0,
+                                  found, bx, bz, nullptr) == 0);
+  REQUIRE(setWorld(seed, DIM_NETHER));
+  CHECK(queryRegionStructuresGrid(100, 0, 0, 2, 2, 0, 0, 0, 0,
+                                  found, bx, bz, nullptr) == 0);
+
+  // End 查询命中
+  REQUIRE(setWorld(seed, DIM_END));
+  CHECK(queryRegionStructuresGrid(100, 0, 0, 2, 2, 0, 0, 0, 0,
+                                  found, bx, bz, nullptr) == 4);
+  xsmSetCustomStructures(nullptr, 0, nullptr, 0);
+}

@@ -339,7 +339,7 @@ Terralith 是完全数据驱动的，MC 客户端运行时会话里**动态注�
 | 测试 | ✅ C 单测 + JVM 解析测试（内存源）+ native 集成测试 + E2E gametest 模拟注入用例 |
 | frequency<1（v1.1） | ✅ 4 种 `frequency_reduction_method` 全支持；native 对拍测试用 `java.util.Random` 复刻 reducer 与 C 侧逐 chunk 一致（YUNG's salt 593751784 / freq 0.003） |
 | `/reload` 热更新（v1.1） | ✅ `ServerLifecycleEvents.END_DATA_PACK_RELOAD`（成功时）调度回客户端线程调 `reload()` |
-| 多人手动导入 | ⬜ v2（M4：用户指定 zip/目录） |
+| 多人手动导入 | ✅ v2.0（`/sm4x datapack add/remove/list` + `DatapackImports` 统一内核，见 §7.2） |
 
 #### 7.1 v1.1 追加（frequency<1 支持）
 
@@ -364,3 +364,45 @@ Terralith 是完全数据驱动的，MC 客户端运行时会话里**动态注�
 4. exclusion_zone / 原版+自定义混排集合：跳过 + WARN（frequency<1 已支持）
 
 **顺带修复的潜伏 bug**：`Xsm.setGameVersion()`（无参）重置了 C 侧 `gen_setWorld` 但未重置 Java 侧 `setWorld` 去重哨兵——同 (seed, dim) 的后续 setWorld 被跳过导致世界未设置（`applyGameVersion` 有 `resetWorldState()` 协议，无参版本遗漏；此前被测试类执行顺序掩盖）。
+
+### 7.2 v2.0 追加（多人手动导入 + 测试加固）
+
+**手动导入（v2/M4）**：
+
+- **统一内核** `client/datapack/DatapackImports`：命令与 UI 的唯一交互入口，返回
+  `Result`（i18n key + 参数）由展示层翻译（命令→chat、UI 后续递进接入 toast/行内）；
+  add/remove 成功后自动 flush + reload（同线程同步，reload 幂等）。
+- **数据源** `PathDatapackSource`：N 个 root（zip/目录）合并实现 `DatapackSource`，
+  root 顺序 = 优先级低→高（后 add 覆盖先 add，对齐 vanilla）；资源定位
+  `data/<ns>/<path>`，id 语义与 vanilla 文件级 id 一致（path 含 `.json` 后缀——
+  与 `ResourceManagerSource` 的 `listResources` 返回形态对齐）；zip 句柄按需开用完关。
+- **优先级语义（显式）**：手动导入列表非空 → 只用手动源（覆盖单机 RM）；为空 →
+  回退单机 RM；多人无导入 → 等价清除。
+- **持久化**：per-mainId（`<base>/<mainId>/datapack_imports.json`，新包
+  `configs/datapack/`）——按 Xaero 世界根隔离，切服务器自动切换导入列表。
+- **入口（命令先行）**：`/sm4x datapack [list] | add <path> | remove <index>`；
+  相对路径以 gameDir 为基准、支持 `~`；add 时校验（存在性/zip 可打开/去重/
+  未激活世界拒绝），反馈识别的结构集/结构数。
+- **E2E 真实链路**（`assertRealDatapackReload`）：存档 `datapacks/` 写入 fixture
+  （Terralith 式参数 + `c:structure_icons.json`）→ `/reload` 发现 →
+  `/datapack enable` 自动重载 → `END_DATA_PACK_RELOAD` hook → 真实 `scan()` →
+  断言 config/iconItem/REGIONS → `/datapack disable` 验证清除路径。首次覆盖
+  reload 编排 happy path、热更新接线与 c: 图标解析（此前仅回退路径）。
+
+**测试加固**：scan 容错分支 +10（损坏 JSON/placement 缺失/空 structures/未知
+spread_type 前缀区分/缺 structure 字段/weight 钳制/跨维度跳过/原版 set 被改/
+tag 环引用/hide_from_map 层合并 + 图标坏条目/freq=1.0 显式）、
+`ResourceManagerSource` fake-RM 适配语义 6、`PathDatapackSource` 9（zip/目录
+fixture）、`datapack_imports.json` roundtrip 6、disabled 自定义结构持久化往返 5、
+C 单测 +2（freq×multi-entry 门与掷骰独立性、End 维度过滤）。
+
+**顺带修复**：`warnIfVanillaPlacementChanged` 对照表查找失配——`setId.getPath()`
+实为 `worldgen/structure_set/<name>.json`（含前缀与后缀），而 `VANILLA_SETS` 键是
+裸名 → 查找永远失配（误导性 "unknown vanilla structure set" WARN + Structurify
+改 salt 检测死代码）；修复为剥离前缀后缀再查表。
+
+**构建工具链**：xaerolib 依赖由 `[1.1.0,)` 浮动改为可经 `xaeroLibVersion` 显式 pin
+（`gradle.properties` 现有 1.1.17，与 xaeroworldmap 1.41.0 同期）——xaerolib 1.8.5
+修改 `ReflectionUtils.getFieldReflection` 签名导致与旧版 World Map 二进制不兼容
+（`ImprovedFramebuffer.<clinit>` NoSuchMethodError），且该漂移只影响
+productionRuntimeMods（compileClasspath 先撞定 1.1.17 掩盖了问题）。

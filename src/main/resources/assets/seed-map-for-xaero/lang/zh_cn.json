@@ -1,7 +1,6 @@
 {
   "xsm.button.sm": "SM",
   "xsm.button.settings": "种子地图设置",
-
   "xsm.gui.switching.seed": "种子",
   "xsm.gui.switching.confirm": "确定",
   "xsm.gui.switching.copy": "复制",
@@ -9,7 +8,6 @@
   "xsm.gui.switching.current_seed": "当前世界种子:",
   "xsm.gui.switching.version": "世界版本",
   "xsm.gui.switching.version.auto": "跟随客户端 (%s)",
-
   "xsm.gui.panel.search_biomes": "过滤生物群系",
   "xsm.gui.panel.search_structures": "过滤结构",
   "xsm.gui.panel.biomes_header": "生物群系: %s",
@@ -22,33 +20,26 @@
   "xsm.gui.panel.loot_mode.detail": "详情",
   "xsm.gui.panel.loot_mode.tiled_peek": "平铺速览",
   "xsm.gui.panel.loot_mode.tiled_detail": "平铺详情",
-
   "xsm.value.on": "开",
   "xsm.value.off": "关",
-
   "xsm.menu.to_waypoint": "转换为路标",
   "xsm.menu.highlight": "在世界中高亮",
   "xsm.menu.unhighlight": "取消高亮",
-
   "xsm.menu.group.done": "标记为: 完成",
   "xsm.menu.group.hidden": "标记为: 隐藏",
   "xsm.menu.group.special": "标记为: 特殊",
   "xsm.menu.group_clear": "清除标记",
   "xsm.highlight.distance": "%s米",
-
   "xsm.cursor.coords": "X: %d Y: %d Z: %d",
   "xsm.cursor.coords_no_y": "X: %d Z: %d",
-
   "xsm.debug.scale": "SeedMap scale=%s | 鼠标方块: %s %s %s",
   "xsm.debug.fill_gap": "fillGaps: %s",
   "xsm.debug.perf": "瓦片 %s/s | 均值 %sms | 生成队列 %s | 缓存 %s | 帧 %sms",
   "xsm.debug.all_explored": "(%d,%d) S%d 全部%d个tile均已探索，跳过补绘",
   "xsm.debug.filled_tiles": "(%d,%d) S%d 补绘%d/%d个未探索tile",
-
   "xsm.color_provider.native": "Native",
   "xsm.color_provider.minecraft_native": "Minecraft Native",
   "xsm.color_provider.legacy_hardcoded": "Legacy (Hardcoded)",
-
   "xsm.structure.feature": "地物",
   "xsm.structure.desert_pyramid": "沙漠神殿",
   "xsm.structure.jungle_temple": "丛林神庙",
@@ -77,7 +68,6 @@
   "xsm.structure.trial_chambers": "试炼密室",
   "xsm.structure.stronghold": "要塞",
   "xsm.structure.world_spawn": "世界出生点",
-
   "xsm.group.default": "未分组",
   "xsm.group.done": "完成",
   "xsm.group.hidden": "隐藏",
@@ -108,16 +98,13 @@
   "xsm.structure.bastion.hoglin_stable": "猪灵兽厩",
   "xsm.structure.bastion.treasure": "藏宝室",
   "xsm.structure.bastion.bridge": "桥",
-
   "xsm.biome.unknown": "未知生物群系 (%d)",
-
   "xsm.hover.visited": "已访问 (最近 %d 米)",
   "xsm.hover.unvisited": "未访问",
   "xsm.hover.group": "分组: %s",
   "xsm.hover.datapack_predicted": "数据包结构 %s — 预测位置 (未校验生物群系)",
   "xsm.structure.custom": "数据包结构",
-
-  "xsm.command.help": "用法: /sm4x history seed list [页码] | /sm4x history structure list [页码] | /sm4x history structure remove <seed>",
+  "xsm.command.help": "用法: /sm4x history seed list [页码] | /sm4x history structure list [页码] | /sm4x history structure remove <seed> | /sm4x datapack add <zip|目录>",
   "xsm.command.empty": "暂无数据",
   "xsm.command.history.seed.title": "种子历史:",
   "xsm.command.history.structure.title": "结构数据:",
@@ -130,7 +117,6 @@
   "xsm.command.remove.success": "已删除种子 %1$s 的 %2$s 条记录",
   "xsm.command.remove.not_found": "种子 %s 没有历史数据",
   "xsm.command.remove.active": "种子 %s 正在使用中，无法删除",
-
   "xsm.gui.panel.tab_types": "类型",
   "xsm.gui.panel.tab_groups": "分组",
   "xsm.gui.panel.tab_icons": "图标",
@@ -145,7 +131,6 @@
   "xsm.gui.panel.color.sat": "饱和",
   "xsm.gui.panel.color.val": "亮度",
   "xsm.gui.panel.color.alpha": "透明",
-
   "xsm.gui.panel.perf_header": "性能",
   "xsm.gui.panel.perf_threads": "生成线程",
   "xsm.gui.panel.perf_threads_auto": "自动",
@@ -156,11 +141,20 @@
   "xsm.gui.panel.perf_disk": "磁盘缓存(规划中)",
   "xsm.gui.panel.perf_disk_max": "磁盘上限",
   "xsm.gui.panel.perf_debug": "性能统计",
-
   "xsm.chestLoot.title": "%1$s (%2$d/%3$d)",
   "xsm.chestLoot.extraInfo.pieceName": "构件: %s",
   "xsm.chestLoot.extraInfo.chestPos": "位置: %s",
   "xsm.chestLoot.extraInfo.lootTable": "战利品表: %s",
   "xsm.chestLoot.extraInfo.lootSeed": "战利品种子: %s",
-  "xsm.chestLoot.stewEffect": "药水效果: %s (等级 %s)"
+  "xsm.chestLoot.stewEffect": "药水效果: %s (等级 %s)",
+  "xsm.command.datapack.no_world": "未进入世界——请先进入世界再导入",
+  "xsm.command.datapack.not_found": "路径不存在: %s",
+  "xsm.command.datapack.bad_zip": "无法读取的 zip 文件: %s",
+  "xsm.command.datapack.duplicate": "已导入过: %s",
+  "xsm.command.datapack.bad_index": "无效序号 (1..%s)",
+  "xsm.command.datapack.scan_failed": "导入列表已更新, 但扫描失败",
+  "xsm.command.datapack.add.success": "已导入 — 识别 %s 个结构集 / %s 个结构",
+  "xsm.command.datapack.remove.success": "已移除 %s — 当前 %s 个结构集 / %s 个结构",
+  "xsm.command.datapack.list.title": "当前世界的数据包导入 (优先级: 低 → 高):",
+  "xsm.command.datapack.list.empty": "当前世界没有导入数据包。试试 /sm4x datapack add <zip|目录>"
 }

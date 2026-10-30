@@ -494,8 +494,9 @@ public final class Xsm {
      * 与 {@link #applyGameVersion} 同款协议: 变更后调用方需 {@link #resetWorldState()}
      * + {@code CacheHelper.invalidateAll()} 清缓存。空数组 = 清除全部自定义结构。
      *
-     * @param sets    集合数组, 每组 7 个 int: [salt, spacing, separation,
-     *                spreadType(0=linear/1=triangular), dim, firstEntry, entryCount]
+     * @param sets    集合数组, 每组 9 个 int: [salt, spacing, separation,
+     *                spreadType(0=linear/1=triangular), dim, firstEntry, entryCount,
+     *                frequency(float 位型), freqMethod(0..3)]
      * @param entries 条目数组, 按集合分组连续, 每组 2 个 int: [id ∈ [100,1000), weight]
      * @return false = 参数被 C 侧校验拒绝
      */

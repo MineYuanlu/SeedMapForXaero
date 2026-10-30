@@ -67,9 +67,12 @@ dependencies {
 	compileOnly(xaeroMap) { exclude group: 'xaero.pvp' }
 	runtimeOnly(xaeroMap) { exclude group: 'xaero.pvp' }
 	// 旧版 World Map POM 把 XaeroLib 声明为 runtime scope，compileOnly 不携带，
-	// 显式声明；`[1.1.0,)` 与 Xaero 自身下限一致，各线解析到最新。
-	compileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
-	runtimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	// 显式声明；默认 `[1.1.0,)` 与 Xaero 自身下限一致（各线解析到最新），
+	// 可经 xaeroLibVersion 显式 pin（避免上游新发布的 xaerolib 与旧版 World Map
+	// 二进制不兼容——如 1.8.5 改了 ReflectionUtils.getFieldReflection 签名）。
+	def xaeroLib = project.findProperty('xaeroLibVersion') ?: '[1.1.0,)'
+	compileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:${xaeroLib}")
+	runtimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:${xaeroLib}")
 	// dev runtime 加 minimap: waypoint 转换 (SupportMods.minimap()) 需要真实 mod。
 	// 仅 runtimeOnly，compileOnly 不引用 (通过 SupportMods 反射式访问)。
 	// 注意: minimap 与 worldmap 都内嵌共享的 xaero.common.* 包, 在扁平测试 JVM
@@ -82,7 +85,7 @@ dependencies {
 	// fabric-api / xaero / 测试 mod 都要显式声明。
 	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
 	productionRuntimeMods(xaeroMap) { exclude group: 'xaero.pvp' }
-	productionRuntimeMods("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	productionRuntimeMods("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:${xaeroLib}")
 	productionRuntimeMods files(gametestModJar)
 }
 

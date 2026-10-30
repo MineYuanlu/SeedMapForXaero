@@ -1,5 +1,9 @@
 package bid.yuanlu.seedmap4xaero.gametest;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Objects;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -42,6 +46,8 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.Vec3;
 
 import xaero.map.MapProcessor;
@@ -154,6 +160,11 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         assertLootTitleTooltipNoCrash(context);
 
         assertLootPaging(context);
+
+        // 数据包 v2/M4: 真实数据包链路 — 存档 datapacks/ 写入 fixture →
+        // /reload 发现 → /datapack enable 触发重载 → END_DATA_PACK_RELOAD
+        // hook → 真实 scan() → 注入 → c: 图标解析 → disable 清除
+        assertRealDatapackReload(context, singleplayer);
     }
 
     /**
@@ -968,5 +979,93 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         context.waitFor(client -> client.player.distanceToSqr(blockX + 0.5, client.player.getY(), blockZ + 0.5) < 4.0, 200);
         context.waitFor(client -> client.player.getDeltaMovement().lengthSqr() < 0.05, 300);
         context.waitTicks(5);
+    }
+
+
+    // ─── 真实数据包链路 (v2/M4 E2E) ─────────────────────────────
+
+    /**
+     * 真实数据包端到端：写入存档 {@code datapacks/xsmtest_dp/}（Terralith 式
+     * 真实参数 + {@code c:structure_icons.json}）→ {@code /reload} 发现 →
+     * {@code /datapack enable} 自动重载 → {@code END_DATA_PACK_RELOAD} hook →
+     * 客户端 {@link DatapackStructures#reload()} 真实扫描注入 → 断言解析产物
+     * （config 字段、图标解析、REGIONS 收录）→ {@code /datapack disable} 验证清除路径。
+     * 覆盖 reload() 编排 happy path + /reload 热更新接线 + c: 图标解析（此前仅回退路径）。
+     */
+    private static void assertRealDatapackReload(ClientGameTestContext context,
+            TestSingleplayerContext singleplayer) {
+        // 1. 写 fixture 数据包 (标准 data/<ns> 布局)
+        singleplayer.getServer().runOnServer(server -> {
+            try {
+                final Path root = server.getWorldPath(LevelResource.ROOT)
+                        .resolve("datapacks").resolve("xsmtest_dp");
+                Files.createDirectories(root.resolve("data/xsmtest/worldgen/structure_set"));
+                Files.createDirectories(root.resolve("data/xsmtest/worldgen/structure"));
+                Files.createDirectories(root.resolve("data/c/worldgen"));
+                Files.writeString(root.resolve("pack.mcmeta"), """
+                        {"pack":{"pack_format":1,"supported_formats":{"min_inclusive":1,"max_inclusive":999999},"description":"xsm e2e"}}""");
+                Files.writeString(root.resolve("data/xsmtest/worldgen/structure_set/alpha.json"),
+                        setJson(2358902, "xsmtest:alpha"));
+                Files.writeString(root.resolve("data/xsmtest/worldgen/structure_set/beta.json"),
+                        setJson(2358903, "xsmtest:beta"));
+                Files.writeString(root.resolve("data/xsmtest/worldgen/structure/alpha.json"),
+                        "{\"biomes\":[\"minecraft:plains\"]}");
+                Files.writeString(root.resolve("data/xsmtest/worldgen/structure/beta.json"),
+                        "{\"biomes\":[\"minecraft:desert\"]}");
+                // alpha 有官方图标 (blue_ice), beta 无 → 渲染回退路径
+                Files.writeString(root.resolve("data/c/worldgen/structure_icons.json"),
+                        "{\"xsmtest:alpha\":{\"item\":\"minecraft:blue_ice\"}}");
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+
+        // 2. /reload 重新发现 repository → /datapack enable 自动重载 (触发 hook)
+        singleplayer.getServer().runCommand("reload");
+        singleplayer.getServer().runCommand("datapack enable \"file/xsmtest_dp\"");
+
+        // 3. 等 hook: 客户端真实扫描完成, 注册表收录 (id 字典序: alpha=100, beta=101)
+        context.waitFor(client -> {
+            var keys = StructureTypes.customTypes().stream().map(CustomStructureType::key).toList();
+            return keys.contains("xsmtest:alpha") && keys.contains("xsmtest:beta");
+        }, 400);
+        LOGGER.info("real datapack reload hook fired and scanned");
+
+        // 4. 解析产物断言 (C 表 config + c: 图标解析)
+        context.runOnClient(client -> {
+            var byKey = StructureTypes.customTypes().stream()
+                    .collect(java.util.stream.Collectors.toMap(CustomStructureType::key, t -> t));
+            var alpha = byKey.get("xsmtest:alpha");
+            var beta = byKey.get("xsmtest:beta");
+            if (alpha == null || beta == null)
+                throw new AssertionError("custom types missing after real reload");
+            if (alpha.id() != 100 || beta.id() != 101)
+                throw new AssertionError("unexpected id allocation: " + alpha.id() + "/" + beta.id());
+            var cfg = alpha.config();
+            if (cfg.salt() != 2358902 || cfg.regionSize() != 27 || cfg.chunkRange() != 12)
+                throw new AssertionError("wrong parsed placement: salt=" + cfg.salt()
+                        + " spacing=" + cfg.regionSize() + " chunkRange=" + cfg.chunkRange());
+            if (!Identifier.parse("minecraft:blue_ice").equals(alpha.iconItem()))
+                throw new AssertionError("c:structure_icons not parsed for alpha: " + alpha.iconItem());
+            if (beta.iconItem() != null)
+                throw new AssertionError("beta should fall back to default icon");
+        });
+
+        // 5. 全链路: REGIONS 收录真实注入的 id
+        context.waitFor(client -> anyLoadedCandidate(100, 101), 400);
+        context.waitTicks(5);
+        context.takeScreenshot("5-real-datapack-map");
+        LOGGER.info("real datapack structures visible in REGIONS");
+
+        // 6. 清理: disable 触发重载 → 无数据包 → clear 路径
+        singleplayer.getServer().runCommand("datapack disable \"file/xsmtest_dp\"");
+        context.waitFor(client -> StructureTypes.customTypes().isEmpty(), 400);
+        LOGGER.info("real datapack disable cleared injection");
+    }
+
+    private static String setJson(int salt, String structure) {
+        return "{\"placement\":{\"type\":\"minecraft:random_spread\",\"salt\":" + salt
+                + ",\"spacing\":27,\"separation\":15,\"spread_type\":\"linear\"},"
+                + "\"structures\":[{\"structure\":\"" + structure + "\",\"weight\":1}]}";
     }
 }
