@@ -77,10 +77,15 @@ class ResourceManagerSourceTest {
                     });
         }
 
-        /** 过滤参数跨版本是 Predicate/Selector（单抽象方法 test(Identifier)），反射调用。 */
+        /**
+         * 过滤参数跨版本是 Predicate（test）/ Selector（isIncluded，26.3+，
+         * 传入的可能是 CompatResources 的 Proxy 实现），按两个已知方法名
+         * 反射调用。
+         */
         private static boolean applyFilter(Object filter, Identifier id) {
             for (Method m : filter.getClass().getMethods()) {
-                if (m.getName().equals("test") && m.getParameterCount() == 1) {
+                if (m.getParameterCount() == 1
+                        && (m.getName().equals("test") || m.getName().equals("isIncluded"))) {
                     try {
                         return (boolean) m.invoke(filter, id);
                     } catch (ReflectiveOperationException e) {
@@ -88,7 +93,7 @@ class ResourceManagerSourceTest {
                     }
                 }
             }
-            throw new IllegalStateException("filter has no single-arg test method: " + filter.getClass());
+            throw new IllegalStateException("filter has no single-arg test/isIncluded method: " + filter.getClass());
         }
     }
 
