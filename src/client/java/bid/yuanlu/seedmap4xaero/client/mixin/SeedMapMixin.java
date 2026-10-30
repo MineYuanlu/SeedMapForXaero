@@ -10,6 +10,7 @@ import bid.yuanlu.seedmap4xaero.client.cache.CacheHelper;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.compat.CompatTextures;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
+import bid.yuanlu.seedmap4xaero.client.configs.datapack.DatapackImportsConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.perf.PerfConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
@@ -207,6 +208,7 @@ public class SeedMapMixin {
         if (this.mapProcessor != null) {
             ServerConfig.activate(this.mapProcessor);
             StructureDataConfig.activate(this.mapProcessor);
+            DatapackImportsConfig.activate(this.mapProcessor);
         }
     }
 

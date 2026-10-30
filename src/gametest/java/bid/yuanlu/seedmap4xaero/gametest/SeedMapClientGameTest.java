@@ -3,6 +3,7 @@ package bid.yuanlu.seedmap4xaero.gametest;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -165,6 +166,10 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         // /reload 发现 → /datapack enable 触发重载 → END_DATA_PACK_RELOAD
         // hook → 真实 scan() → 注入 → c: 图标解析 → disable 清除
         assertRealDatapackReload(context, singleplayer);
+
+        // 手动导入内核 (v2.0): /sm4x datapack add/list/remove 真实客户端命令
+        // 链路 — 聊天反馈截图直接文字确认 (识别结构集/结构数、列表、清空)
+        assertManualDatapackImport(context);
     }
 
     /**
@@ -1067,5 +1072,78 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         return "{\"placement\":{\"type\":\"minecraft:random_spread\",\"salt\":" + salt
                 + ",\"spacing\":27,\"separation\":15,\"spread_type\":\"linear\"},"
                 + "\"structures\":[{\"structure\":\"" + structure + "\",\"weight\":1}]}";
+    }
+
+    // ─── 手动导入内核 E2E (v2.0, /sm4x datapack 命令链路) ───────
+
+    /**
+     * {@code /sm4x datapack} 真实客户端命令端到端：gameDir 下造 zip fixture →
+     * {@code add <相对路径>}（走 {@code DatapackImports} 内核：校验 + 持久化 +
+     * 手动源 reload）→ 聊天反馈截图（"已导入 — 识别 N 个结构集 / M 个结构"）→
+     * 断言手动源生效（手动优先语义）→ {@code list} 截图 → {@code remove 1}
+     * 反馈截图（"当前 0 个结构集"）→ 断言清空。三张聊天截图让 datapack 功能
+     * 可直接目视确认（地图琥珀图标之外的正交证据）。
+     */
+    private static void assertManualDatapackImport(ClientGameTestContext context) {
+        // 1. zip fixture (gameDir 下; PathDatapackSource 布局 data/<ns>/<path>)
+        context.runOnClient(client -> {
+            final Path zip = client.gameDirectory.toPath().resolve("xsm-e2e-datapack.zip");
+            try (java.util.zip.ZipOutputStream out =
+                         new java.util.zip.ZipOutputStream(Files.newOutputStream(zip))) {
+                out.putNextEntry(new java.util.zip.ZipEntry("data/xsmtest/worldgen/structure_set/alpha.json"));
+                out.write(setJson(2358902, "xsmtest:alpha").getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+                out.putNextEntry(new java.util.zip.ZipEntry("data/xsmtest/worldgen/structure_set/beta.json"));
+                out.write(setJson(2358903, "xsmtest:beta").getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+                out.putNextEntry(new java.util.zip.ZipEntry("data/xsmtest/worldgen/structure/alpha.json"));
+                out.write("{\"biomes\":[\"minecraft:plains\"]}".getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+                out.putNextEntry(new java.util.zip.ZipEntry("data/xsmtest/worldgen/structure/beta.json"));
+                out.write("{\"biomes\":[\"minecraft:desert\"]}".getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+
+        // 关闭地图等 screen, 保证聊天 HUD 在截图中可见
+        context.setScreen(() -> null);
+        context.waitTick();
+
+        // 2. add <相对路径> (gameDir 为基准) → 反馈 "已导入 — 识别 2 个结构集 / 2 个结构"
+        context.runOnClient(client -> client.getConnection()
+                .sendCommand("sm4x datapack add xsm-e2e-datapack.zip"));
+        context.waitTicks(5);
+        context.takeScreenshot("6a-datapack-add-feedback");
+
+        // 3. 手动源生效 (手动优先语义): 注册表 + REGIONS 收录
+        context.waitFor(client -> {
+            var keys = StructureTypes.customTypes().stream().map(CustomStructureType::key).toList();
+            return keys.contains("xsmtest:alpha") && keys.contains("xsmtest:beta");
+        }, 400);
+        context.waitFor(client -> anyLoadedCandidate(100, 101), 400);
+        LOGGER.info("manual datapack import active (manual-first semantics verified)");
+
+        // 4. list 截图 (导入列表 + 优先级)
+        context.runOnClient(client -> client.getConnection().sendCommand("sm4x datapack list"));
+        context.waitTicks(5);
+        context.takeScreenshot("6b-datapack-list");
+
+        // 5. remove → 反馈 "已移除 ... 当前 0 个结构集 / 0 个结构" (列表空 → 单机 RM → clear)
+        context.runOnClient(client -> client.getConnection().sendCommand("sm4x datapack remove 1"));
+        context.waitTicks(5);
+        context.takeScreenshot("6c-datapack-remove-feedback");
+
+        // 6. 清空确认 + fixture 清理
+        context.waitFor(client -> StructureTypes.customTypes().isEmpty(), 400);
+        context.runOnClient(client -> {
+            try {
+                Files.deleteIfExists(client.gameDirectory.toPath().resolve("xsm-e2e-datapack.zip"));
+            } catch (IOException e) {
+                LOGGER.warn("failed to delete zip fixture", e);
+            }
+        });
+        LOGGER.info("manual datapack import/remove E2E passed");
     }
 }
