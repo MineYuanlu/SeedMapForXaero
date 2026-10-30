@@ -5,10 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
-import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,14 +16,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Predicate;
 import java.util.stream.Stream;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 
 import org.junit.jupiter.api.Test;
 
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.packs.PackResources;
-import net.minecraft.server.packs.resources.IoSupplier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
@@ -39,8 +36,12 @@ import net.minecraft.server.packs.resources.ResourceManager;
  */
 class ResourceManagerSourceTest {
 
-    /** 每 id 按优先级高→低存层; listResources 递归前缀匹配, 只暴露给被测代码语义。 */
-    private static final class FakeRm implements ResourceManager {
+    /**
+     * 每 id 按优先级高→低存层; listResources 递归前缀匹配。
+     * 经 {@link Proxy} 按方法名分发实现 ResourceManager（26.3 起过滤参数
+     * 类型由 Predicate 改 Selector, 显式 @Override 跨版本编译不兼容）。
+     */
+    private static final class FakeRm {
         final Map<Identifier, List<Resource>> layers = new HashMap<>();
 
         void put(String id, String... contentsHighToLow) {
@@ -52,52 +53,42 @@ class ResourceManagerSourceTest {
             layers.put(Identifier.parse(id), List.copyOf(stack));
         }
 
-        private String read(Resource r) {
-            try (BufferedReader br = r.openAsReader()) {
-                StringBuilder sb = new StringBuilder();
-                int c;
-                while ((c = br.read()) != -1)
-                    sb.append((char) c);
-                return sb.toString();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+        ResourceManager proxy() {
+            return (ResourceManager) Proxy.newProxyInstance(
+                    ResourceManager.class.getClassLoader(),
+                    new Class<?>[] { ResourceManager.class },
+                    (p, method, args) -> switch (method.getName()) {
+                        case "getResource" -> {
+                            List<Resource> stack = layers.get(args[0]);
+                            yield stack == null ? Optional.empty() : Optional.of(stack.get(0));
+                        }
+                        case "getResourceStack" -> layers.getOrDefault(args[0], List.of());
+                        case "listResources" -> {
+                            Map<Identifier, Resource> out = new LinkedHashMap<>();
+                            layers.forEach((id, stack) -> {
+                                if (id.getPath().startsWith(args[0] + "/") && applyFilter(args[1], id))
+                                    out.put(id, stack.get(0));
+                            });
+                            yield out;
+                        }
+                        case "getNamespaces" -> Set.of();
+                        case "listPacks" -> Stream.empty();
+                        default -> throw new UnsupportedOperationException(method.getName());
+                    });
+        }
+
+        /** 过滤参数跨版本是 Predicate/Selector（单抽象方法 test(Identifier)），反射调用。 */
+        private static boolean applyFilter(Object filter, Identifier id) {
+            for (Method m : filter.getClass().getMethods()) {
+                if (m.getName().equals("test") && m.getParameterCount() == 1) {
+                    try {
+                        return (boolean) m.invoke(filter, id);
+                    } catch (ReflectiveOperationException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
             }
-        }
-
-        @Override
-        public Set<String> getNamespaces() {
-            return Set.of();
-        }
-
-        @Override
-        public Optional<Resource> getResource(Identifier id) {
-            List<Resource> stack = layers.get(id);
-            return stack == null ? Optional.empty() : Optional.of(stack.get(0));
-        }
-
-        @Override
-        public List<Resource> getResourceStack(Identifier id) {
-            return layers.getOrDefault(id, List.of());
-        }
-
-        @Override
-        public Map<Identifier, Resource> listResources(String folder, Predicate<Identifier> filter) {
-            Map<Identifier, Resource> out = new LinkedHashMap<>();
-            layers.forEach((id, stack) -> {
-                if (id.getPath().startsWith(folder + "/") && filter.test(id))
-                    out.put(id, stack.get(0));
-            });
-            return out;
-        }
-
-        @Override
-        public Map<Identifier, List<Resource>> listResourceStacks(String folder, Predicate<Identifier> filter) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Stream<PackResources> listPacks() {
-            return Stream.empty();
+            throw new IllegalStateException("filter has no single-arg test method: " + filter.getClass());
         }
     }
 
@@ -120,7 +111,7 @@ class ResourceManagerSourceTest {
         rm.put("terralith:worldgen/structure/txt.json", "{}");
         rm.put("terralith:worldgen/biome/other.json", "{}");
 
-        Map<Identifier, ? extends Reader> out = new ResourceManagerSource(rm)
+        Map<Identifier, ? extends Reader> out = new ResourceManagerSource(rm.proxy())
                 .readAllJson("worldgen/structure_set");
         assertEquals(Set.of(
                 "terralith:worldgen/structure_set/regular.json",
@@ -135,7 +126,7 @@ class ResourceManagerSourceTest {
         FakeRm rm = new FakeRm();
         rm.put("terralith:worldgen/structure_set/regular.json", "{\"v\":2}", "{\"v\":1}");
 
-        Map<Identifier, ? extends Reader> out = new ResourceManagerSource(rm)
+        Map<Identifier, ? extends Reader> out = new ResourceManagerSource(rm.proxy())
                 .readAllJson("worldgen/structure_set");
         assertEquals(1, out.size());
         Reader reader = out.get(Identifier.parse("terralith:worldgen/structure_set/regular.json"));
@@ -148,7 +139,7 @@ class ResourceManagerSourceTest {
         FakeRm rm = new FakeRm();
         rm.put("terralith:tags/worldgen/biome/has_structure/x.json", "{\"b\":2}", "{\"b\":1}");
 
-        List<? extends Reader> stack = new ResourceManagerSource(rm)
+        List<? extends Reader> stack = new ResourceManagerSource(rm.proxy())
                 .readJsonStack(Identifier.parse("terralith:tags/worldgen/biome/has_structure/x.json"));
         assertNotNull(stack);
         assertEquals(2, stack.size());
@@ -159,7 +150,7 @@ class ResourceManagerSourceTest {
     @Test
     void readJsonStackMissingReturnsNull() {
         FakeRm rm = new FakeRm();
-        assertNull(new ResourceManagerSource(rm)
+        assertNull(new ResourceManagerSource(rm.proxy())
                 .readJsonStack(Identifier.parse("terralith:tags/worldgen/biome/none.json")));
     }
 
@@ -167,7 +158,7 @@ class ResourceManagerSourceTest {
     void readJsonReturnsTopLayerOrNullOrNullWhenMissing() throws IOException {
         FakeRm rm = new FakeRm();
         rm.put("terralith:worldgen/structure/s.json", "{\"top\":true}", "{\"low\":true}");
-        ResourceManagerSource src = new ResourceManagerSource(rm);
+        ResourceManagerSource src = new ResourceManagerSource(rm.proxy());
 
         assertEquals("{\"top\":true}", contentOf(
                 src.readJson(Identifier.parse("terralith:worldgen/structure/s.json"))));
@@ -178,7 +169,7 @@ class ResourceManagerSourceTest {
     void readersCarryUtf8Content() throws IOException {
         FakeRm rm = new FakeRm();
         rm.put("terralith:worldgen/structure_set/u.json", "{\"n\":\"组\"}");
-        Reader r = new ResourceManagerSource(rm)
+        Reader r = new ResourceManagerSource(rm.proxy())
                 .readAllJson("worldgen/structure_set")
                 .get(Identifier.parse("terralith:worldgen/structure_set/u.json"));
         assertNotNull(r);

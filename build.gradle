@@ -67,10 +67,17 @@ dependencies {
 	compileOnly(xaeroMap) { exclude group: 'xaero.pvp' }
 	runtimeOnly(xaeroMap) { exclude group: 'xaero.pvp' }
 	// 旧版 World Map POM 把 XaeroLib 声明为 runtime scope，compileOnly 不携带，
-	// 显式声明；默认 `[1.1.0,)` 与 Xaero 自身下限一致（各线解析到最新），
-	// 可经 xaeroLibVersion 显式 pin（避免上游新发布的 xaerolib 与旧版 World Map
-	// 二进制不兼容——如 1.8.5 改了 ReflectionUtils.getFieldReflection 签名）。
-	def xaeroLib = project.findProperty('xaeroLibVersion') ?: '[1.1.0,)'
+	// 显式声明。xaerolib 1.8.x 修改 ReflectionUtils.getFieldReflection 签名
+	// （两参 → 三参），仅与新版 World Map（≥1.42）二进制兼容——旧版 World Map
+	// （≤1.41.x，各线同名发布）会 NoSuchMethodError，且只在 productionRuntimeMods
+	// 撞上（compileClasspath 的 resolution 先于锁定版本掩盖漂移）。
+	// 规则：World Map ≥1.42 → 浮动 [1.1.0,)；≤1.41.x → 按线 pin 已知两参版本。
+	// -PxaeroLibVersion 可显式覆盖。
+	def _mapVer = (project.findProperty('xaeroMapVersion') ?: '') as String
+	def _newWorldmap = _mapVer.empty || _mapVer >= '1.42'
+	def _xaeroLibPins = ['26.1.2': '1.1.17', '26.2': '1.7.3', '26.3': '1.7.17']
+	def xaeroLib = project.findProperty('xaeroLibVersion')
+			?: (_newWorldmap ? '[1.1.0,)' : (_xaeroLibPins[project.findProperty('xaeroMapLine')] ?: '[1.1.0,)') )
 	compileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:${xaeroLib}")
 	runtimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:${xaeroLib}")
 	// dev runtime 加 minimap: waypoint 转换 (SupportMods.minimap()) 需要真实 mod。

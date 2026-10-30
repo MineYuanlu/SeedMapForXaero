@@ -15,6 +15,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
+import bid.yuanlu.seedmap4xaero.client.compat.CompatResources;
+
 /**
  * 单机实现: 集成服务器的 {@link ResourceManager}。
  * <p>
@@ -40,7 +42,7 @@ public final class ResourceManagerSource implements DatapackSource {
 
     private static @NotNull Reader open(Resource resource) {
         try {
-            return resource.openAsReader();
+            return CompatResources.openReader(resource);
         } catch (IOException e) {
             throw new RuntimeException("Failed to open resource", e);
         }
@@ -48,8 +50,9 @@ public final class ResourceManagerSource implements DatapackSource {
 
     @Override
     public @NotNull Map<Identifier, ? extends Reader> readAllJson(@NotNull String folder) {
-        // 只收 .json 后缀 (与 vanilla listResources 的常规用法一致)
-        Map<Identifier, Resource> found = rm.listResources(folder,
+        // 只收 .json 后缀 (与 vanilla listResources 的常规用法一致);
+        // 经 CompatResources 反射调用 (26.3 过滤参数类型改 Selector, 二进制不兼容)
+        Map<Identifier, Resource> found = CompatResources.listResources(rm, folder,
                 id -> id.getPath().endsWith(".json"));
         Map<Identifier, Reader> out = new LinkedHashMap<>(found.size());
         found.forEach((id, resource) -> out.put(id, open(resource)));
@@ -58,7 +61,7 @@ public final class ResourceManagerSource implements DatapackSource {
 
     @Override
     public @Nullable List<? extends Reader> readJsonStack(@NotNull Identifier id) {
-        List<Resource> stack = rm.getResourceStack(id);
+        List<Resource> stack = CompatResources.resourceStack(rm, id);
         if (stack.isEmpty())
             return null;
         // ResourceManager 语义: 高优先级在前 → 反转为低优先级在前 (tag 合并顺序)
@@ -70,7 +73,7 @@ public final class ResourceManagerSource implements DatapackSource {
 
     @Override
     public @Nullable Reader readJson(@NotNull Identifier id) {
-        return rm.getResource(id).map(ResourceManagerSource::open).orElse(null);
+        return CompatResources.resource(rm, id).map(ResourceManagerSource::open).orElse(null);
     }
 
     /** 静默关闭读取器 (扫描循环用)。 */
