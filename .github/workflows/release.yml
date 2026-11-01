@@ -1,7 +1,7 @@
 name: release
 
 # 手动发布：bump 版本并打 tag → 编译全平台 native（reusable-native-build）→
-# 汇总 JAR、生成 changelog、发布 Modrinth + GitHub Release。
+# 汇总 JAR、生成 changelog、发布 CurseForge → Modrinth → GitHub Release。
 on:
   workflow_dispatch:
     inputs:
@@ -115,6 +115,11 @@ jobs:
             echo "**Full Changelog**: https://github.com/MineYuanlu/SeedMapForXaero/commits/v${{ needs.bump.outputs.version }}"
             echo 'EOF_M'
           } >> "$GITHUB_ENV"
+      - name: Publish to CurseForge
+        run: python3 .github/scripts/publish_curseforge.py "build/libs/seed-map-for-xaero-${{ needs.bump.outputs.version }}.jar"
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CHANGELOG: ${{ env.CHANGELOG }}
       - name: Publish to Modrinth
         run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
         env:
