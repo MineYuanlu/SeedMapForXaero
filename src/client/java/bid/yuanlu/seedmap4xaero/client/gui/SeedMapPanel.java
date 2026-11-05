@@ -27,6 +27,7 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.WidgetSprites;
 import net.minecraft.client.resources.language.I18n;
@@ -954,6 +955,11 @@ public class SeedMapPanel {
 
     // ─── MOUSE ──────────────────────────────────────────────
 
+    /** 面板交互是手工路由的 (绕开 AbstractWidget.mouseClicked), 状态变更交互在此补 vanilla 按钮点击音。 */
+    private static void playClickSound() {
+        AbstractWidget.playButtonClickSound(Minecraft.getInstance().getSoundManager());
+    }
+
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!panelOpen)
             return false;
@@ -986,10 +992,12 @@ public class SeedMapPanel {
         // biome section header: checkbox toggles enable, rest of the header toggles expand
         int y = PADDING;
         if (hitCheckbox(mx, my, y)) {
+            playClickSound();
             toggleBiome();
             return true;
         }
         if (hitHeader(mx, my, y)) {
+            playClickSound();
             biomeExpanded = !biomeExpanded;
             return true;
         }
@@ -999,6 +1007,7 @@ public class SeedMapPanel {
             y += PADDING;
             // color scheme button
             if (mx >= PADDING && mx <= PADDING + 20 && my >= y && my <= y + 20) {
+                playClickSound();
                 cycleScheme();
                 return true;
             }
@@ -1015,6 +1024,7 @@ public class SeedMapPanel {
                     BiomeType b = filteredBiomes.get(i);
                     var wc = ServerConfig.getActiveWorldConfig();
                     if (wc != null) {
+                        playClickSound();
                         boolean disabled = wc.getDisabledBiomes().get(b.id);
                         wc.setBiomeDisabled(b.id, !disabled);
                         Xsm.setBiomeDisabled(wc.getDisabledBiomes());
@@ -1032,10 +1042,12 @@ public class SeedMapPanel {
         // structure section header: checkbox toggles enable, rest of the header toggles expand
         int structHeaderY = y;
         if (hitCheckbox(mx, my, y)) {
+            playClickSound();
             ServerConfig.setStructureEnabled(!ServerConfig.isStructureEnabled());
             return true;
         }
         if (hitHeader(mx, my, y)) {
+            playClickSound();
             structureExpanded = !structureExpanded;
             return true;
         }
@@ -1048,6 +1060,7 @@ public class SeedMapPanel {
         var L = structLayout(structHeaderY);
         int tab = hitTab(mx, my, L);
         if (tab >= 0 && tab != structTab) {
+            playClickSound();
             structTab = tab;
             deleteArmed = false;
             colorSliderDrag = -1;
@@ -1072,6 +1085,7 @@ public class SeedMapPanel {
                         StructRow row = filteredStructures.get(i);
                         var wc = ServerConfig.getActiveWorldConfig();
                         if (wc != null) {
+                            playClickSound();
                             StructureBitFlagView flags = wc.getDisabledStructures();
                             if (row.isVariant()) {
                                 int v = row.variant();
@@ -1101,6 +1115,7 @@ public class SeedMapPanel {
     /** 性能区点击 (headerY = 区头 y); 始终消费 (面板内点击)。 */
     private boolean clickPerfSection(int mx, int my, int headerY) {
         if (hitHeader(mx, my, headerY)) {
+            playClickSound();
             perfExpanded = !perfExpanded;
             return true;
         }
@@ -1140,12 +1155,17 @@ public class SeedMapPanel {
     }
 
     private static boolean hitPerfRow(int mx, int my, int rowY) {
-        return my >= rowY && my <= rowY + ITEM_H;
+        if (my >= rowY && my <= rowY + ITEM_H) {
+            playClickSound();
+            return true;
+        }
+        return false;
     }
 
     private boolean hitPerfSliderRow(int mx, int my, int rowY, int id) {
         if (my < rowY || my >= rowY + PERF_SLIDER_H)
             return false;
+        playClickSound();
         perfSliderDrag = id;
         applyPerfSlider(mx, id);
         return true;
@@ -1198,11 +1218,13 @@ public class SeedMapPanel {
                 deleteArmed = false;
                 colorSliderDrag = -1;
                 if (mx >= PADDING && mx <= PADDING + 9) {
+                    playClickSound();
                     StructureDataConfig.setGroupHidden(group,
                             !StructureDataConfig.isGroupHidden(group));
                     return true;
                 }
                 if (mx >= PADDING + 12) {
+                    playClickSound();
                     // 再点当前展开的组行 = 收起; 否则展开/搬移 (含未分组)
                     if (group.equals(editorGroup)) {
                         if (editorColorDirty) {
@@ -1226,6 +1248,7 @@ public class SeedMapPanel {
         // 新建组行
         if (y < listBottom && my >= y && my < y + ITEM_H) {
             deleteArmed = false;
+            playClickSound();
             createGroup();
             return true;
         }
@@ -1243,6 +1266,7 @@ public class SeedMapPanel {
             if (my >= sliderY && my < sliderY + 12) {
                 deleteArmed = false;
                 if (mx >= COLOR_TRACK_X0 && mx <= PANEL_WIDTH - PADDING) {
+                    playClickSound();
                     colorSliderDrag = id;
                     applyColorSliderDrag(mx);
                 }
@@ -1260,6 +1284,7 @@ public class SeedMapPanel {
                         ? "xsm.gui.panel.group_delete_confirm" : "xsm.gui.panel.group_delete");
                 int delW = font.width(delLabel) + 8;
                 if (mx >= x0 && mx <= x0 + delW) {
+                    playClickSound();
                     if (!deleteArmed) {
                         deleteArmed = true;
                     } else if (StructureDataConfig.removeGroup(group)) {
@@ -1275,6 +1300,7 @@ public class SeedMapPanel {
                     String resetLabel = I18n.get("xsm.gui.panel.group_reset_color");
                     int rw = font.width(resetLabel) + 8;
                     if (mx >= x0 && mx <= x0 + rw) {
+                        playClickSound();
                         StructureDataConfig.clearGroupColor(group);
                         openGroupEditor(group); // 同步滑条到默认色
                         return true;
@@ -1287,9 +1313,11 @@ public class SeedMapPanel {
             if (mx >= doneX && mx <= doneX + doneW) {
                 deleteArmed = false;
                 if (canCommitRename(group)) {
+                    playClickSound();
                     // 改名内部已 flush (含颜色); openGroupEditor 会清 dirty
                     commitGroupRename(group);
                 } else if (editorColorDirty) {
+                    playClickSound();
                     editorColorDirty = false;
                     StructureDataConfig.flush();
                 }
@@ -1348,12 +1376,14 @@ public class SeedMapPanel {
         int thumbX = sliderStart + (int) (t * trackLen);
 
         if (mx >= thumbX && mx <= thumbX + thumbW && my >= y && my <= y + thumbH) {
+            playClickSound();
             sliderDragging = true;
             updateSlider(mx);
             return true;
         }
         // also allow click on track
         if (mx >= sliderStart && mx <= sliderEnd && my >= y && my <= y + thumbH) {
+            playClickSound();
             sliderDragging = true;
             updateSlider(mx);
             return true;
@@ -1362,6 +1392,7 @@ public class SeedMapPanel {
         // loot preview checkbox
         y += thumbH + 5;
         if (mx >= PADDING && mx <= PADDING + 9 && my >= y && my <= y + ITEM_H) {
+            playClickSound();
             boolean next = !ServerConfig.isLootPreviewEnabled();
             ServerConfig.setLootPreviewEnabled(next);
             if (!next)
@@ -1373,6 +1404,7 @@ public class SeedMapPanel {
         int modeBtnW = font.width(modeName) + 10;
         int modeBtnX = PANEL_WIDTH - PADDING - modeBtnW;
         if (mx >= modeBtnX && mx <= modeBtnX + modeBtnW && my >= y && my <= y + ITEM_H) {
+            playClickSound();
             var next = ServerConfig.getLootDisplayMode().ordinal() + 1;
             ServerConfig.setLootDisplayMode(LootDisplayMode.values()[next % LootDisplayMode.values().length]);
             LootPreviewState.close();
