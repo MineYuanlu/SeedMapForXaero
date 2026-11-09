@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated": "2026-10-26T08:49:52Z",
+  "generated": "2026-11-09T11:25:15Z",
   "minMinecraft": "26.1",
   "versions": [
     {
@@ -11,7 +11,7 @@
       "xaeroOldest": "1.46.2",
       "xaeroNewest": "1.47.2",
       "xaeroMinimap": "26.6.2",
-      "fabricApi": "0.165.0+26.3"
+      "fabricApi": "0.165.2+26.3"
     },
     {
       "id": "26.2",
