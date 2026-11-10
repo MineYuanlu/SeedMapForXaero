@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "updated": "2026-11-03T12:14:55Z",
+  "updated": "2026-11-10T12:54:11Z",
   "windows": {
     "msys2": {
       "packages": {
-        "mingw-w64-x86_64-crt": "14.0.0.r569.g34eeafb7d-1",
-        "mingw-w64-x86_64-headers": "14.0.0.r569.g34eeafb7d-1",
-        "mingw-w64-x86_64-libwinpthread": "14.0.0.r569.g34eeafb7d-1",
-        "mingw-w64-x86_64-winpthreads": "14.0.0.r569.g34eeafb7d-1",
+        "mingw-w64-x86_64-crt": "14.0.0.r598.ge3d18511f-1",
+        "mingw-w64-x86_64-headers": "14.0.0.r598.ge3d18511f-1",
+        "mingw-w64-x86_64-libwinpthread": "14.0.0.r598.ge3d18511f-1",
+        "mingw-w64-x86_64-winpthreads": "14.0.0.r598.ge3d18511f-1",
         "mingw-w64-x86_64-gcc": "16.2.0-6",
         "mingw-w64-x86_64-binutils": "2.47-4",
         "mingw-w64-x86_64-cmake": "4.4.5-1",
