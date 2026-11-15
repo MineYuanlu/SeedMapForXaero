@@ -35,20 +35,22 @@ cmake --build build-test --target xsmtest && ./build-test/xsmtest   # C 单测
 版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`/`xaeroMinimapVersion`）。
 CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 
-### CI 触发矩阵（单人开发流程）
+### CI 触发矩阵（单人开发流程，GitHub Flow）
 
-开发流程：feature 分支只跑快速检查；**develop 是合入 master 前的完整门禁**（版本矩阵 + E2E + 全平台 native + 打包全绿才合）；master 再次全量确认；tag 触发的 build 供发版引用。
+开发流程（GitHub Flow，无 develop）：feature 分支（`dev/xxx`、`fix/xxx`）从 master 拉出，**PR → master 跑完整门禁**（`gate` + `build-gate` required checks 全绿 + 分支基于最新 master 才能合，管理员可绕过）；master 推送再次全量确认；tag 触发的 build 供发版引用。PR 描述写 `fixes #<issue>`，合入 master 时自动关闭 issue。
 
 | 触发 | `pr-check.yml` | `matrix-test.yml` | `build.yml` |
 | ---- | -------------- | ----------------- | ----------- |
 | `dev/xxx`、`fix/xxx` 推送 | ✅ 快速检查（C 单测 + JUnit + JAR） | — | — |
-| develop 推送 | — | ✅ 版本矩阵 + E2E | ✅ 全平台 native + 打包 |
-| master 推送 | — | ✅ 版本矩阵 + E2E | ✅ 全平台 native + 打包 |
+| PR → master | —（跳过，避免与全量重复） | ✅ 版本矩阵 + E2E（聚合 `gate`） | ✅ 全平台 native + 打包（聚合 `build-gate`） |
+| master 推送 | — | ✅ 版本矩阵 + E2E（聚合 `gate`） | ✅ 全平台 native + 打包（聚合 `build-gate`） |
 | tag `v*` 推送 | — | — | ✅ 全平台 native + 打包 |
-| pull_request | ✅ 快速检查 | — | — |
+| PR → 非 master 分支 | ✅ 快速检查 | — | — |
 | 手动 | — | ✅ | build-test-jar / release |
 
-手动触发支持在任意分支/提交跑全量门禁（不必 push 到 develop）：`matrix-test.yml` / `build.yml` / `build-test-jar.yml` 均有可选 `ref` input（分支/tag/SHA，默认 = dispatch 时选的 ref）：
+master 的 branch protection：required checks 为固定名聚合 job `gate`（matrix-test.yml）+ `build-gate`（build.yml）——动态矩阵 job 名含版本号（如 `test (26.1 / 1.41.0)`）会随 versions.json 增长而变，reusable workflow 调用的 check 名是 `调用job / 被调job` 格式，都不宜直接作 required check；另要求分支基于最新 master（up-to-date）。
+
+手动触发支持在任意分支/提交跑全量门禁：`matrix-test.yml` / `build.yml` / `build-test-jar.yml` 均有可选 `ref` input（分支/tag/SHA，默认 = dispatch 时选的 ref）：
 
 ```bash
 gh workflow run matrix-test.yml --ref dev/xxx          # 版本矩阵 + E2E
@@ -79,7 +81,7 @@ native/windows/x86_64/xsmcore.dll
 - `generateNativeBindings` (jextract) → `all.h` → `XsmNative.java` (FFM, gitignored)。绑定硬编码 LP64，跨架构复用一份。
 - `clean` deletes generated bindings + `src/main/c/build*`.
 - Windows cross-compile: `compileNativeWindows` via MinGW (`mingw-toolchain.cmake`).
-- CI 编译 job 各自产出 `src/main/c/build/<target>/`，汇总进 JAR。全平台 native 矩阵（5 个 compile job）统一在 `reusable-native-build.yml`；下载 natives + 打包 universal JAR 统一在 `reusable-package.yml`（含 JAR 内置校验）。`build.yml`（develop/master/tag push）、`release.yml`、`build-test-jar.yml` 均通过 `uses:` 调用这两个可复用 workflow；feature 分支/PR 的快速检查在 `pr-check.yml`。
+- CI 编译 job 各自产出 `src/main/c/build/<target>/`，汇总进 JAR。全平台 native 矩阵（5 个 compile job）统一在 `reusable-native-build.yml`；下载 natives + 打包 universal JAR 统一在 `reusable-package.yml`（含 JAR 内置校验）。`build.yml`（master/tag push + PR → master）、`release.yml`、`build-test-jar.yml` 均通过 `uses:` 调用这两个可复用 workflow；feature 分支/PR 的快速检查在 `pr-check.yml`。
 
 ## Release
 

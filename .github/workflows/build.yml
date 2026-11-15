@@ -2,15 +2,17 @@ name: build
 
 # 全面门禁：编译全平台 native（reusable-native-build）+ 汇总成 universal JAR（reusable-package）。
 # 产物等同 release 产物（内含全平台 6 个 native 文件），自动产出。
-# 单人开发流程：dev/xxx → develop → master → 手动发版。
-# develop 是合入 master 前的完整验证门禁，因此 develop 与 master 都跑全量构建；
-# tag 触发用于留档 release 引用构建。feature 分支/PR 的快速检查在 pr-check.yml。
+# 单人开发流程：dev/xxx → PR → master → 手动发版。
+# PR → master 是合入前的完整验证门禁（与 matrix-test.yml 并行跑）；
+# tag 触发用于留档 release 引用构建。feature 分支推送/非 master PR 的快速检查在 pr-check.yml。
 # 手动触发支持 inputs.ref 指定任意分支/tag/SHA（默认 = 触发时选的 ref），
-# 供在 push 到 develop 前对 feature 分支/提交跑全量门禁（matrix-test.yml 同）。
+# 供对任意 feature 分支/提交跑全量门禁（matrix-test.yml 同）。
 on:
   push:
-    branches: [master, develop]
+    branches: [master]
     tags: ['v*']
+  pull_request:
+    branches: [master]
   # 手动触发供 refresh-toolchain 在工具链候选分支上拉起完整门禁（gh workflow run --ref）
   workflow_dispatch:
     inputs:
@@ -22,6 +24,11 @@ on:
 
 permissions:
   contents: read
+
+# 同一 PR/push 的新 commit 取消上一个还在跑的 run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   natives:
@@ -39,3 +46,18 @@ jobs:
       run-ctests: true
       verify-natives: true
     secrets: inherit
+
+  # 聚合检查（固定名字，branch protection required check 用）：
+  # natives/package 是 reusable workflow 调用，check 名为 "调用job / 被调job"
+  # 格式（如 "package / package"），不宜直接作 required check。
+  # 命名避开 matrix-test.yml 的聚合 job `gate`（同名 check 会互相覆盖）。
+  build-gate:
+    needs: [natives, package]
+    if: >-
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "build gate passed"

@@ -1,10 +1,12 @@
 name: pr-check
 
 # feature 分支（dev/xxx、fix/xxx）推送与 PR 的快速检查：Linux 上跑 C 单测 + JUnit + 编译 JAR（仅含 Linux native）。
-# develop / master 走全面门禁：matrix-test（版本矩阵 + E2E）+ build.yml（全平台 native + 打包）。
+# PR → master 走全面门禁：matrix-test（版本矩阵 + E2E）+ build.yml（全平台 native + 打包）。
 # 产物仅供人工取用，不等同 release 产物。
 on:
   pull_request:
+    branches-ignore:
+      - master
   push:
     branches-ignore:
       - master
