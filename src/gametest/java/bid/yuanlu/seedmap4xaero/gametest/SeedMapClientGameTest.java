@@ -104,6 +104,24 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
                 }
             }
         }
+
+        // issue #38 回归：try-with-resources close() 的 disconnect 在 Netty 线程触发
+        // DISCONNECT，清理任务经 client.execute 排回客户端线程执行（close() 末尾
+        // waitTicks(2) 已给其执行机会）。若清理缺失或仍跑在 Netty 线程，CellCache.clear()
+        // 会被 RenderSystem 线程断言中断——缓存残留条目、GPU 纹理泄漏、配置仍处于激活态。
+        assertDisconnectCleanup(context);
+    }
+
+    /** 断言断线清理已完成：瓦片缓存清空、配置去激活（见 {@link #xsm$runTest} 末尾注释）。 */
+    private static void assertDisconnectCleanup(ClientGameTestContext context) {
+        context.waitFor(client -> CellCache.entries() == 0, 100);
+        if (ServerConfig.activeMainId() != null) {
+            throw new AssertionError("ServerConfig was not deactivated on disconnect");
+        }
+        if (StructureDataConfig.activeSeed() != null) {
+            throw new AssertionError("StructureDataConfig was not deactivated on disconnect");
+        }
+        LOGGER.info("disconnect cleanup E2E assertions passed");
     }
 
     private void xsm$runAssertions(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
