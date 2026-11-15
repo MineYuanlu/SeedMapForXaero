@@ -6,7 +6,7 @@
 
 ## 关联 Issue / Related issue
 
-<!-- 例如 Closes #123 / e.g. Closes #123 -->
+<!-- 写 `fixes #123`，PR 合入 master 时自动关闭对应 issue / e.g. `fixes #123` (auto-closes the issue when merged into master) -->
 
 ## 变更类型 / Type of change
 

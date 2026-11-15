@@ -1,12 +1,14 @@
 name: matrix-test
 
 # 版本矩阵测试（8 组合编译 + JUnit + C 单测 + 4 路 E2E 真实启动）。
-# 触发：develop / master 推送（全面门禁）+ 手动。feature 分支只跑 pr-check 快速检查。
+# 触发：master 推送（最终确认）+ PR → master（合入门禁）+ 手动。
 # 手动触发支持 inputs.ref 指定任意分支/tag/SHA（默认 = 触发时选的 ref），
-# 供在 push 到 develop 前对 feature 分支/提交跑全量门禁（build.yml 同）。
+# 供对任意 feature 分支/提交跑全量门禁（build.yml 同）。
 on:
   push:
-    branches: [master, develop]
+    branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
     inputs:
       ref:
@@ -17,6 +19,11 @@ on:
 
 permissions:
   contents: read
+
+# 同一 PR/push 的新 commit 取消上一个还在跑的 run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # ── Resolve: expand versions.json into the strategy matrices ──
@@ -217,3 +224,18 @@ jobs:
         with:
           name: client-gametest-screenshots-${{ matrix.mc }}
           path: run/screenshots
+
+  # ── Gate: 固定名字的聚合检查（branch protection required check 用）──────────
+  # test / universal-e2e 是动态矩阵，job 名含版本号（如 "test (26.1 / 1.41.0)"），
+  # versions.json 增长后名字会变，不能作为 required check（失配会让 PR 永远卡
+  # "Expected"）。required checks 只用稳定名：本 job + build.yml 的 natives/package。
+  gate:
+    needs: [resolve, test, build-universal, universal-e2e]
+    if: >-
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "matrix-test gate passed"
