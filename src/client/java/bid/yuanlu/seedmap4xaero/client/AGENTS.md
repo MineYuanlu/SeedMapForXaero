@@ -29,6 +29,7 @@ universal jar 就在其它版本上 NoSuchMethod/FieldError，且编译期不可
 
 - JSON v2: `server_config.json` + `structure_settings.json` + `marks/` region shards (see configs/AGENTS.md); legacy `.sm4x` auto-migrates on load
 - Save cadence: world switch = `save()` (rotate=true, lifecycle checkpoint); in-session ops & 60s periodic flush (`XaeroSeedMapClient` END_CLIENT_TICK) = `flush()` (rotate=false) — rotation contract in configs/core/AGENTS.md
+- **断线清理线程契约**（issue #38）：`ClientPlayConnectionEvents.DISCONNECT` 在 Netty 线程触发（`Connection.channelInactive`），任何触碰 GL 资源的清理（如 `CellCache.clear()` 关 GPU 纹理）必须回客户端线程执行——MC 的 `GlStateManager._deleteTexture` 首行就有 `RenderSystem.assertOnRenderThread()`，非渲染线程抛 `IllegalStateException` 且被 netty 管线静默吞掉，导致清理中途夭折（缓存残留 + 纹理泄漏）。实现上不用 `client.execute`（断线流程里 `Minecraft.disconnect` → `dropAllTasks` 会清空 pendingRunnables，排队任务可能被丢弃），而是 DISCONNECT 置 volatile 标志、由 END_CLIENT_TICK 在渲染线程消费
 
 ## Rendering flow
 
