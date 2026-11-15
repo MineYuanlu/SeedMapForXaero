@@ -37,18 +37,18 @@ CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 
 ### CI 触发矩阵（单人开发流程，GitHub Flow）
 
-开发流程（GitHub Flow，无 develop）：feature 分支（`dev/xxx`、`fix/xxx`）从 master 拉出，**PR → master 跑完整门禁**（`gate` + `natives` + `package` required checks 全绿 + 分支基于最新 master 才能合，管理员可绕过）；master 推送再次全量确认；tag 触发的 build 供发版引用。PR 描述写 `fixes #<issue>`，合入 master 时自动关闭 issue。
+开发流程（GitHub Flow，无 develop）：feature 分支（`dev/xxx`、`fix/xxx`）从 master 拉出，**PR → master 跑完整门禁**（`gate` + `build-gate` required checks 全绿 + 分支基于最新 master 才能合，管理员可绕过）；master 推送再次全量确认；tag 触发的 build 供发版引用。PR 描述写 `fixes #<issue>`，合入 master 时自动关闭 issue。
 
 | 触发 | `pr-check.yml` | `matrix-test.yml` | `build.yml` |
 | ---- | -------------- | ----------------- | ----------- |
 | `dev/xxx`、`fix/xxx` 推送 | ✅ 快速检查（C 单测 + JUnit + JAR） | — | — |
-| PR → master | —（跳过，避免与全量重复） | ✅ 版本矩阵 + E2E（聚合 `gate`） | ✅ 全平台 native + 打包 |
-| master 推送 | — | ✅ 版本矩阵 + E2E（聚合 `gate`） | ✅ 全平台 native + 打包 |
+| PR → master | —（跳过，避免与全量重复） | ✅ 版本矩阵 + E2E（聚合 `gate`） | ✅ 全平台 native + 打包（聚合 `build-gate`） |
+| master 推送 | — | ✅ 版本矩阵 + E2E（聚合 `gate`） | ✅ 全平台 native + 打包（聚合 `build-gate`） |
 | tag `v*` 推送 | — | — | ✅ 全平台 native + 打包 |
 | PR → 非 master 分支 | ✅ 快速检查 | — | — |
 | 手动 | — | ✅ | build-test-jar / release |
 
-master 的 branch protection：required checks 为固定名 `gate`（matrix-test.yml 的聚合 job——`test`/`universal-e2e` 是动态矩阵、名字含版本号会随 versions.json 增长而变，不能作 required check）、`natives` + `package`（build.yml），且要求分支基于最新 master（up-to-date）。
+master 的 branch protection：required checks 为固定名聚合 job `gate`（matrix-test.yml）+ `build-gate`（build.yml）——动态矩阵 job 名含版本号（如 `test (26.1 / 1.41.0)`）会随 versions.json 增长而变，reusable workflow 调用的 check 名是 `调用job / 被调job` 格式，都不宜直接作 required check；另要求分支基于最新 master（up-to-date）。
 
 手动触发支持在任意分支/提交跑全量门禁：`matrix-test.yml` / `build.yml` / `build-test-jar.yml` 均有可选 `ref` input（分支/tag/SHA，默认 = dispatch 时选的 ref）：
 

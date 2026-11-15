@@ -46,3 +46,18 @@ jobs:
       run-ctests: true
       verify-natives: true
     secrets: inherit
+
+  # 聚合检查（固定名字，branch protection required check 用）：
+  # natives/package 是 reusable workflow 调用，check 名为 "调用job / 被调job"
+  # 格式（如 "package / package"），不宜直接作 required check。
+  # 命名避开 matrix-test.yml 的聚合 job `gate`（同名 check 会互相覆盖）。
+  build-gate:
+    needs: [natives, package]
+    if: >-
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "build gate passed"
