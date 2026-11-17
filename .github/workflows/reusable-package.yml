@@ -36,6 +36,9 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
+          # 版本算法（build.gradle）需要完整历史 + tags，否则退化为 0.0.0+<n>.<hash>
+          fetch-depth: 0
+          fetch-tags: true
       - uses: gradle/actions/wrapper-validation@v6
       - uses: actions/setup-java@v5
         with:
@@ -46,18 +49,18 @@ jobs:
       - name: Download native libs
         uses: actions/download-artifact@v8
         with:
-          path: prebuilt/
+          path: build/prebuilt/
       - name: Place native libs
         run: |
           mkdir -p src/main/c/build/linux-x86_64 src/main/c/build/linux-aarch64 \
                    src/main/c/build/android-arm64 src/main/c/build/android-x86_64 \
                    src/main/c/build/macos src/main/c/build-mingw/x86_64
-          cp prebuilt/native-linux-x86_64/libxsmcore.so  src/main/c/build/linux-x86_64/
-          cp prebuilt/native-linux-aarch64/libxsmcore.so src/main/c/build/linux-aarch64/
-          cp prebuilt/native-android-arm64/libxsmcore.so src/main/c/build/android-arm64/
-          cp prebuilt/native-android-x86_64/libxsmcore.so src/main/c/build/android-x86_64/
-          cp prebuilt/native-macos/libxsmcore.dylib src/main/c/build/macos/
-          cp prebuilt/native-windows/xsmcore.dll src/main/c/build-mingw/x86_64/
+          cp build/prebuilt/native-linux-x86_64/libxsmcore.so  src/main/c/build/linux-x86_64/
+          cp build/prebuilt/native-linux-aarch64/libxsmcore.so src/main/c/build/linux-aarch64/
+          cp build/prebuilt/native-android-arm64/libxsmcore.so src/main/c/build/android-arm64/
+          cp build/prebuilt/native-android-x86_64/libxsmcore.so src/main/c/build/android-x86_64/
+          cp build/prebuilt/native-macos/libxsmcore.dylib src/main/c/build/macos/
+          cp build/prebuilt/native-windows/xsmcore.dll src/main/c/build-mingw/x86_64/
       - name: Run C unit tests
         if: inputs.run-ctests
         run: |
