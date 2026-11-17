@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-10T12:54:11Z",
+  "updated": "2026-11-17T13:45:39Z",
   "windows": {
     "msys2": {
       "packages": {
@@ -8,9 +8,9 @@
         "mingw-w64-x86_64-headers": "14.0.0.r598.ge3d18511f-1",
         "mingw-w64-x86_64-libwinpthread": "14.0.0.r598.ge3d18511f-1",
         "mingw-w64-x86_64-winpthreads": "14.0.0.r598.ge3d18511f-1",
-        "mingw-w64-x86_64-gcc": "16.2.0-6",
+        "mingw-w64-x86_64-gcc": "16.2.0-7",
         "mingw-w64-x86_64-binutils": "2.47-4",
-        "mingw-w64-x86_64-cmake": "4.4.5-1",
+        "mingw-w64-x86_64-cmake": "4.5.0-1",
         "mingw-w64-x86_64-ninja": "1.13.2-1"
       }
     }
