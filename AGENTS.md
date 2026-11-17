@@ -85,7 +85,9 @@ native/windows/x86_64/xsmcore.dll
 
 ## Release
 
-`workflow_dispatch` in `.github/workflows/release.yml` with patch/minor/major choice. Auto-bumps `gradle.properties`, commits, tags (vX.Y.Z), builds native matrix, creates GitHub Release, publishes to Modrinth (projectId `UoJSF4vW`).
+`workflow_dispatch` in `.github/workflows/release.yml` with patch/minor/major choice. **Tag-only**（无 bump commit，不触碰受保护的 master）：按最新可达 `v*` tag 计算 bump，在 master HEAD 打 tag 并推送，然后 builds native matrix, creates GitHub Release, publishes to Modrinth (projectId `UoJSF4vW`)。
+
+版本号单一事实源是 git tag，由 `build.gradle` 顶部算法确定性计算：HEAD == tag 且干净 → `X.Y.Z`；否则 → `X.Y.Z+<n>.<hash>[.dirty]`（dirty 含 untracked）。CI 各 job checkout 需 `fetch-depth: 0` + `fetch-tags: true`；`-Pmod_version=...` 可手动覆盖（调试/复现 release 构建）。
 
 `build-test-jar.yml`（workflow_dispatch）：手动产一个 universal JAR 供人工测试，无 bump/tag/发布（调用 `reusable-native-build` + `reusable-package`）。`ref` input 指定分支/tag/SHA（默认 `master`），`runTests` 开关打包时的 C 单测。产物含内置校验：打包后逐项断言 JAR 内含全平台 6 个 native 文件。
 

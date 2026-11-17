@@ -6,7 +6,48 @@ plugins {
 	id 'me.modmuss50.mod-publish-plugin' version "${mod_publish_plugin_version}"
 }
 
-version = project.mod_version
+// 版本号从 git 状态确定性计算（单一事实源 = release tag），不再依赖 gradle.properties。
+// 算法：
+//   base  = 可达（--merged HEAD）tag 中匹配 ^v\d+\.\d+\.\d+$ 且 version 排序最大的一个
+//   n     = rev-list --count <base>..HEAD（无 base 时为总提交数）
+//   dirty = status --porcelain 非空（含 untracked，语义同 git describe --dirty）
+//   HEAD == tag 且干净 → "X.Y.Z"；否则 → "X.Y.Z+<n>.<hash>[.dirty]"
+// 边界：非 git 环境（源码 zip 构建）回退 "0.0.0-local"；-Pmod_version=... 可手动覆盖。
+// 注意：CI checkout 需 fetch-depth: 0 + fetch-tags: true，shallow clone 会退化为 "0.0.0+<n>.<hash>"。
+def gitOut = { List<String> args ->
+	try {
+		return providers.exec {
+			commandLine('git', *args)
+		}.standardOutput.asText.get().trim()
+	} catch (Exception ignored) {
+		return null
+	}
+}
+
+def modVersion = project.findProperty('mod_version')
+if (modVersion == null) {
+	def tags = gitOut(['tag', '--list', '--merged', 'HEAD', '--sort=-version:refname'])
+	def head = gitOut(['rev-parse', 'HEAD'])
+	def status = gitOut(['status', '--porcelain'])
+	if (tags == null || head == null || status == null) {
+		modVersion = '0.0.0-local'
+	} else {
+		def baseTag = tags.split('\n').find { it ==~ /^v\d+\.\d+\.\d+$/ }
+		def baseVer = baseTag ? baseTag.substring(1) : '0.0.0'
+		int n = (baseTag
+				? gitOut(['rev-list', '--count', "${baseTag}..HEAD"])
+				: gitOut(['rev-list', '--count', 'HEAD']))?.toInteger() ?: 0
+		boolean dirty = !status.isEmpty()
+		if (n == 0 && !dirty && baseTag != null) {
+			modVersion = baseVer
+		} else {
+			def meta = [n as String, head.take(8)]
+			if (dirty) meta << 'dirty'
+			modVersion = "${baseVer}+${meta.join('.')}"
+		}
+	}
+}
+version = modVersion
 group = project.maven_group
 
 base {
@@ -420,12 +461,12 @@ publishing {
 }
 
 publishMods {
-	displayName = "Release ${project.mod_version}"
+	displayName = "Release ${project.version}"
 	file = jar.archiveFile
 	type = STABLE
 	modLoaders.add('fabric')
 	changelog = providers.environmentVariable("CHANGELOG")
-		.orElse("See the [commit history](https://github.com/MineYuanlu/SeedMapForXaero/commits/v${project.mod_version}) for details.")
+		.orElse("See the [commit history](https://github.com/MineYuanlu/SeedMapForXaero/commits/v${project.version}) for details.")
 
 	modrinth {
 		projectId = "UoJSF4vW"
