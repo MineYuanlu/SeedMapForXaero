@@ -112,6 +112,20 @@ jobs:
             echo "**Full Changelog**: https://github.com/MineYuanlu/SeedMapForXaero/commits/v${{ needs.bump.outputs.version }}"
             echo 'EOF_M'
           } >> "$GITHUB_ENV"
+      - name: Verify computed version is exact X.Y.Z
+        run: |
+          EXPECTED="${{ needs.bump.outputs.version }}"
+          COMPUTED=$(./gradlew -q --console=plain properties | grep -E '^version: ' | cut -d' ' -f2)
+          echo "computed=$COMPUTED expected=$EXPECTED"
+          # 必须精确 X.Y.Z：带后缀说明工作区 dirty 或 tag 没取到（tag-only 发布的硬性前提）
+          if ! [[ "$COMPUTED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::computed version '$COMPUTED' is not exact X.Y.Z (dirty worktree or missing tag?)"
+            exit 1
+          fi
+          if [ "$COMPUTED" != "$EXPECTED" ]; then
+            echo "::error::computed version '$COMPUTED' != expected '$EXPECTED'"
+            exit 1
+          fi
       - name: Publish to Modrinth
         run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
         env:
