@@ -20,35 +20,31 @@ permissions:
 
 jobs:
   bump:
-    name: Bump version & tag
+    name: Determine version & tag
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
     steps:
       - uses: actions/checkout@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          submodules: recursive
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Bump version in gradle.properties
+          # 完整历史 + tags：版本号按"可达 tag + 提交数"算法计算（见 build.gradle 顶部注释）
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Bump version & push tag
         id: bump
         run: |
-          CURRENT=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          LAST=$(git tag --list --merged HEAD --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST#v}"
+          MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
           case "${{ github.event.inputs.version }}" in
             major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
             minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
             patch) PATCH=$((PATCH + 1)) ;;
           esac
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          sed -i "s/^mod_version=.*/mod_version=${NEW_VERSION}/" gradle.properties
-          git add gradle.properties
-          git commit -m "chore(release): v${NEW_VERSION}"
+          # tag-only：不产生 bump commit，避开 master 分支保护；tag 已存在则在此报错
           git tag "v${NEW_VERSION}"
-          git push origin master
           git push origin "v${NEW_VERSION}"
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -70,8 +66,9 @@ jobs:
         with:
           ref: v${{ needs.bump.outputs.version }}
           submodules: recursive
-          # 完整历史：changelog 的 git describe 需要拿到上一个 tag。
+          # 完整历史 + tags：changelog 需要，版本算法也需要（HEAD==tag 且干净 → 纯 "X.Y.Z"）
           fetch-depth: 0
+          fetch-tags: true
       - uses: gradle/actions/wrapper-validation@v6
       - uses: actions/setup-java@v5
         with:
