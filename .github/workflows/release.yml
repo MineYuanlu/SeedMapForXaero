@@ -224,6 +224,26 @@ jobs:
             echo "generated=$generated"
           } >> "$GITHUB_OUTPUT"
 
+          # 产物可观测性：run Summary 页与日志（折叠）直接可读，发布中/后可审查 AI 产出
+          {
+            echo "## AI Release Notes · v${{ needs.bump.outputs.version }}"
+            echo ""
+            echo "**Title**"
+            echo ""
+            echo "$title"
+            echo ""
+            echo "**Body** (generated=$generated)"
+            echo ""
+            cat /tmp/final_body.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "##[group]AI release notes — title / body (generated=$generated)"
+            echo "$title"
+            echo "----------------------------------------"
+            cat /tmp/final_body.md
+            echo "##[endgroup]"
+          }
+
   release:
     name: Package, release & publish
     needs:
