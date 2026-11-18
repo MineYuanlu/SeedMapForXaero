@@ -1,7 +1,8 @@
 name: release
 
-# 手动发布：bump 版本并打 tag → 编译全平台 native（reusable-native-build）→
-# 汇总 JAR、生成 changelog、发布 Modrinth + GitHub Release。
+# 手动发布：bump 版本并打 tag → 【notes: AI 生成发布说明 ∥ natives: 编译全平台 native
+# （reusable-native-build）】→ 汇总 JAR、发布 Modrinth + GitHub Release。
+# 发布说明三级回退：手动 input → AI 生成（notes job）→ git log changelog。
 on:
   workflow_dispatch:
     inputs:
@@ -14,10 +15,20 @@ on:
           - patch
           - minor
           - major
-      release_notes:
-        description: '发布说明（Markdown，可选）。为空时回退自动生成的 git log changelog。'
+      release_title:
+        description: '发布标题（可选）。为空时用 AI 生成标题，仍为空时回退 v{版本号}。'
         required: false
         default: ''
+        type: string
+      release_notes:
+        description: '发布说明正文（Markdown，可选）。为空时用 AI 生成，失败时回退自动生成的 git log changelog。'
+        required: false
+        default: ''
+        type: string
+      notes_model:
+        description: 'AI 生成发布说明所用的 opencode 模型引用（无效/弃用时发布终止）'
+        required: false
+        default: 'opencode/deepseek-v4.1-flash-free'
         type: string
 
 permissions:
@@ -60,11 +71,165 @@ jobs:
       ref: v${{ needs.bump.outputs.version }}
     secrets: inherit
 
+  notes:
+    name: Generate release notes (AI)
+    needs: bump
+    runs-on: ubuntu-24.04
+    # 只读任务：收窄权限 + 不持久 checkout 凭据，压缩 plan agent bash 工具的风险面
+    # （plan agent 的 bash 不受权限层限制，见 opencode issue #19094/#28467）
+    permissions:
+      contents: read
+    outputs:
+      title: ${{ steps.result.outputs.title }}
+      body: ${{ steps.result.outputs.body }}
+      generated: ${{ steps.result.outputs.generated }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v${{ needs.bump.outputs.version }}
+          # agent 逐 commit 读历史与源码：完整历史必需；无子模块需求
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Install opencode
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+      - name: Prepare prompt from command template
+        id: prompt
+        run: |
+          # 与本地 /release-notes 命令共用同一模板（单一事实源），
+          # scripts/prepare_opencode_cmd.sh 仿照 opencode 展开语义处理：
+          # 剥 frontmatter、$N/$ARGUMENTS 替换、!`...` 在 repo root 执行并注入
+          if git rev-parse -q --verify "HEAD^" >/dev/null 2>&1; then
+            PREV_TAG=$(git tag --list --merged "HEAD^" --sort=-version:refname \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          fi
+          if [ -z "${PREV_TAG:-}" ]; then
+            # 首个版本发布（无前一 tag 可达）：无增量范围可写，跳过 AI 生成，走 git log 兜底
+            echo "prev_tag=" >> "$GITHUB_OUTPUT"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          bash scripts/prepare_opencode_cmd.sh \
+            .opencode/commands/release-notes.md /tmp/prompt.md \
+            "${PREV_TAG}" "v${{ needs.bump.outputs.version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 模板内 !`gh api` 需要
+      - name: Verify model reference
+        if: steps.prompt.outputs.skip == 'false'
+        run: |
+          # 快速失败：模型引用不在列表 → input 填错，硬失败（发布终止，不回退）。
+          # 模型已弃用（列表仍在但 run 被拒，如 glm-5.3-flash-free）由 Generate 步骤兜住。
+          if ! opencode models | grep -Fq "$NOTES_MODEL"; then
+            echo "::error::Invalid model reference: $NOTES_MODEL (see 'opencode models' for available ids)"
+            exit 1
+          fi
+        env:
+          NOTES_MODEL: ${{ inputs.notes_model }}
+      - name: Generate notes (opencode agent, plan, read-only)
+        id: gen
+        if: steps.prompt.outputs.skip == 'false'
+        run: |
+          set +e
+          # --standalone: CI 无后台服务，私有 server 消除不确定性
+          # --auto: 自动批准未显式 deny 的权限（CI 无 TTY，ask 会挂到超时；
+          #         plan agent 的 edit 为显式 deny，不会被绕过）
+          timeout 600 opencode run --model "$NOTES_MODEL" --agent plan --standalone --auto \
+            "$(cat /tmp/prompt.md)" > /tmp/raw.md 2>/tmp/err.txt
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            # 硬失败（发布终止）：模型引用无效 / 模型已弃用 —— 必须显式暴露，不允许静默回退
+            if grep -qiE 'Invalid model reference|has been deprecated' /tmp/err.txt; then
+              echo "::error::model '$NOTES_MODEL' is invalid or deprecated:"
+              grep -iE 'Invalid model reference|has been deprecated' /tmp/err.txt | head -3
+              exit 1
+            fi
+            # 其余失败（超时/网络/服务端错误）→ git log 兜底，发布照常
+            echo "::warning::opencode run failed (exit $code); falling back to git log changelog"
+            tail -n 5 /tmp/err.txt || true
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          NOTES_MODEL: ${{ inputs.notes_model }}
+      - name: Validate, split & fallback
+        id: result
+        run: |
+          title="v${{ needs.bump.outputs.version }}"
+          generated=false
+          : > /tmp/final_body.md
+
+          if [ "${{ steps.prompt.outputs.skip }}" == "false" ] && [ "${{ steps.gen.outputs.ok }}" == "true" ]; then
+            # strip 可能的 markdown fence 包装（LLM 边界失败高发，prompt 约束之外的脚本兜底）
+            sed -i -e '/./,$!d' /tmp/raw.md # 去前导空行
+            if [ "$(head -c3 /tmp/raw.md)" = '```' ]; then
+              sed -i '1d' /tmp/raw.md
+              sed -i '${/^```/d}' /tmp/raw.md
+              sed -i -e '/./,$!d' /tmp/raw.md
+            fi
+            # 格式校验（参考 basecamp-sdk c014eb9 同款实践：prompt 约束 + 脚本校验双层）:
+            # 标题行必须是 '# vX.Y.Z <标题>'（模板约定的第一行，首字符 '#'）
+            re='^# v[0-9]+\.[0-9]+\.[0-9]+'
+            first_line=$(head -n1 /tmp/raw.md)
+            line_no=""
+            if [[ "$first_line" =~ $re ]]; then
+              line_no=1
+            else
+              # agent 常在正文前输出一句过程性开场白（实测 deepseek/free 模型均有）:
+              # 定位首个标题行截取，丢弃其前的过程性内容
+              line_no=$(grep -nE '^# v[0-9]+\.[0-9]+\.[0-9]+' /tmp/raw.md | head -1 | cut -d: -f1 || true)
+            fi
+            title=""
+            if [ -n "$line_no" ]; then
+              title=$(sed -n "${line_no}s/^# //p" /tmp/raw.md)
+            fi
+            if [ -n "$title" ]; then
+              sed -n "$((line_no + 1)),\$p" /tmp/raw.md | sed '/./,$!d' > /tmp/final_body.md
+              if [ "$line_no" -gt 1 ]; then
+                echo "::warning::AI output had preamble before the title line; stripped (was: ${first_line:0:60})"
+              fi
+              generated=true
+            else
+              echo "::warning::AI output failed format validation (no '# vX.Y.Z' title line; first line: ${first_line:0:60}); falling back to git log"
+            fi
+          fi
+
+          if [ "$generated" != "true" ]; then
+            # git log 兜底：与 AI 路径产出的字段一致（title/body/generated），发布消费逻辑统一
+            # prev_tag 复用 Prepare 步骤的产物（含 HEAD^ 不存在的防御）
+            PREV_TAG="${{ steps.prompt.outputs.prev_tag }}"
+            if [ -n "$PREV_TAG" ]; then
+              LOG=$(git log --oneline --no-decorate "${PREV_TAG}..HEAD")
+            else
+              LOG=$(git log --oneline --no-decorate -10)
+            fi
+            {
+              echo "## What's Changed"
+              echo "$LOG"
+              echo ""
+              echo "**Full Changelog**: https://github.com/MineYuanlu/SeedMapForXaero/commits/v${{ needs.bump.outputs.version }}"
+            } > /tmp/final_body.md
+          fi
+
+          {
+            echo "title=$title"
+            echo 'body<<EOF_XSM_NOTES'
+            cat /tmp/final_body.md
+            echo 'EOF_XSM_NOTES'
+            echo "generated=$generated"
+          } >> "$GITHUB_OUTPUT"
+
   release:
     name: Package, release & publish
     needs:
       - bump
       - natives
+      - notes
     runs-on: ubuntu-24.04
     # contents: 创建 GitHub Release；id-token/attestations: SLSA 构建来源证明
     permissions:
@@ -106,29 +271,18 @@ jobs:
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
           cmake --build build-test --target xsmtest
           ./build-test/xsmtest
-      - name: Generate changelog
+      - name: Resolve changelog
         run: |
+          # 三级回退: 手动 input → AI notes（notes job 已内置 git log 兜底，永远有产物）
           if [ -n "$RELEASE_NOTES" ]; then
-            # 手动提供的发布说明优先：Modrinth changelog 与 GitHub Release 正文统一用这份
-            { echo 'CHANGELOG<<EOF_M'; echo "$RELEASE_NOTES"; echo 'EOF_M'; } >> "$GITHUB_ENV"
+            CHANGELOG="$RELEASE_NOTES"
           else
-            PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-            if [ -n "$PREV_TAG" ]; then
-              LOG=$(git log --oneline --no-decorate "${PREV_TAG}..HEAD")
-            else
-              LOG=$(git log --oneline --no-decorate -10)
-            fi
-            {
-              echo 'CHANGELOG<<EOF_M'
-              echo "## What's Changed"
-              echo "$LOG"
-              echo ""
-              echo "**Full Changelog**: https://github.com/MineYuanlu/SeedMapForXaero/commits/v${{ needs.bump.outputs.version }}"
-              echo 'EOF_M'
-            } >> "$GITHUB_ENV"
+            CHANGELOG="$AI_BODY"
           fi
+          { echo 'CHANGELOG<<EOF_M'; printf '%s\n' "$CHANGELOG"; echo 'EOF_M'; } >> "$GITHUB_ENV"
         env:
           RELEASE_NOTES: ${{ inputs.release_notes }}
+          AI_BODY: ${{ needs.notes.outputs.body }}
       - name: Verify computed version is exact X.Y.Z
         run: |
           EXPECTED="${{ needs.bump.outputs.version }}"
@@ -170,10 +324,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.bump.outputs.version }}
-          name: v${{ needs.bump.outputs.version }}
+          # 标题三级回退: 手动 input → AI 生成 → v{版本号}
+          name: ${{ inputs.release_title || needs.notes.outputs.title || format('v{0}', needs.bump.outputs.version) }}
           body: ${{ env.CHANGELOG }}
-          # 未提供 release_notes 时回退 GitHub 自动生成的 notes
-          generate_release_notes: ${{ inputs.release_notes == '' }}
+          # AI/手动 notes 自带 Full Changelog 行，不 append GitHub 自动 notes；
+          # 仅 git log 兜底路径沿用自动 notes（与改造前行为一致）
+          generate_release_notes: ${{ inputs.release_notes == '' && needs.notes.outputs.generated != 'true' }}
           files: |
             build/libs/${{ env.JAR_NAME }}
             build/libs/SHA256SUMS
