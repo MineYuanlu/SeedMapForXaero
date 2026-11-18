@@ -153,6 +153,8 @@ cmake --build build-test --target xsmtest
 
 Modrinth project ID: `UoJSF4vW`
 
+发布产物（含 native 二进制）的来源证明与验证方法见 `doc/build-verification.md`：每个 Release 附 `SHA256SUMS` 与 SLSA 构建来源证明（`gh attestation verify` 可验）。
+
 测试三层（详见 `doc/testing.md`）：JVM 单测 → native 集成 → E2E 客户端 GameTest。
 
 ### 配色方案

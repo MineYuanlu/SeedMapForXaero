@@ -14,6 +14,11 @@ on:
           - patch
           - minor
           - major
+      release_notes:
+        description: '发布说明（Markdown，可选）。为空时回退自动生成的 git log changelog。'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -61,6 +66,11 @@ jobs:
       - bump
       - natives
     runs-on: ubuntu-24.04
+    # contents: 创建 GitHub Release；id-token/attestations: SLSA 构建来源证明
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -98,20 +108,27 @@ jobs:
           ./build-test/xsmtest
       - name: Generate changelog
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV_TAG" ]; then
-            LOG=$(git log --oneline --no-decorate "${PREV_TAG}..HEAD")
+          if [ -n "$RELEASE_NOTES" ]; then
+            # 手动提供的发布说明优先：Modrinth changelog 与 GitHub Release 正文统一用这份
+            { echo 'CHANGELOG<<EOF_M'; echo "$RELEASE_NOTES"; echo 'EOF_M'; } >> "$GITHUB_ENV"
           else
-            LOG=$(git log --oneline --no-decorate -10)
+            PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+            if [ -n "$PREV_TAG" ]; then
+              LOG=$(git log --oneline --no-decorate "${PREV_TAG}..HEAD")
+            else
+              LOG=$(git log --oneline --no-decorate -10)
+            fi
+            {
+              echo 'CHANGELOG<<EOF_M'
+              echo "## What's Changed"
+              echo "$LOG"
+              echo ""
+              echo "**Full Changelog**: https://github.com/MineYuanlu/SeedMapForXaero/commits/v${{ needs.bump.outputs.version }}"
+              echo 'EOF_M'
+            } >> "$GITHUB_ENV"
           fi
-          {
-            echo 'CHANGELOG<<EOF_M'
-            echo "## What's Changed"
-            echo "$LOG"
-            echo ""
-            echo "**Full Changelog**: https://github.com/MineYuanlu/SeedMapForXaero/commits/v${{ needs.bump.outputs.version }}"
-            echo 'EOF_M'
-          } >> "$GITHUB_ENV"
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
       - name: Verify computed version is exact X.Y.Z
         run: |
           EXPECTED="${{ needs.bump.outputs.version }}"
@@ -126,6 +143,24 @@ jobs:
             echo "::error::computed version '$COMPUTED' != expected '$EXPECTED'"
             exit 1
           fi
+      # 显式构建 universal JAR（publishMods 复用同一产物；-P 参数必须与 publishMods 一致）
+      - name: Build universal JAR
+        run: ./gradlew jar -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
+      - name: Generate SHA256SUMS
+        run: |
+          JAR=$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' -printf '%f\n' | head -1)
+          test -n "$JAR" || { echo "::error::no jar found in build/libs"; exit 1; }
+          (cd build/libs && sha256sum "$JAR" > SHA256SUMS)
+          cat build/libs/SHA256SUMS
+          echo "JAR_NAME=$JAR" >> "$GITHUB_ENV"
+      # SLSA 构建来源证明：密码学绑定 JAR ↔ repo ↔ commit ↔ workflow run（doc/build-verification.md）
+      # 验证: gh attestation verify <jar> --repo MineYuanlu/SeedMapForXaero
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4 # v4.2.2 (4d101475d8b20a2381f78447822ac1eab6504dd8)
+        with:
+          subject-path: |
+            build/libs/${{ env.JAR_NAME }}
+            build/libs/SHA256SUMS
       - name: Publish to Modrinth
         run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
         env:
@@ -136,7 +171,11 @@ jobs:
         with:
           tag_name: v${{ needs.bump.outputs.version }}
           name: v${{ needs.bump.outputs.version }}
-          generate_release_notes: true
-          files: build/libs/*.jar
+          body: ${{ env.CHANGELOG }}
+          # 未提供 release_notes 时回退 GitHub 自动生成的 notes
+          generate_release_notes: ${{ inputs.release_notes == '' }}
+          files: |
+            build/libs/${{ env.JAR_NAME }}
+            build/libs/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

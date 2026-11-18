@@ -153,6 +153,8 @@ Four workflows in `.github/workflows/`:
 
 Modrinth project ID: `UoJSF4vW`
 
+Build provenance & verification for published artifacts (incl. native binaries): `doc/build-verification.md`. Every release ships a `SHA256SUMS` and SLSA build provenance (`gh attestation verify`).
+
 Three test layers (see `doc/testing.md`): JVM unit tests → native integration → E2E client GameTest.
 
 ### Color Schemes
