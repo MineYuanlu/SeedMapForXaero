@@ -13,7 +13,7 @@ agent: plan
 你的任务：为 $2 撰写发布说明，即标签 $1 与标签 $2 之间的增量变更。
 
 这是一个顺序的多版本发布流程。此前各版本（因此 $2 是**增量**更新）：
-!`curl -s "https://api.github.com/repos/MineYuanlu/SeedMapForXaero/releases?per_page=20&page=1" | jq -r '.[].name'`
+!`gh api "repos/MineYuanlu/SeedMapForXaero/releases?per_page=20&page=1" --jq '.[].name'`
 
 $2 中的提交（数据来自于 `git log --oneline --no-merges $1..$2`）：
 ```
@@ -64,7 +64,7 @@ $2 中的提交（数据来自于 `git log --oneline --no-merges $1..$2`）：
 仅作为格式上和风格上的参考, 以下是 $1 的 Release Notes 内容：
 
 ```markdown
-!`curl -s "https://api.github.com/repos/MineYuanlu/SeedMapForXaero/releases/tags/$1" | jq -r '"# " + .name + "\n\n" + .body'`
+!`gh api "repos/MineYuanlu/SeedMapForXaero/releases/tags/$1" --jq '"# " + .name + "\n\n" + .body'`
 ```
 
 ## 用户附加信息:
