@@ -93,8 +93,8 @@ jobs:
           persist-credentials: false
       - name: Install opencode
         run: |
-          curl -fsSL https://opencode.ai/install | bash
-          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+          npm install -g @opencode/cli@2.3.2
+          opencode --version
       - name: Prepare prompt from command template
         id: prompt
         run: |
