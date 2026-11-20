@@ -1,6 +1,6 @@
 name: pr-check
 
-# feature 分支（dev/xxx、fix/xxx）推送与 PR 的快速检查：Linux 上跑 C 单测 + JUnit + 编译 JAR（仅含 Linux native）。
+# feature 分支（dev/xxx、fix/xxx）推送与 PR 的快速检查：Linux 上跑 C 单测 + JUnit + 编译双变体 JAR（仅含 Linux native）。
 # PR → master 走全面门禁：matrix-test（版本矩阵 + E2E）+ build.yml（全平台 native + 打包）。
 # 产物仅供人工取用，不等同 release 产物。
 on:
@@ -29,18 +29,30 @@ jobs:
           distribution: 'microsoft'
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
-      - name: Guardrail — version-sensitive MC APIs only inside client/compat
+      - name: Guardrail — version-sensitive MC APIs only inside compat
         run: tools/check_compat_imports.sh
+      - name: Guardrail — working tree must be switch-normalized (stonecutter)
+        run: |
+          # 活跃节点（26.1.2）直接编译源码树：条件注释块必须处于 switch 规范化状态
+          # （非活跃分支包成注释）。未 normalize 的提交会让活跃节点 javac 直接报语法错。
+          chmod +x ./gradlew
+          ./gradlew stonecutterSwitchTo26.1.2 -q
+          if ! git diff --quiet -- src/ src-modern/ src-legacy/ src/gametest 2>/dev/null; then
+            echo "::error::working tree is not switch-normalized — run './gradlew stonecutterSwitchTo26.1.2' before committing:"
+            git diff --stat -- src/ src-modern/ src-legacy/
+            exit 1
+          fi
       - name: Run C unit tests
         run: |
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
           cmake --build build-test --target xsmtest
           ./build-test/xsmtest
-      - name: Build JAR
+      - name: Build both variants (modern universal + legacy)
         run: |
           chmod +x ./gradlew
-          ./gradlew build -x compileNativeWindows
+          ./gradlew :26.1.2:modJar :1.21.11:modJar -x compileNativeWindows
       - uses: actions/upload-artifact@v7
         with:
           name: seed-map-for-xaero-linux
-          path: build/libs/
+          path: |
+            versions/*/build/libs/

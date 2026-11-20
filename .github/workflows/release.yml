@@ -303,40 +303,46 @@ jobs:
         env:
           RELEASE_NOTES: ${{ inputs.release_notes }}
           AI_BODY: ${{ needs.notes.outputs.body }}
-      - name: Verify computed version is exact X.Y.Z
+      - name: Verify computed version is exact X.Y.Z+mc<node>
         run: |
           EXPECTED="${{ needs.bump.outputs.version }}"
-          COMPUTED=$(./gradlew -q --console=plain properties | grep -E '^version: ' | cut -d' ' -f2)
-          echo "computed=$COMPUTED expected=$EXPECTED"
-          # 必须精确 X.Y.Z：带后缀说明工作区 dirty 或 tag 没取到（tag-only 发布的硬性前提）
-          if ! [[ "$COMPUTED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::computed version '$COMPUTED' is not exact X.Y.Z (dirty worktree or missing tag?)"
-            exit 1
-          fi
-          if [ "$COMPUTED" != "$EXPECTED" ]; then
-            echo "::error::computed version '$COMPUTED' != expected '$EXPECTED'"
-            exit 1
-          fi
-      # 显式构建 universal JAR（publishMods 复用同一产物；-P 参数必须与 publishMods 一致）
-      - name: Build universal JAR
-        run: ./gradlew jar -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
+          for NODE in 26.1.2 1.21.11; do
+            COMPUTED=$(./gradlew -q --console=plain ":$NODE:properties" | grep -E '^version: ' | cut -d' ' -f2)
+            echo "node=$NODE computed=$COMPUTED expected=${EXPECTED}+mc$NODE"
+            # 必须精确 X.Y.Z+mc<node>：带其他后缀说明工作区 dirty 或 tag 没取到（tag-only 发布的硬性前提）
+            if ! [[ "$COMPUTED" =~ ^${EXPECTED}\+mc$NODE$ ]]; then
+              echo "::error::computed version '$COMPUTED' != '$EXPECTED+mc$NODE' (dirty worktree or missing tag?)"
+              exit 1
+            fi
+          done
+      # 显式构建双发布 JAR（publishMods 复用同一产物；xaero 编译目标 = versions.json 行默认 xaeroOldest）
+      - name: Build release JARs (modern universal + legacy)
+        run: |
+          ./gradlew :26.1.2:modJar :1.21.11:modJar \
+            -PskipNativeBuild -x compileNative -x compileNativeWindows
+          # 汇总到一个目录，供 SHA256SUMS / attestation / Release 引用
+          mkdir -p build/release
+          find versions/*/build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' \
+            -exec cp {} build/release/ \;
+          ls -l build/release/
       - name: Generate SHA256SUMS
         run: |
-          JAR=$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' -printf '%f\n' | head -1)
-          test -n "$JAR" || { echo "::error::no jar found in build/libs"; exit 1; }
-          (cd build/libs && sha256sum "$JAR" > SHA256SUMS)
-          cat build/libs/SHA256SUMS
-          echo "JAR_NAME=$JAR" >> "$GITHUB_ENV"
+          (cd build/release && sha256sum *.jar > SHA256SUMS)
+          cat build/release/SHA256SUMS
       # SLSA 构建来源证明：密码学绑定 JAR ↔ repo ↔ commit ↔ workflow run（doc/build-verification.md）
       # 验证: gh attestation verify <jar> --repo MineYuanlu/SeedMapForXaero
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4 # v4.2.2 (4d101475d8b20a2381f78447822ac1eab6504dd8)
         with:
           subject-path: |
-            build/libs/${{ env.JAR_NAME }}
-            build/libs/SHA256SUMS
+            build/release/*.jar
+            build/release/SHA256SUMS
       - name: Publish to Modrinth
-        run: ./gradlew publishMods -PskipNativeBuild -x compileNative -x compileNativeWindows -PxaeroMapLine=26.1.2 -PxaeroMapVersion=1.40.14
+        run: |
+          # 双 artifact 分开上报：modern 节点带 26.x 游戏版本行，legacy 节点带 1.21.x 行
+          # （publishMods 的 minecraftVersions 按 versions.json 行 artifact 家族过滤）
+          ./gradlew :26.1.2:publishMods :1.21.11:publishMods \
+            -PskipNativeBuild -x compileNative -x compileNativeWindows
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CHANGELOG: ${{ env.CHANGELOG }}
@@ -351,7 +357,7 @@ jobs:
           # 仅 git log 兜底路径沿用自动 notes（与改造前行为一致）
           generate_release_notes: ${{ inputs.release_notes == '' && needs.notes.outputs.generated != 'true' }}
           files: |
-            build/libs/${{ env.JAR_NAME }}
-            build/libs/SHA256SUMS
+            build/release/*.jar
+            build/release/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -468,6 +468,13 @@ tasks.named('sourcesJar') {
 	exclude 'fabric.mod.json'
 }
 
+// 发布产物别名：remap 变体 = remapJar，unobf 变体 = jar。CI/文档统一引用 modJar。
+tasks.register('modJar') {
+	group = 'build'
+	description = "Alias for the publishable mod jar (${isLegacyLine ? 'remapJar' : 'jar'})."
+	dependsOn loomx.modJar
+}
+
 jar {
 	from(rootProject.file("LICENSE")) {
 		rename { "${it}_${project.archives_base_name}" }

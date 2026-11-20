@@ -1,6 +1,6 @@
 name: matrix-test
 
-# 版本矩阵测试（8 组合编译 + JUnit + C 单测 + 4 路 E2E 真实启动）。
+# 版本矩阵测试（节点 × 新旧 Xaero 编译 + JUnit + C 单测 + E2E 真实启动）。
 # 触发：master 推送（最终确认）+ PR → master（合入门禁）+ 手动。
 # 手动触发支持 inputs.ref 指定任意分支/tag/SHA（默认 = 触发时选的 ref），
 # 供对任意 feature 分支/提交跑全量门禁（build.yml 同）。
@@ -60,9 +60,11 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-  # ── Test: 8 combos (4 MC × oldest/newest Xaero)，源码兼容预警 ──
+  # ── Test: 每节点 × oldest/newest Xaero，源码兼容预警 ──────────────────────
   # 目的：确保源码在全部 MC × Xaero 组合下可编译 + JUnit + C 单测通过。
-  # 这里产出的 jar 只是编译载体，不发布；发布产物是 build-universal 的 universal jar。
+  # stonecutter 节点 = MC 版本（:1.21.11 / :26.1.2 / ...），-P 只覆盖 Xaero 端点，
+  # fabricApi/minimap 由 versions.json 行提供。
+  # 这里产出的 jar 只是编译载体，不发布；发布产物见 build-universal。
   test:
     needs: resolve
     runs-on: ubuntu-24.04
@@ -89,24 +91,21 @@ jobs:
       - name: Compile + JUnit tests (source coverage, not published)
         run: |
           chmod +x ./gradlew
-          ./gradlew build -x compileNativeWindows \
-            -Pminecraft_version=${{ matrix.mc }} \
-            -PxaeroMapLine=${{ matrix.xaeroLine }} \
-            -PxaeroMapVersion=${{ matrix.xaeroVersion }} \
-            -PxaeroMinimapVersion=${{ matrix.xaeroMinimapVersion }} \
-            -PfabricApiVersion=${{ matrix.fabricApi }}
+          ./gradlew :${{ matrix.node }}:build -x compileNativeWindows \
+            -PxaeroMapVersion=${{ matrix.xaeroVersion }}
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.mc }}-${{ matrix.xaeroVersion }}
           path: |
-            build/reports/tests/test
-            build/test-results/test
+            versions/${{ matrix.node }}/build/reports/tests/test
+            versions/${{ matrix.node }}/build/test-results/test
 
-  # ── Universal jar: 编一个 jar，供所有版本 E2E 复用 ───────────────────────
-  # 编译目标取全局最老 Xaero (1.40.14, 26.1.2 线)：引用的符号是全部支持版本集合的
-  # 子集，配合 fabric.mod.json 的 "minecraft": ">=26.1"，单个 jar 通用于全部版本。
+  # ── 发布产物 jar：modern universal + legacy，供 E2E 复用 ─────────────────
+  # 双 artifact 各自按本线最老 Xaero 编译（versions.json 行默认值即 xaeroOldest）：
+  #   modern (26.1.2 节点): 引用符号是 26.x 全家族子集，单 jar 通吃 26.1–26.3
+  #   legacy  (1.21.11 节点): mojmap 编译 → remapJar 到 intermediary
   build-universal:
     needs: resolve
     runs-on: ubuntu-24.04
@@ -122,24 +121,30 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
-      - name: Build universal jar (oldest Xaero line)
+      - name: Build modern universal jar + legacy jar (oldest Xaero line)
         run: |
           chmod +x ./gradlew
           # CI ubuntu 无 MinGW → -PskipNativeWindows=true；jar 只需内含 Linux .so
           # 供 universal-e2e 使用（release 流程单独打全平台 native）。
-          ./gradlew build -x compileNativeWindows \
-            -PskipNativeWindows=true \
-            -PxaeroMapLine=26.1.2 \
-            -PxaeroMapVersion=1.40.14
-      - name: Upload universal jar
+          ./gradlew :26.1.2:modJar :1.21.11:modJar \
+            -x compileNativeWindows \
+            -PskipNativeWindows=true
+      - name: Upload modern universal jar
         uses: actions/upload-artifact@v7
         with:
           name: universal-jar
           # 只传生产 jar：排除 -sources.jar，其 fabric.mod.json 是未展开的
           # ${version}/${loader_version} 模板，被 E2E 误载会导致 Loader 解析失败。
           path: |
-            build/libs/seed-map-for-xaero-*.jar
-            !build/libs/*-sources.jar
+            versions/26.1.2/build/libs/seed-map-for-xaero-*.jar
+            !versions/26.1.2/build/libs/*-sources.jar
+      - name: Upload legacy jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: legacy-jar
+          path: |
+            versions/1.21.11/build/libs/seed-map-for-xaero-*.jar
+            !versions/1.21.11/build/libs/*-sources.jar
 
   # ── Universal client E2E gametest（生产运行，headless）────────────────────
   # 对照 Fabric 官方 CI（fabric-api/.github/workflows/build.yml client_test job）：
@@ -177,12 +182,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install dependencies (cmake/gcc/xvfb/egl)
         run: sudo apt-get update && sudo apt-get install -y cmake gcc xvfb libegl1 libegl-mesa0 libgl1 libgl1-mesa-dri
-      - name: Download universal jar
+      - name: Download release jar (modern universal / legacy)
         uses: actions/download-artifact@v8
         with:
-          name: universal-jar
+          # artifact 家族由 versions.json 行的 artifact 字段决定
+          name: ${{ matrix.artifact == 'legacy' && 'legacy-jar' || 'universal-jar' }}
           path: universal
-      - name: Run client gametest (universal jar, production, headless via xvfb)
+      - name: Run client gametest (release jar, production, headless via xvfb)
         timeout-minutes: 20
         run: |
           chmod +x ./gradlew
@@ -190,22 +196,18 @@ jobs:
           # 并断言所选 jar 内模板已展开，防止任何错误 jar 被误载。
           UJAR=$(find universal -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)
           test -n "$UJAR" || {
-            echo "::error::no production universal jar found (mc=${{ matrix.mc }})"
+            echo "::error::no production jar found (mc=${{ matrix.mc }}, artifact=${{ matrix.artifact }})"
             exit 1
           }
           unzip -p "$UJAR" fabric.mod.json | grep -qF '${' && {
-            echo "::error::universal jar still carries unexpanded template: $UJAR (mc=${{ matrix.mc }})"
+            echo "::error::jar still carries unexpanded template: $UJAR (mc=${{ matrix.mc }})"
             exit 1
           }
-          # -PuniversalJar 让 mod 本体用预构建 jar（不重编译）；-PskipNativeWindows=true
-          # 规避 CI 无 MinGW 时 processClientResources → compileNativeWindows 失败。
-          ./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
+          # -PuniversalJar 让 mod 本体用预构建 jar（不重编译）；E2E 矩阵取 newest Xaero
+          # （节点默认 = oldest，这里显式覆盖）；-PskipNativeWindows=true 规避 CI 无 MinGW。
+          ./gradlew :${{ matrix.node }}:runProductionClientGameTestUniversal -PskipNativeWindows=true \
             -PuniversalJar="$UJAR" \
-            -Pminecraft_version=${{ matrix.mc }} \
-            -PxaeroMapLine=${{ matrix.xaeroLine }} \
             -PxaeroMapVersion=${{ matrix.xaeroVersion }} \
-            -PxaeroMinimapVersion=${{ matrix.xaeroMinimapVersion }} \
-            -PfabricApiVersion=${{ matrix.fabricApi }} \
             --stacktrace > gametest.log 2>&1
           # 断言全部通过才算成功；挂起由 timeout-minutes 兜底 kill
           grep -q "seed-map E2E assertions passed" gametest.log || {
