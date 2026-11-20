@@ -176,43 +176,6 @@ if (localPropsFile.exists()) {
 	props.each { k, v -> project.ext[k] = v }
 }
 
-ext.JEXTRACT_VERSION = '25'
-ext.JEXTRACT_BUILD = '2'
-ext.JEXTRACT_REV = '4'
-
-def jextractUrl() {
-	def osPart = Os.isFamily(Os.FAMILY_MAC) ?
-		(System.getProperty("os.arch") == "aarch64" ? "macos-aarch64" : "macos-x64") :
-		Os.isFamily(Os.FAMILY_WINDOWS) ? "windows-x64" : "linux-x64"
-	return "https://download.java.net/java/early_access/jextract/${project.JEXTRACT_VERSION}/${project.JEXTRACT_BUILD}/" +
-		"openjdk-${project.JEXTRACT_VERSION}-jextract+${project.JEXTRACT_BUILD}-${project.JEXTRACT_REV}_${osPart}_bin.tar.gz"
-}
-
-def defaultJextractDir = file("build/jextract/jextract-${project.JEXTRACT_VERSION}")
-def defaultJextractBinary = file("${defaultJextractDir}/bin/jextract")
-def jextractBinary = project.findProperty('jextractPath')
-	? file(project.findProperty('jextractPath').toString()).absolutePath
-	: defaultJextractBinary.absolutePath
-
-task downloadJextract() {
-	description 'Download pre-built jextract binary from jdk.java.net.'
-	onlyIf { !project.hasProperty('jextractPath') && !defaultJextractBinary.exists() }
-	doLast {
-		defaultJextractDir.parentFile.mkdirs()
-		def tarball = file("${defaultJextractDir.parentFile}/jextract.tar.gz")
-		def url = jextractUrl()
-		logger.lifecycle("Downloading jextract from $url ...")
-		new URL(url).withInputStream { i -> tarball.withOutputStream { it << i } }
-		logger.lifecycle("Extracting jextract ...")
-		new ProcessBuilder('tar', '-xzf', tarball.absolutePath, '-C', defaultJextractDir.parentFile.absolutePath)
-			.inheritIO().start().waitFor()
-		tarball.delete()
-		new ProcessBuilder('chmod', '+x', defaultJextractBinary.absolutePath)
-			.inheritIO().start().waitFor()
-		logger.lifecycle("jextract ready at $defaultJextractBinary")
-	}
-}
-
 def defaultCCompiler() {
 	// Prefer clang if available (supports cubiomes C patterns on older GCC hosts)
 	try {
@@ -330,37 +293,6 @@ task compileNativeAndroid {
 	}
 }
 
-task generateNativeBindings(type: Exec) {
-	description 'Run jextract on src/main/c/xsm/apis/all.h → XsmNative.java FFM bindings.'
-	dependsOn downloadJextract
-	workingDir projectDir
-	def includeArgs = file('src/main/c/includes.txt').readLines()
-		.collectMany { it.split(/\s+/) as List }
-	commandLine([jextractBinary,
-		'--output', 'src/client/java',
-		'--target-package', 'bid.yuanlu.seedmap4xaero.client.nativeapi',
-		'--header-class-name', 'XsmNative',
-		'--include-dir', 'src/main/c/xsm/apis',
-	] + includeArgs + ['all.h'])
-	doLast {
-		// 修正平台相关 C_LONG/C_LONG_DOUBLE —— API 不用 long/long double，
-		// 硬编码 LP64 变体（跨平台安全）。
-		def shared = file('src/client/java/bid/yuanlu/seedmap4xaero/client/nativeapi/XsmNative$shared.java')
-		if (shared.exists()) {
-			def text = shared.text
-			.replace('(ValueLayout.OfLong) Linker.nativeLinker().canonicalLayouts().get("long")',
-					 'ValueLayout.JAVA_LONG')
-			.replace('(ValueLayout.OfDouble) Linker.nativeLinker().canonicalLayouts().get("double")',
-					 'ValueLayout.JAVA_DOUBLE')
-			shared.text = text
-		}
-	}
-}
-
-tasks.named('compileClientJava') {
-	dependsOn generateNativeBindings
-}
-
 task compileNativeWindows {
 	description 'Cross-compile xsmcore.dll for Windows via MinGW.'
 	onlyIf { skipNative != 'true' && skipNativeWindows != 'true' }
@@ -409,10 +341,7 @@ processResources {
 }
 
 clean {
-	delete fileTree('src/client/java/bid/yuanlu/seedmap4xaero/client/nativeapi') {
-		include 'XsmNative.java'
-		exclude 'NativeLibLoader.java'
-	}
+	// XsmNative.java 是手写提交文件（JNI stub），不再由构建生成/删除
 	delete 'src/main/c/build'
 	delete 'src/main/c/build-mingw'
 	delete 'src/main/c/build-linux-arm'
