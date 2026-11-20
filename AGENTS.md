@@ -2,35 +2,55 @@
 
 ## Build & Run
 
+**多版本构建（Stonecutter 单源码树）**：`versions/<MC 版本>/` 每目录一个节点
+（`:1.21.11` legacy 线 + `:26.1`/`:26.1.1`/`:26.1.2`/`:26.2`/`:26.3` modern 线），
+共享根 `src/`。活跃节点 = `vcsVersion`（26.1.2）直接编译源码树；其余节点经
+`stonecutterGenerate` 处理到 `versions/<节点>/build/generated`。
+
 ```bash
-git submodule update --init              # cubiomes submodule
-./gradlew build -x compileNativeWindows  # Linux .so + Java JAR
-./gradlew runClient                      # launch Minecraft
+git submodule update --init                        # cubiomes submodule
+./gradlew stonecutterSwitchTo26.1.2 -q             # 切换/规范化工作树（提交前必须！）
+./gradlew :26.1.2:build :1.21.11:build -x compileNativeWindows   # 双变体构建
+./gradlew :26.1.2:runClient                        # launch Minecraft (per node)
+./gradlew :26.1.2:modJar :1.21.11:modJar           # 发布产物别名（jar / remapJar）
 ```
 
-**Java 25 required.** MC 26.1+ ships unobfuscated — no mapping needed.
+**Java 25 required**（gradle daemon）；legacy 节点 `--release 21` 由 JDK25 javac 交叉编译。
+
+⚠ stonecutter replacements 是**双向**的（条件假侧应用反向替换）——改
+`stonecutter.gradle.kts` 前先全库 grep 验证正反两向目标串唯一性；
+工作树必须保持 switch 规范化状态（pr-check 有守卫）。
 
 Benchmark: add `-DDEBUG_TIMINGS=ON` to cmake configure.
 
-jextract auto-downloaded on first build. Local copy: `-PjextractPath=/path/to/jextract`.
 Skip native entirely: `-PskipNativeBuild`. Skip Windows only: `-PskipNativeWindows`.
 Local overrides via `gradle.local.properties` (gitignored, same key format).
+依赖版本（fabricApi/Xaero 线）真值源 = `versions.json`（节点行）；`-P` 可覆盖。
 
 ## Testing
 
 三层测试（详见 `doc/testing.md`）：JVM 单测 → native 集成 → E2E 客户端 GameTest。
 
 ```bash
-./gradlew build -x compileNativeWindows          # JVM 单测 + native 集成
+./gradlew :26.1.2:build :1.21.11:build -x compileNativeWindows   # JVM 单测 + native 集成（按节点）
 cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
 cmake --build build-test --target xsmtest && ./build-test/xsmtest   # C 单测
-./gradlew runProductionClientGameTest -PskipNativeWindows=true      # E2E（真实启动 MC）
-./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
-  -PuniversalJar="$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)" \
-  # E2E（复用预构建 universal jar；排除 -sources.jar，其 fabric.mod.json 是未展开的 ${version} 模板）
+./gradlew :26.1.2:runProductionClientGameTest -PskipNativeWindows=true      # E2E（真实启动 MC）
+./gradlew :26.1.2:runProductionClientGameTestUniversal -PskipNativeWindows=true \
+  -PuniversalJar="$(find versions/26.1.2/build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
+# legacy E2E: :1.21.11:runProductionClientGameTestUniversal + versions/1.21.11/build/libs 下 jar
+# （复用预构建发布 jar；排除 -sources.jar，其 fabric.mod.json 是未展开的 ${version} 模板）
 ```
 
-**Single universal jar**: `fabric.mod.json` hardcodes `"minecraft": ">=26.1"` (not templated). The published jar is compiled against the oldest Xaero line (1.40.14) so referenced symbols are a subset of all supported versions. CI (`matrix-test.yml`): `test` = 8-combo compile+JUnit (source-compat early warning, not published), `build-universal` = build the one jar, `universal-e2e` = run that same jar on all 4 MC × newest Xaero. Future breaking MC versions are caught by universal-e2e as `versions.json` grows.
+**双发布 jar**（`X.Y.Z+mc<节点>`）：
+- **modern universal**（`:26.1.2`）：`"minecraft": ">=26.1"` 通吃 26.1–26.3，编译目标 = 本线最老 Xaero（versions.json 行 `xaeroOldest`），搬家 API 经 compat/ 反射缝适配
+- **legacy**（`:1.21.11`）：`">=1.21.11 <1.22"`，mojmap→intermediary remap，compat 直调
+
+CI (`matrix-test.yml`)：`test` = 每节点 × oldest/newest Xaero 编译+JUnit（源码兼容预警），
+`build-universal` = 双 jar artifact，`universal-e2e` = 按行 artifact 字段选 jar 在全部
+MC × newest Xaero 上跑。未来破坏性 MC 变更由 E2E 随 versions.json 增长暴露；
+**新增支持版本 = 建 `versions/<MC>/` 节点目录 + settings.gradle 注册**（resolver
+按节点目录过滤行）。
 
 版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`/`xaeroMinimapVersion`）。
 CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
@@ -78,8 +98,9 @@ native/windows/x86_64/xsmcore.dll
 - **Android ≠ Linux-aarch64**：FCL/Pojav 的 JVM 链接 bionic（无版本化 SONAME），glibc 交叉编译的 `.so` 加载不了。必须用 Android NDK（`compileNativeAndroid`，需 `-PndkPath=<ndk>` 或 `ANDROID_NDK_HOME`）。FCL 用 `checkElfIsAndroid()`（DT_NEEDED 无 `libc.so.6`）判断。
 - macOS universal：`compileNative` 在 mac 上自动加 `-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64`，一个 dylib 覆盖 Intel + Apple Silicon。
 - Linux aarch64：CI 用原生 arm64 runner 构建；本地可用 `compileNativeLinuxArm`（`aarch64-linux-gnu-gcc` 交叉，glibc，见 `linux-arm-toolchain.cmake`）。
-- `generateNativeBindings` (jextract) → `all.h` → `XsmNative.java` (FFM, gitignored)。绑定硬编码 LP64，跨架构复用一份。
-- `clean` deletes generated bindings + `src/main/c/build*`.
+- native 传输层 = **JNI-only**（手写 `XsmNative.java` stub + `xsm/apis/jni.cpp` 导出层），
+  全 MC 线共用；新增 C API 同步改三处：`all.h` + `XsmNative.java` + `jni.cpp`。
+- `clean` deletes `src/main/c/build*`（native 产物目录全节点共享）。
 - Windows cross-compile: `compileNativeWindows` via MinGW (`mingw-toolchain.cmake`).
 - CI 编译 job 各自产出 `src/main/c/build/<target>/`，汇总进 JAR。全平台 native 矩阵（5 个 compile job）统一在 `reusable-native-build.yml`；下载 natives + 打包 universal JAR 统一在 `reusable-package.yml`（含 JAR 内置校验）。`build.yml`（master/tag push + PR → master）、`release.yml`、`build-test-jar.yml` 均通过 `uses:` 调用这两个可复用 workflow；feature 分支/PR 的快速检查在 `pr-check.yml`。
 
@@ -102,7 +123,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 ├── client/            # mixin + render pipeline (client/AGENTS.md)
 │   ├── configs/       # AGENTS.md: config persistence (JSON v2) & multiplayer; perf/ = 全局性能配置
 │   ├── command/       # AGENTS.md: /sm4x 客户端命令（种子历史 list/remove）
-│   ├── nativeapi/     # Xsm.java (System.load + FFM wrappers), XsmNative.java (generated)
+│   ├── nativeapi/     # Xsm.java (System.load + 数组传输), XsmNative.java (手写 JNI stub, 提交)
 │   ├── cache/         # AGENTS.md: LRU 瓦片缓存/调度器/预生成, sparse structures, strongholds, tile coords
 │   ├── compat/        # 跨版本兼容层: 版本敏感 MC API 唯一允许的 import 点 (doc/compat-layer.md)
 │   ├── mixin/         # mixins — table in client/AGENTS.md
@@ -119,6 +140,10 @@ src/main/
 └── c/                # cubiomes submodule + xsm/ (AGENTS.md: C API & gotchas)
 src/gametest/         # E2E client gametest (see doc/testing.md)
 src/test/             # JUnit 单测 + native 集成测试 (see doc/testing.md)
+src-modern/           # modern 线专属源码（compat 反射版 CompatGui/CompatTextures）
+src-legacy/           # legacy 线专属源码（compat 直调版，loom remap 替代反射）
+versions/             # stonecutter 节点（每 MC 版本一个目录，gradle.properties 仅 loader/minecraft_dep）
+stonecutter.gradle.kts  # controller：活跃版本 + 双向 replacements（机械改名）
 tools/                # resolve_versions.py, gen_biomes_icon.py, gen_structures_icon.py, generate_lib_src.py, check_compat_imports.sh (版本敏感 import guardrail，pr-check 强制执行)
 ```
 
@@ -135,7 +160,7 @@ tools/                # resolve_versions.py, gen_biomes_icon.py, gen_structures_
 | --------------- | ------------------------------------------------------ |
 | Xaero World Map | `xaero.map:xaeroworldmap-fabric-26.1.2:1.41.0`         |
 | cubiomes        | `src/main/c/cubiomes/` git submodule → `libxsmcore.so` |
-| jextract        | Pre-built from jdk.java.net, auto-downloaded           |
+| stonecutter     | Gradle plugin 0.10（多版本单源码树）+ loom-back-compat 0.4.3 |
 
 ### Dependencies src
 

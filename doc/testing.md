@@ -33,22 +33,36 @@
 4. **结构缓存**：`StructureCache.REGIONS` 非空（异步 CACHE_WORKER 查询）
 5. **HUD 高亮背后隐藏**：从 REGIONS 高亮最近的真实结构，正视断言 `HighlightHudRenderer.lastFrameHighlightBlits == 1`、转向水平镜像点（结构恰好正背后）断言 `== 0`——回归 26.2 线性深度约定下背后点 `NDC.z<0` 漏过旧 `z>1` 检查导致的镜像图标 bug（版本相关深度约定的回归只能靠真实投影的 E2E 抓）。结构超 400 格时先服务端传送玩家到附近并等落地。
 
-断言通过后打印 `seed-map E2E assertions passed` 供 CI grep。主 mod 和测试 mod 的 `fabric.mod.json` 都用宽松下限写死版本（`>=26.1`），**不 expand**——单 jar 在任意支持版本上通用，无需跟随矩阵精确版本。
+断言通过后打印 `seed-map E2E assertions passed` 供 CI grep。主 mod 和测试 mod 的 `fabric.mod.json` 版本区间（`minecraft_dep`/`loader_version`）由构建按节点 expand（modern `>=26.1` / legacy `>=1.21.11 <1.22`）——jar 在各自家族内通用，无需跟随矩阵精确版本。
 
-## 版本矩阵与单 jar 策略
+## 版本矩阵与双 artifact 策略
 
-- `versions.json` + `tools/resolve_versions.py`（update/check/matrix 三模式）解析出 **8 组合**：4 个 MC 版本（26.1/26.1.1/26.1.2/26.2）× 每版本 oldest/newest 两个 Xaero 版本。
-- 版本覆盖用 `-P` 属性传入，**key 与 gradle.properties 同名**（见下节）。
+- 构建是 **Stonecutter 多版本单源码树**：`versions/<MC 版本>/` 每目录一个节点
+  （当前 `1.21.11`、`26.1`、`26.1.1`、`26.1.2`、`26.2`、`26.3`），共享根 `src/`。
+- `versions.json` + `tools/resolve_versions.py`（update/check/matrix 三模式）按节点
+  目录生成行（**支持的 MC 版本 = 节点目录 ∩ piston release**），矩阵 = 每行
+  oldest/newest Xaero 两组合。行带 `artifact` 字段（modern/legacy）与按家族的
+  `java`（25/21）。
+- 版本覆盖用 `-P` 传入（如 CI 矩阵换 Xaero 端点用 `-PxaeroMapVersion=...`）；
+  fabricApi/minimap 等由 versions.json 行按节点 id 提供，`-P` 可覆盖。
 - `refresh-versions.yml` 每周一自动跑 `update` 并仅在有真实变更时提交。
-- **发布产物是单 jar（universal jar）**：`fabric.mod.json` 的 `"minecraft": ">=26.1"` 让 loader 接受全部版本；编译目标取全局最老 Xaero（1.40.14，26.1.2 线），引用的符号是全部支持版本集合的子集，向前兼容所有版本。未来 MC 若有破坏性变更，由 CI 的 universal E2E（矩阵随 versions.json 自动增长）提前暴露。
+- **发布产物是双 jar**：
+  - **modern universal**（`:26.1.2` 产出，`X.Y.Z+mc26.1.2`）：`"minecraft": ">=26.1"`
+    通吃 26.1–26.3；编译目标取本线最老 Xaero（1.40.14），引用符号是全家族子集；
+    搬家类型 API 经 `compat/` 反射缝适配（src-modern/）。
+  - **legacy**（`:1.21.11` 产出，`X.Y.Z+mc1.21.11`）：`"minecraft": ">=1.21.11 <1.22"`；
+    mojmap 编译 → loom remapJar 到 intermediary；1.21.11 无反射必要（单版本），
+    compat 直调强类型（src-legacy/），JNI 传输层两线共用。
+- 未来 MC 若有破坏性变更，由 CI 的 E2E（矩阵随 versions.json 自动增长）提前暴露；
+  新增支持版本 = 建 `versions/<MC>/` 节点目录 + settings.gradle 注册节点。
 
 ## 运行
 
 ### 本地
 
 ```bash
-# JVM 单元测试 + native 集成测试（含 JUnit）
-./gradlew build -x compileNativeWindows
+# JVM 单元测试 + native 集成测试（按节点；-x compileNativeWindows 跳过 Windows 交叉编译）
+./gradlew :26.1.2:build :1.21.11:build -x compileNativeWindows
 
 # C 单元测试（独立，doctest）
 cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
@@ -56,12 +70,14 @@ cmake --build build-test --target xsmtest
 XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 
 # E2E client gametest（需真实显示或用 -PclientGameTestXVFB=true 无头）
-./gradlew runProductionClientGameTest -PskipNativeWindows=true
+./gradlew :26.1.2:runProductionClientGameTest -PskipNativeWindows=true
 
-# 用预构建 universal jar 跑 E2E（验证发布产物，不在目标版本上重编译 mod）
+# 用预构建发布 jar 跑 E2E（验证发布产物，不在目标版本上重编译 mod）
 # 排除 -sources.jar：其 fabric.mod.json 是未展开的 ${version} 模板，误载会解析失败
-./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
-  -PuniversalJar="$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
+./gradlew :26.1.2:runProductionClientGameTestUniversal -PskipNativeWindows=true \
+  -PuniversalJar="$(find versions/26.1.2/build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
+./gradlew :1.21.11:runProductionClientGameTestUniversal -PskipNativeWindows=true \
+  -PuniversalJar="$(find versions/1.21.11/build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
 ```
 
 **无头环境注意（MC 26.3+）**：26.3 渲染栈换成 SDL3+renderpearl，其 `GlDevice`
