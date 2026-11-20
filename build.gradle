@@ -177,7 +177,20 @@ dependencies {
 	// remap 变体还会把依赖 group 改写为 remapped.xaero.minimap，一并排除（不存在时无副作用）。
 	modRuntimeOnly("xaero.minimap:xaerominimap-fabric-${xaeroMapLine}:${xaeroMinimapVersion}")
 
-	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
+	// legacy 线不用 loader-junit：其 LauncherSessionListener 会引导完整 knot 环境，
+	// 在 loader 0.17.3（fabric-api 0.141.6 硬下限）× loom-remap 组合下 executor 启动即
+	// ServiceLoader CNFE（IAdviceProvider/MixinBootstrap 的类加载器隔离问题）。
+	// 测试只依赖 MC 静态数据类（McBootstrap 手动 tryDetectVersion + Bootstrap），
+	// 普通 fabric-loader 即可；modern 线的 loader-junit 环境保持原样。
+	testImplementation (isLegacyLine
+			? "net.fabricmc:fabric-loader:${project.loader_version}"
+			: "net.fabricmc:fabric-loader-junit:${project.loader_version}")
+	if (isLegacyLine) {
+		// loader-junit 的 junit-jupiter 传递依赖随之消失，显式补上
+		testImplementation platform("org.junit:junit-bom:5.13.4")
+		testImplementation "org.junit.jupiter:junit-jupiter"
+		testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+	}
 
 	// production 运行的 mods 只来自 jar/remapJar + productionRuntimeMods，
 	// fabric-api / xaero / 测试 mod 都要显式声明。
@@ -192,6 +205,16 @@ configurations {
 	testRuntimeClasspath {
 		exclude group: 'xaero.minimap'
 		exclude group: 'remapped.xaero.minimap'
+	}
+}
+
+// legacy 线: loader 0.17.3（fabric-api 0.141.6 硬下限，见 versions/1.21.11 说明）的
+// loader-junit 传递 sponge-mixin 0.16.5 + mixinextras 0.5.0，两者不兼容
+// （0.5.0 引用 sponge-mixin 0.17+ 才有的 IAdviceProvider → ServiceLoader CNFE）。
+// 测试 JVM 的 mixin 全用标准 @Inject/@Redirect/@Accessor，不需要 MixinExtras，直接排除。
+if (isLegacyLine) {
+	configurations.matching { it.name == 'testRuntimeClasspath' }.all {
+		exclude group: 'io.github.llamalad7'
 	}
 }
 
