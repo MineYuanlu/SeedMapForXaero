@@ -1,10 +1,29 @@
+import groovy.json.JsonSlurper
 import org.apache.tools.ant.taskdefs.condition.Os
+import org.gradle.api.services.BuildServiceParameters
+
+// ─── Stonecutter 中央版本化构建脚本 ─────────────────────────────────────────
+// 本脚本对 versions/ 下每个节点各求值一次（stonecutter centralScript），
+// 根 src/ 即各节点的源码树；MC 版本 = 节点名 = stonecutter.current.version。
+// 每节点参数（loader/fabricApi/xaero 线）在 versions/<节点>/gradle.properties，
+// 共享参数在根 gradle.properties。CI 可用 -P 覆盖（对本次调用的节点生效）。
+//
+// loom-back-compat 按 MC 版本选择 loom 变体：
+//   ≥26.x (unobf)  → net.fabricmc.fabric-loom       无 mappings，直接编译
+//   <26.x (混淆)   → net.fabricmc.fabric-loom-remap  mojmap 编译 → remapJar 到 intermediary
+// 并为两变体提供统一 API：modImplementation 等别名 / loomx.applyMojangMappings() /
+// loomx.modJar（remap 变体 = remapJar，unobf 变体 = jar）。
 
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'dev.kikugie.loom-back-compat'
 	id 'maven-publish'
 	id 'me.modmuss50.mod-publish-plugin' version "${mod_publish_plugin_version}"
 }
+
+def scVersion = stonecutter.current.version
+def isLegacyLine = stonecutter.current.parsed.matches('<26')
+// Java 线别：26.x (unobf) = 25；≤1.21.11（混淆线）= 21。mixin compatibilityLevel 同步取值。
+def targetJavaVersion = isLegacyLine ? 21 : 25
 
 // 版本号从 git 状态确定性计算（单一事实源 = release tag），不再依赖 gradle.properties。
 // 算法：
@@ -12,6 +31,7 @@ plugins {
 //   n     = rev-list --count <base>..HEAD（无 base 时为总提交数）
 //   dirty = status --porcelain 非空（含 untracked，语义同 git describe --dirty）
 //   HEAD == tag 且干净 → "X.Y.Z"；否则 → "X.Y.Z+<n>.<hash>[.dirty]"
+// 追加 "+mc<节点>" 后缀区分双 artifact（modern universal / legacy remap jar）。
 // 边界：非 git 环境（源码 zip 构建）回退 "0.0.0-local"；-Pmod_version=... 可手动覆盖。
 // 注意：CI checkout 需 fetch-depth: 0 + fetch-tags: true，shallow clone 会退化为 "0.0.0+<n>.<hash>"。
 def gitOut = { List<String> args ->
@@ -47,7 +67,7 @@ if (modVersion == null) {
 		}
 	}
 }
-version = modVersion
+version = "${modVersion}+mc${scVersion}"
 group = project.maven_group
 
 base {
@@ -76,6 +96,11 @@ loom {
 	}
 }
 
+// 变体专属源码目录：compat 门面里与版本强绑定的实现整文件分叉（强类型 vs 反射），
+// 内联条件注释不可读。src-modern/ 进 modern 线，src-legacy/ 进 legacy 线，
+// 同相对路径同包名同类名，两变体各取其一。
+sourceSets.client.java.srcDir rootProject.file(isLegacyLine ? 'src-legacy/client/java' : 'src-modern/client/java')
+
 fabricApi {
 	configureTests {
 		createSourceSet = true
@@ -90,32 +115,48 @@ fabricApi {
 
 // 测试 mod 是独立 source set（gametest），production 运行只收集
 // jar/remapJar + productionRuntimeMods —— 打包成 jar 显式加入，否则测试类不加载。
+// remap 变体（legacy 线）production runtime 跑 intermediary 环境，gametest 类必须重映射
+// → 额外 remapGametestModJar（RemapJarTask）；unobf 变体直接用原始 jar。
 def gametestModJar = tasks.register("gametestModJar", Jar) {
 	group = "verification"
 	from sourceSets.gametest.output
 	archiveBaseName = "seed-map-for-xaero-gametest"
-	destinationDirectory = layout.buildDirectory.dir("gametest-mods")
+	destinationDirectory = layout.buildDirectory.dir(isLegacyLine ? "gametest-mods-src" : "gametest-mods")
+}
+
+def gametestModArtifact = gametestModJar
+if (isLegacyLine) {
+	gametestModArtifact = tasks.register("remapGametestModJar", net.fabricmc.loom.task.RemapJarTask) {
+		group = "verification"
+		dependsOn gametestModJar
+		input = gametestModJar.flatMap { it.archiveFile }
+		archiveBaseName = "seed-map-for-xaero-gametest"
+		destinationDirectory = layout.buildDirectory.dir("gametest-mods")
+		addNestedDependencies = false
+	}
 }
 
 dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
+	minecraft "com.mojang:minecraft:${scVersion}"
+	loomx.applyMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
 
 	// Better PVP 是可选独立 Xaero mod，其 POM 的 `+` 版本可能解析出不兼容旧版
 	// World Map 的版本；本 mod 不用它，排除以保证矩阵下 classpath 有效。
 	def xaeroMap = "xaero.map:xaeroworldmap-fabric-${project.xaeroMapLine}:${project.xaeroMapVersion}"
-	compileOnly(xaeroMap) { exclude group: 'xaero.pvp' }
-	runtimeOnly(xaeroMap) { exclude group: 'xaero.pvp' }
-	// 旧版 World Map POM 把 XaeroLib 声明为 runtime scope，compileOnly 不携带，
+	modCompileOnly(xaeroMap) { exclude group: 'xaero.pvp' }
+	modRuntimeOnly(xaeroMap) { exclude group: 'xaero.pvp' }
+	// 旧版 World Map POM 把 XaeroLib 声明为 runtime scope，modCompileOnly 不携带，
 	// 显式声明；`[1.1.0,)` 与 Xaero 自身下限一致，各线解析到最新。
-	compileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
-	runtimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	modCompileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	modRuntimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
 	// dev runtime 加 minimap: waypoint 转换 (SupportMods.minimap()) 需要真实 mod。
-	// 仅 runtimeOnly，compileOnly 不引用 (通过 SupportMods 反射式访问)。
+	// 仅 modRuntimeOnly，modCompileOnly 不引用 (通过 SupportMods 反射式访问)。
 	// 注意: minimap 与 worldmap 都内嵌共享的 xaero.common.* 包, 在扁平测试 JVM
 	// 类路径上会互相覆盖 (ServiceLoader 报 not a subtype), 故从 testRuntimeClasspath 排除。
-	runtimeOnly("xaero.minimap:xaerominimap-fabric-${project.xaeroMapLine}:${project.xaeroMinimapVersion}")
+	// remap 变体还会把依赖 group 改写为 remapped.xaero.minimap，一并排除（不存在时无副作用）。
+	modRuntimeOnly("xaero.minimap:xaerominimap-fabric-${project.xaeroMapLine}:${project.xaeroMinimapVersion}")
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 
@@ -124,13 +165,14 @@ dependencies {
 	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
 	productionRuntimeMods(xaeroMap) { exclude group: 'xaero.pvp' }
 	productionRuntimeMods("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
-	productionRuntimeMods files(gametestModJar)
+	productionRuntimeMods files(gametestModArtifact)
 }
 
 // minimap 只给 dev runClient 用; 排除出测试类路径 (见上方 runtimeOnly 注释)。
 configurations {
 	testRuntimeClasspath {
 		exclude group: 'xaero.minimap'
+		exclude group: 'remapped.xaero.minimap'
 	}
 }
 
@@ -148,7 +190,7 @@ tasks.register("runProductionClientGameTest", net.fabricmc.loom.task.prod.Client
 	useXVFB = (xvfbProp != null) ? (xvfbProp as boolean) : (System.getenv('CI') != null)
 }
 
-// 与 runProductionClientGameTest 相同，但 mod 本体使用预构建的 universal jar
+// 与 runProductionClientGameTest 相同，但 mod 本体使用预构建的发布 jar
 // （-PuniversalJar=<path>），从而在任意 MC/Xaero 组合上端到端验证同一个发布产物，
 // 而非针对该版本重新编译的 jar。loom 的 AbstractProductionRunTask 构造时把
 // remapJar + productionRuntimeMods 塞进 mods 集合，这里用 setFrom 整体替换掉 remapJar。
@@ -164,16 +206,27 @@ tasks.register("runProductionClientGameTestUniversal", net.fabricmc.loom.task.pr
 }
 
 // ─── Native C build ─────────────────────────────────────────────────────────
+// C 源码与产物目录全局共享（src/main/c/，全部 MC 线同一套 libxsmcore）。
+// 多节点并行构建时用 SharedBuildService 串行化 cmake（同一 build dir 不能并发 configure）。
 
 def skipNative = project.findProperty('skipNativeBuild') ?: 'false'
 def skipNativeWindows = project.findProperty('skipNativeWindows') ?: 'false'
 
-// gradle.local.properties（gitignored）里也可覆盖上面的属性，与 -P 同格式。
-def localPropsFile = file('gradle.local.properties')
+// gradle.local.properties（gitignored，根目录）里也可覆盖上面的属性，与 -P 同格式。
+def localPropsFile = rootProject.file('gradle.local.properties')
 if (localPropsFile.exists()) {
 	def props = new Properties()
 	localPropsFile.withInputStream { props.load(it) }
 	props.each { k, v -> project.ext[k] = v }
+}
+
+abstract class CmakeLockService implements BuildService<BuildServiceParameters.None> {
+}
+
+// maxParallelUsages = 1：同一 build dir 不能并发 configure（Gradle 9 起
+// 并发上限在注册处声明，不再在 Service 接口上覆写）
+def cmakeLock = gradle.sharedServices.registerIfAbsent("xsm-cmake-lock", CmakeLockService) {
+	maxParallelUsages = 1
 }
 
 def defaultCCompiler() {
@@ -191,8 +244,8 @@ def defaultCCompiler() {
 	}
 }
 
-// 产物按 src/main/c/build/<target>/ 分目录放置，processClientResources 再映射进 JAR 的
-// /native/<os>/<arch>/ 路径（见 Xsm.loadNativeLibrary）。
+// 产物按 <root>/src/main/c/build/<target>/ 分目录放置，processClientResources 再映射进
+// JAR 的 /native/<os>/<arch>/ 路径（见 Xsm.loadNativeLibrary）。
 def nativeOutDir(def cdir, String rel) {
 	return "${cdir.absolutePath}/${rel}"
 }
@@ -242,9 +295,10 @@ def runCmake(def cdir, String bdir, List<String> args) {
 task compileNative {
 	description 'Compile the native shared library via CMake (host platform).'
 	onlyIf { skipNative != 'true' }
+	usesService cmakeLock
 	doLast {
 		def cc = System.getenv('CC') ?: defaultCCompiler()
-		def cdir = file('src/main/c')
+		def cdir = rootProject.file('src/main/c')
 		def outDir = hostNativeOutputDir(cdir)
 		def args = ['cmake', '-S', '.', '-B', 'build',
 			'-DCMAKE_BUILD_TYPE=Release',
@@ -262,8 +316,9 @@ task compileNative {
 task compileNativeLinuxArm {
 	description 'Cross-compile libxsmcore.so for Linux aarch64 (glibc) via aarch64-linux-gnu-gcc.'
 	onlyIf { skipNative != 'true' }
+	usesService cmakeLock
 	doLast {
-		def cdir = file('src/main/c')
+		def cdir = rootProject.file('src/main/c')
 		runCmake(cdir, 'build-linux-arm', ['cmake', '-S', '.', '-B', 'build-linux-arm',
 			'-DCMAKE_BUILD_TYPE=Release',
 			'-DCMAKE_TOOLCHAIN_FILE=linux-arm-toolchain.cmake',
@@ -275,8 +330,9 @@ task compileNativeLinuxArm {
 task compileNativeAndroid {
 	description 'Cross-compile libxsmcore.so for Android (bionic) via the NDK: arm64-v8a + x86_64.'
 	onlyIf { skipNative != 'true' }
+	usesService cmakeLock
 	doLast {
-		def cdir = file('src/main/c')
+		def cdir = rootProject.file('src/main/c')
 		def toolchain = "${androidNdk()}/build/cmake/android.toolchain.cmake"
 		[['arm64-v8a', 'build-android-arm64', 'build/android-arm64'],
 		 ['x86_64', 'build-android-x86_64', 'build/android-x86_64']].each { abi, bdir, rel ->
@@ -296,8 +352,9 @@ task compileNativeAndroid {
 task compileNativeWindows {
 	description 'Cross-compile xsmcore.dll for Windows via MinGW.'
 	onlyIf { skipNative != 'true' && skipNativeWindows != 'true' }
+	usesService cmakeLock
 	doLast {
-		def cdir = file('src/main/c')
+		def cdir = rootProject.file('src/main/c')
 		def outDir = nativeOutDir(cdir, 'build-mingw/x86_64')
 		runCmake(cdir, 'build-mingw', ['cmake', '-S', '.', '-B', 'build-mingw',
 			'-DCMAKE_BUILD_TYPE=Release',
@@ -319,37 +376,58 @@ processClientResources {
 	//   android/  → libxsmcore.so (bionic/NDK, arm64 / x86_64)  —— FCL/Pojav 用
 	//   macos/    → libxsmcore.dylib (universal, arm64+x86_64)
 	//   windows/  → xsmcore.dll (x86_64)
-	from('src/main/c/build/linux-x86_64') { into 'native/linux/x86_64' }
-	from('src/main/c/build/linux-aarch64') { into 'native/linux/aarch64' }
-	from('src/main/c/build/android-arm64') { into 'native/android/arm64' }
-	from('src/main/c/build/android-x86_64') { into 'native/android/x86_64' }
-	from('src/main/c/build/macos') { into 'native/macos/universal' }
+	from(rootProject.file('src/main/c/build/linux-x86_64')) { into 'native/linux/x86_64' }
+	from(rootProject.file('src/main/c/build/linux-aarch64')) { into 'native/linux/aarch64' }
+	from(rootProject.file('src/main/c/build/android-arm64')) { into 'native/android/arm64' }
+	from(rootProject.file('src/main/c/build/android-x86_64')) { into 'native/android/x86_64' }
+	from(rootProject.file('src/main/c/build/macos')) { into 'native/macos/universal' }
 	if (skipNativeWindows != 'true') {
-		from('src/main/c/build-mingw/x86_64') { into 'native/windows/x86_64' }
+		from(rootProject.file('src/main/c/build-mingw/x86_64')) { into 'native/windows/x86_64' }
+	}
+	// mixin compatibilityLevel 按节点 Java 线别展开（JAVA_21 / JAVA_25）
+	def mixinJava = "JAVA_${targetJavaVersion}"
+	inputs.property 'mixinJava', mixinJava
+	filesMatching('*mixins.json') {
+		expand 'mixin_java': mixinJava
 	}
 }
 
 processResources {
 	inputs.property "version", project.version
 	inputs.property "loader_version", project.loader_version
+	inputs.property "minecraft_dep", project.minecraft_dep
 	filteringCharset "UTF-8"
 
 	filesMatching("fabric.mod.json") {
 		expand "version": project.version,
-				"loader_version": project.loader_version
+				"loader_version": project.loader_version,
+				"minecraft_dep": project.minecraft_dep
+	}
+	filesMatching('*mixins.json') {
+		expand 'mixin_java': "JAVA_${targetJavaVersion}"
+	}
+}
+
+// gametest mod jar 的 fabric.mod.json 同样按节点展开（loader 下限 / minecraft 区间）
+tasks.matching { it.name == 'processGametestResources' }.configureEach {
+	inputs.property "loader_version", project.loader_version
+	inputs.property "minecraft_dep", project.minecraft_dep
+	filesMatching('fabric.mod.json') {
+		expand "loader_version": project.loader_version,
+				"minecraft_dep": project.minecraft_dep
 	}
 }
 
 clean {
-	// XsmNative.java 是手写提交文件（JNI stub），不再由构建生成/删除
-	delete 'src/main/c/build'
-	delete 'src/main/c/build-mingw'
-	delete 'src/main/c/build-linux-arm'
-	delete 'src/main/c/build-android-arm64'
-	delete 'src/main/c/build-android-x86_64'
+	// 注意：根 project 不执行本脚本；这里的 clean 只清 C 产物（全局共享目录）。
+	// 各节点 Java 构建产物在 versions/<节点>/build，随节点 build 目录一起清理。
+	delete rootProject.file('src/main/c/build')
+	delete rootProject.file('src/main/c/build-mingw')
+	delete rootProject.file('src/main/c/build-linux-arm')
+	delete rootProject.file('src/main/c/build-android-arm64')
+	delete rootProject.file('src/main/c/build-android-x86_64')
 }
 
-def targetJavaVersion = 25
 tasks.withType(JavaCompile).configureEach {
 	it.options.encoding = "UTF-8"
 	if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
@@ -372,7 +450,7 @@ tasks.named('sourcesJar') {
 }
 
 jar {
-	from("LICENSE") {
+	from(rootProject.file("LICENSE")) {
 		rename { "${it}_${project.archives_base_name}" }
 	}
 }
@@ -389,18 +467,27 @@ publishing {
 	}
 }
 
+// ─── Modrinth / CurseForge 发布 ─────────────────────────────────────────────
+// 每节点只发布本家族的 versions.json 行（artifact 字段标记 modern/legacy）：
+//   modern universal jar（26.1.2 线编译）→ 覆盖全部 26.x 行
+//   legacy remap jar（1.21.11 线编译）  → 覆盖 1.21.x 行
+// release.yml 只对 :versions/26.1.2:publishMods 与 :versions/1.21.11:publishMods 调用。
+def nodeArtifactFamily = isLegacyLine ? 'legacy' : 'modern'
+
 publishMods {
-	displayName = "Release ${project.version}"
-	file = jar.archiveFile
+	displayName = "Release ${modVersion} (mc${scVersion})"
+	file = loomx.modJar.flatMap { it.archiveFile }
 	type = STABLE
 	modLoaders.add('fabric')
 	changelog = providers.environmentVariable("CHANGELOG")
-		.orElse("See the [commit history](https://github.com/MineYuanlu/SeedMapForXaero/commits/v${project.version}) for details.")
+		.orElse("See the [commit history](https://github.com/MineYuanlu/SeedMapForXaero/commits/v${modVersion}) for details.")
 
 	modrinth {
 		projectId = "UoJSF4vW"
 		accessToken = providers.environmentVariable("MODRINTH_TOKEN")
-		def matrix = new groovy.json.JsonSlurper().parse(file('versions.json'))
-		matrix.versions.each { v -> minecraftVersions.add(v.id as String) }
+		def matrix = new JsonSlurper().parse(rootProject.file('versions.json'))
+		matrix.versions.each { v ->
+			if (v.artifact == nodeArtifactFamily) minecraftVersions.add(v.id as String)
+		}
 	}
 }

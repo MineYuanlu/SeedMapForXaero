@@ -110,7 +110,13 @@ public class ChestLootWidget {
         }
     }
 
+    //? if <26.1 {
+    /*// Xaero 1.40.4 的 widget 渲染入口叫 render（26.x 为 extractRenderState）。
+    // 不能走 controller 全局替换：反向会误伤 modern 的 void render(GuiGraphicsExtractor…)。
+    public void render(GuiGraphics guiGraphicsExtractor, int mouseX, int mouseY, Font font) {
+    *///?} else {
     public void extractRenderState(GuiGraphicsExtractor guiGraphicsExtractor, int mouseX, int mouseY, Font font) {
+    //?}
         this.pendingItemTooltip = null;
         if (this.tiled) {
             renderTiled(guiGraphicsExtractor, mouseX, mouseY, font);

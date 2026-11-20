@@ -71,7 +71,11 @@ public final class HighlightHudRenderer {
         final int guiW = graphics.guiWidth();
         final int guiH = graphics.guiHeight();
 
+        //? if >=26.1 {
         final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
+        //?} else {
+        /*final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$guiRenderState();
+        *///?}
         // 新开一层 stratum: addBlitToCurrentLayer 只挂到 current, 保证本层图标在其它
         // HUD 元素之上 (与 StructureOverlayMixin 同模式)。
         guiRenderState.nextStratum();

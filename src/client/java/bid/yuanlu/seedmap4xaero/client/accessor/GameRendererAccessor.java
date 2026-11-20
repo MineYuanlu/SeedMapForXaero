@@ -1,7 +1,12 @@
 package bid.yuanlu.seedmap4xaero.client.accessor;
 
 import net.minecraft.client.Camera;
+
+//? if >=26.1 {
 import net.minecraft.client.renderer.state.GameRenderState;
+//?} else {
+/*import net.minecraft.client.gui.render.state.GuiRenderState;
+*///?}
 
 /**
  * 跨版本访问 {@link net.minecraft.client.renderer.GameRenderer} 的私有字段。
@@ -13,7 +18,11 @@ import net.minecraft.client.renderer.state.GameRenderState;
  */
 public interface GameRendererAccessor {
 
+    //? if >=26.1 {
     GameRenderState xsm$gameRenderState();
+    //?} else {
+    /*GuiRenderState xsm$guiRenderState();
+    *///?}
 
     Camera xsm$mainCamera();
 }
