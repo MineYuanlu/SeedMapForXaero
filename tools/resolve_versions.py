@@ -33,7 +33,21 @@ XAERO_SLUG = "xaeros-world-map"
 XAERO_MINIMAP_SLUG = "xaeros-minimap"
 FABRIC_API_SLUG = "fabric-api"
 
-MIN_MINECRAFT = "26.1"
+MIN_MINECRAFT = "1.21.11"
+
+# e.g. "26.1" -> (26, 1);  "1.21.11" -> (1, 21, 11)
+def version_key(v: str) -> tuple:
+    return tuple(int(x) for x in v.split("."))
+
+# 支持的 MC 版本 = stonecutter 节点目录（versions/<MC 版本>/）∩ piston release。
+# versions.json 只为已建节点的版本生成行：周刷新加新 MC 行必须先建节点，
+# 否则 CI 矩阵引用不存在的 gradle 项目。artifact 家族由版本号推断（≥26 = modern）。
+def node_dirs() -> "set[str]":
+    base = os.path.join(ROOT_DIR, "versions")
+    if not os.path.isdir(base):
+        return set()
+    return {d for d in os.listdir(base)
+            if os.path.isdir(os.path.join(base, d))}
 USER_AGENT = "seedmap4xaero/matrix-resolver (github.com/MineYuanlu/SeedMapForXaero)"
 
 # e.g. "fabric-26.1.2-1.44.2" -> ("26.1.2", "1.44.2")
@@ -57,7 +71,7 @@ def modrinth_versions(slug: str, game_version: str) -> "list[dict]":
 def mc_releases() -> "list[str]":
     manifest = json.loads(http_get(PISTON_URL))
     releases = [v["id"] for v in manifest["versions"] if v["type"] == "release"]
-    return [v for v in releases if v >= MIN_MINECRAFT]
+    return [v for v in releases if version_key(v) >= version_key(MIN_MINECRAFT)]
 
 
 def pick_xaero(game_version: str) -> "dict | None":
@@ -107,8 +121,11 @@ def pick_xaero_minimap(game_version: str) -> "str | None":
 
 
 def resolve() -> "list[dict]":
+    nodes = node_dirs()
     rows = []
     for mc in mc_releases():
+        if mc not in nodes:
+            continue
         xaero = pick_xaero(mc)
         if xaero is None:
             print(f"  WARN {mc}: no release Xaero build found, skipped")
@@ -119,10 +136,11 @@ def resolve() -> "list[dict]":
             # 矩阵行不带 xaeroMinimapVersion key → 回落 gradle.properties 默认值；
             # 世界图支持而 minimap 不支持的 MC 目前不存在，防御性告警即可
             print(f"  WARN {mc}: no release Xaero Minimap build found")
+        is_legacy = version_key(mc) < (26,)
         rows.append({
             "id": mc,
-            "java": 25,
-            "loomPlugin": None,
+            "artifact": "legacy" if is_legacy else "modern",
+            "java": 21 if is_legacy else 25,
             "xaeroArtifactLine": xaero["line"],
             "xaeroOldest": xaero["oldest"],
             "xaeroNewest": xaero["newest"],
@@ -139,7 +157,7 @@ def load_committed() -> "dict":
 
 def canonical(rows: "list[dict]") -> "dict":
     return {
-        "schema": 1,
+        "schema": 2,
         "generated": datetime.now(timezone.utc).replace(microsecond=0)
         .isoformat().replace("+00:00", "Z"),
         "minMinecraft": MIN_MINECRAFT,
@@ -161,11 +179,18 @@ def print_matrix(rows: "list[dict]", tag: str = "all") -> None:
     """
     include = []
     for r in rows:
-        for t, ver in (("oldest", r["xaeroOldest"]), ("newest", r["xaeroNewest"])):
-            if tag != "all" and t != tag:
-                continue
+        pairs = [("oldest", r["xaeroOldest"]), ("newest", r["xaeroNewest"])]
+        if tag == "all":
+            # 同线仅一个 release 时 oldest==newest，去重避免空跑同组合两遍
+            if r["xaeroOldest"] == r["xaeroNewest"]:
+                pairs = [("oldest", r["xaeroOldest"])]
+        else:
+            pairs = [p for p in pairs if p[0] == tag]
+        for t, ver in pairs:
             entry = {
                 "mc": r["id"],
+                "node": r["id"],
+                "artifact": r["artifact"],
                 "java": r["java"],
                 "xaeroLine": r["xaeroArtifactLine"],
                 "xaeroVersion": ver,

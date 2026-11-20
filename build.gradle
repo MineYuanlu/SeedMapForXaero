@@ -25,6 +25,25 @@ def isLegacyLine = stonecutter.current.parsed.matches('<26')
 // Java 线别：26.x (unobf) = 25；≤1.21.11（混淆线）= 21。mixin compatibilityLevel 同步取值。
 def targetJavaVersion = isLegacyLine ? 21 : 25
 
+// 依赖版本真值源 = versions.json（tools/resolve_versions.py 周刷新）；
+// 本节点行按 id 匹配，-P 显式覆盖优先（CI 矩阵对同一节点换 xaero 新旧端点）。
+def depFromVersionsJson = { String propKey, String rowKey ->
+	if (project.hasProperty(propKey)) return project.property(propKey)
+	def row = null
+	def vjson = new JsonSlurper().parse(rootProject.file('versions.json'))
+	vjson.versions.each { if (it.id == scVersion) row = it }
+	if (row == null || row.get(rowKey) == null) {
+		throw new RuntimeException(
+			"versions.json has no row ${scVersion}.${rowKey} and no -P${propKey} override")
+	}
+	return row.get(rowKey)
+}
+def fabricApiVersion = depFromVersionsJson('fabricApiVersion', 'fabricApi')
+def xaeroMapLine = depFromVersionsJson('xaeroMapLine', 'xaeroArtifactLine')
+// 编译目标默认取本线最老 Xaero：引用符号是全部支持版本的子集（universal jar 策略）
+def xaeroMapVersion = depFromVersionsJson('xaeroMapVersion', 'xaeroOldest')
+def xaeroMinimapVersion = depFromVersionsJson('xaeroMinimapVersion', 'xaeroMinimap')
+
 // 版本号从 git 状态确定性计算（单一事实源 = release tag），不再依赖 gradle.properties。
 // 算法：
 //   base  = 可达（--merged HEAD）tag 中匹配 ^v\d+\.\d+\.\d+$ 且 version 排序最大的一个
@@ -140,31 +159,31 @@ dependencies {
 	minecraft "com.mojang:minecraft:${scVersion}"
 	loomx.applyMojangMappings()
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
 
 	// Better PVP 是可选独立 Xaero mod，其 POM 的 `+` 版本可能解析出不兼容旧版
 	// World Map 的版本；本 mod 不用它，排除以保证矩阵下 classpath 有效。
-	def xaeroMap = "xaero.map:xaeroworldmap-fabric-${project.xaeroMapLine}:${project.xaeroMapVersion}"
+	def xaeroMap = "xaero.map:xaeroworldmap-fabric-${xaeroMapLine}:${xaeroMapVersion}"
 	modCompileOnly(xaeroMap) { exclude group: 'xaero.pvp' }
 	modRuntimeOnly(xaeroMap) { exclude group: 'xaero.pvp' }
 	// 旧版 World Map POM 把 XaeroLib 声明为 runtime scope，modCompileOnly 不携带，
 	// 显式声明；`[1.1.0,)` 与 Xaero 自身下限一致，各线解析到最新。
-	modCompileOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
-	modRuntimeOnly("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	modCompileOnly("xaero.lib:xaerolib-fabric-${xaeroMapLine}:[1.1.0,)")
+	modRuntimeOnly("xaero.lib:xaerolib-fabric-${xaeroMapLine}:[1.1.0,)")
 	// dev runtime 加 minimap: waypoint 转换 (SupportMods.minimap()) 需要真实 mod。
 	// 仅 modRuntimeOnly，modCompileOnly 不引用 (通过 SupportMods 反射式访问)。
 	// 注意: minimap 与 worldmap 都内嵌共享的 xaero.common.* 包, 在扁平测试 JVM
 	// 类路径上会互相覆盖 (ServiceLoader 报 not a subtype), 故从 testRuntimeClasspath 排除。
 	// remap 变体还会把依赖 group 改写为 remapped.xaero.minimap，一并排除（不存在时无副作用）。
-	modRuntimeOnly("xaero.minimap:xaerominimap-fabric-${project.xaeroMapLine}:${project.xaeroMinimapVersion}")
+	modRuntimeOnly("xaero.minimap:xaerominimap-fabric-${xaeroMapLine}:${xaeroMinimapVersion}")
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 
 	// production 运行的 mods 只来自 jar/remapJar + productionRuntimeMods，
 	// fabric-api / xaero / 测试 mod 都要显式声明。
-	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
+	productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
 	productionRuntimeMods(xaeroMap) { exclude group: 'xaero.pvp' }
-	productionRuntimeMods("xaero.lib:xaerolib-fabric-${project.xaeroMapLine}:[1.1.0,)")
+	productionRuntimeMods("xaero.lib:xaerolib-fabric-${xaeroMapLine}:[1.1.0,)")
 	productionRuntimeMods files(gametestModArtifact)
 }
 
