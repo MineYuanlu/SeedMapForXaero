@@ -9,8 +9,8 @@ Xaero API，都必须用「对最老版本可编译、对新版本可运行」�
 ## 版本范围
 
 `versions.json`（`tools/resolve_versions.py` 生成/校验）定义每个 MC 线的
-`xaeroOldest` / `xaeroNewest`。矩阵 8 组合 = 4 MC × oldest/newest，E2E 只跑
-newest。
+`xaeroOldest` / `xaeroNewest`。矩阵 = 每 MC（节点）× oldest/newest（行数随
+versions.json 增长），E2E 只跑 newest。
 
 ## 排查手法
 

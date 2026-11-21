@@ -95,11 +95,11 @@ backend 失败后客户端会挂死。CI 在 `universal-e2e` 设
 单人开发流程（GitHub Flow）：`dev/xxx`、`fix/xxx` 只跑 `pr-check.yml` 快速检查；**PR → master 与 master 推送是全面门禁**（`matrix-test.yml` 版本矩阵 + E2E 与 `build.yml` 全平台 native + 打包都触发）。
 
 - `resolve`：校验 `versions.json` 新鲜度（过期仅告警不阻塞）+ 输出两套矩阵
-  - `matrix`：8 组合（4 MC × oldest/newest Xaero），`test` 用
-  - `matrix-e2e`：4 组合（每 MC × **newest** Xaero），`universal-e2e` 用
-- `test`（8 行，**源码兼容预警**）：`cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）。保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；产物是编译载体，不发布
-- `build-universal`（1 行）：编一个 universal jar（最老 Xaero 线 1.40.14），上传 artifact
-- `universal-e2e`（4 行，依赖 `build-universal`）：真实启动 MC 的 E2E，**复用同一个 universal jar**，`./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true -PuniversalJar=<artifact>` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
+  - `matrix`：每节点 × oldest/newest Xaero（行数随 versions.json 增长，当前 6 节点 = 12 组合），`test` 用
+  - `matrix-e2e`：每节点一行 × **newest** Xaero（当前 6 组合），`universal-e2e` 用
+- `test`（每节点 oldest/newest 各一行，**源码兼容预警**）：`cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）。保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；产物是编译载体，不发布
+- `build-universal`（1 job）：编两个发布 jar（`:26.1.2:modJar` + `:1.21.11:modJar`），按 artifact 家族上传 `universal-jar` / `legacy-jar` artifact
+- `universal-e2e`（每节点一行，依赖 `build-universal`）：真实启动 MC 的 E2E，**按行 artifact 字段复用对应发布 jar**，`./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true -PuniversalJar=<artifact>` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
 - `gate`（聚合，固定名字）：任一上游 job 失败/取消/跳过即失败；branch protection 的 required check 用它（动态矩阵 job 名含版本号会变，不能作 required check）。`build.yml` 同样有聚合 job `build-gate`（reusable workflow 调用的 check 名是 `调用job / 被调job` 格式）
 
 **native 架构矩阵**：定义在 `reusable-native-build.yml`（5 个 compile job），被 `build.yml`（master/tag push + PR → master）、`release.yml`、`build-test-jar.yml` 通过 `uses:` 调用；汇总打包统一在 `reusable-package.yml`（下载 natives → universal JAR，含内置校验）。feature 分支/PR 的快速检查在 `pr-check.yml`。
@@ -115,7 +115,7 @@ backend 失败后客户端会挂死。CI 在 `universal-e2e` 设
 
 Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 ELF 校验 + 真机/模拟器上的 FCL 手动 E2E 兜底。
 
-> **运行时 vs 编译**：`test` 的 8 组合矩阵保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；`universal-e2e` 用发布产物（单个 universal jar）在全部 MC × newest Xaero 上真实启动，验证 mixin 的运行时应用（目标方法/字段在对应版本真实存在、注入点命中）与渲染链路。两个 job 互补，缺一不可。
+> **运行时 vs 编译**：`test` 的全节点 × oldest/newest 矩阵保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；`universal-e2e` 用发布产物（按行 artifact 家族选 modern/legacy jar）在全部 MC × newest Xaero 上真实启动，验证 mixin 的运行时应用（目标方法/字段在对应版本真实存在、注入点命中）与渲染链路。两个 job 互补，缺一不可。
 
 ### 失败诊断
 

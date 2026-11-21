@@ -21,7 +21,7 @@ JVM 方法/字段/构造器的二进制描述符**包含类型 FQN**。MC 26.3 �
 - 对 26.1.2 编译的 jar，任何强类型调用点（哪怕 FQN 没变，如 `RenderSystem.getDevice()` 的
   返回类型、`TextureSetup.singleTexture(view, sampler)` 的参数类型）在 26.3 运行时
   `NoSuchMethodError` / `NoSuchFieldError`——**编译期完全不可见**（对 26.3 源码编译也能过）。
-- 反过来（对 26.3 编译、跑 26.1）同理。CI 的 8 组合编译矩阵保证源码可编译，但无法覆盖运行时
+- 反过来（对 26.3 编译、跑 26.1）同理。CI 的全节点 × oldest/newest 编译矩阵保证源码可编译，但无法覆盖运行时
   描述符断裂；`universal-e2e`（同一 jar 真实启动）才能抓到。
 
 这类断裂随 MC 大版本高频出现（26.2 getter 改名、26.3 renderpearl 迁移），故统一收编。

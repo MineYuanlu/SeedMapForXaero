@@ -41,7 +41,7 @@ jobs:
         run: |
           python3 tools/resolve_versions.py check || \
             echo "::warning::versions.json is stale — run the refresh workflow"
-      - name: Emit matrix JSON (8 combos, 4 MC x oldest/newest Xaero)
+      - name: Emit matrix JSON (per-node oldest/newest Xaero)
         id: emit
         run: |
           python3 tools/resolve_versions.py matrix --tag all > /tmp/matrix.json
@@ -152,7 +152,7 @@ jobs:
   # 重新编译，而是复用 build-universal 产出的同一个 jar
   # （runProductionClientGameTestUniversal + -PuniversalJar）。因此验证的是
   # "发布的单 jar 在所有 MC × Xaero 上真实可用"，而非"该版本源码编译出的 jar 可用"。
-  # 矩阵取 newest Xaero 的 4 个 MC 版本组合（由 resolve 的 matrix-e2e 输出）——
+  # 矩阵取 newest Xaero 的每 MC 一行组合（行数 = versions.json 节点数，由 resolve 的 matrix-e2e 输出）——
   # mixin 的运行时应用、MC/Xaero 目标方法名差异都在真实启动中暴露。
   universal-e2e:
     needs:

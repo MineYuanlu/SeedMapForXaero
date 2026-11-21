@@ -141,13 +141,13 @@ Add `-DDEBUG_TIMINGS=ON` to enable performance timing.
 
 ### CI/CD
 
-Four workflows in `.github/workflows/`:
+Five workflows in `.github/workflows/`:
 
 | Workflow               | Trigger           | Action                                                              |
 | ---------------------- | ----------------- | ------------------------------------------------------------------- |
 | `build.yml`            | Push / PR         | Non-master: Linux build; master/tag: all-platform native + package |
 | `build-test-jar.yml`   | workflow_dispatch | Manual universal JAR build (all-platform native + built-in checks), no bump/release |
-| `matrix-test.yml`      | Push / manual     | 10-combo version matrix (5 MC × old/new Xaero) + client E2E GameTest |
+| `matrix-test.yml`      | Push / manual     | Per-node version matrix (old/new Xaero) + client E2E GameTest         |
 | `refresh-versions.yml` | Weekly + manual   | Refresh `versions.json` matrix (commits only on real changes)       |
 | `release.yml`          | workflow_dispatch | Version bump + all-platform build + Modrinth + Release              |
 
