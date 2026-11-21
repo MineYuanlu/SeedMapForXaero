@@ -9,7 +9,7 @@
 
 ```bash
 git submodule update --init                        # cubiomes submodule
-./gradlew stonecutterSwitchTo26.1.2 -q             # 切换/规范化工作树（提交前必须！）
+python3 tools/check_switch_normalized.py           # 检查工作树 26.1.2 规范态（提交前）
 ./gradlew :26.1.2:build :1.21.11:build -x compileNativeWindows   # 双变体构建
 ./gradlew :26.1.2:runClient                        # launch Minecraft (per node)
 ./gradlew :26.1.2:modJar :1.21.11:modJar           # 发布产物别名（jar / remapJar）
@@ -18,8 +18,16 @@ git submodule update --init                        # cubiomes submodule
 **Java 25 required**（gradle daemon）；legacy 节点 `--release 21` 由 JDK25 javac 交叉编译。
 
 ⚠ stonecutter replacements 是**双向**的（条件假侧应用反向替换）——改
-`stonecutter.gradle.kts` 前先全库 grep 验证正反两向目标串唯一性；
-工作树必须保持 switch 规范化状态（pr-check 有守卫）。
+`stonecutter.gradle.kts` 前先全库 grep 验证正反两向目标串唯一性，并同步
+`tools/check_switch_normalized.py` 的 `TOKEN_RULES`；共享树必须保持 26.1.2
+规范化状态（pr-check 有静态守卫）。
+
+⚠ **不要用 switch 任务往返**（`stonecutterSwitchToX` / "Set active project to X"）：
+它们只改 controller 的 `active` 行 + 把 `versions/<节点>/build/generated` 拷回
+src/，而 vcs 节点（26.1.2）的 generate 是**原样拷贝** —— 切走后"切回来"不会
+修复树，反而会留下替换词污染（实测 2026-11）。构建/测试任意节点都不需要切换；
+若临时切到其他版本语境编辑（IDE 补全），编辑完必须 `git checkout -- .` 还原，
+恢复方式只有 git（详见 `tools/check_switch_normalized.py` 模块注释）。
 
 Benchmark: add `-DDEBUG_TIMINGS=ON` to cmake configure.
 

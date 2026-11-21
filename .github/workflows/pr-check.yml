@@ -31,17 +31,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
       - name: Guardrail — version-sensitive MC APIs only inside compat
         run: tools/check_compat_imports.sh
-      - name: Guardrail — working tree must be switch-normalized (stonecutter)
+      - name: Guardrail — shared tree must be switch-normalized (stonecutter)
         run: |
-          # 活跃节点（26.1.2）直接编译源码树：条件注释块必须处于 switch 规范化状态
-          # （非活跃分支包成注释）。未 normalize 的提交会让活跃节点 javac 直接报语法错。
-          chmod +x ./gradlew
-          ./gradlew stonecutterSwitchTo26.1.2 -q
-          if ! git diff --quiet -- src/ src-modern/ src-legacy/ src/gametest 2>/dev/null; then
-            echo "::error::working tree is not switch-normalized — run './gradlew stonecutterSwitchTo26.1.2' before committing:"
-            git diff --stat -- src/ src-modern/ src-legacy/
-            exit 1
-          fi
+          # 活跃节点（26.1.2）直接编译共享源码树：条件注释必须处于 switch 规范化
+          # 状态（非活跃分支包成注释）且活跃代码为 modern 替换词写法。
+          # ⚠ 不用 stonecutter switch 任务做此检查：vcs 节点的 generate 是原样
+          #   拷贝，switch 回 26.1.2 不会修复树（实测 2026-11），静态检查才可靠。
+          python3 tools/check_switch_normalized.py
       - name: Run C unit tests
         run: |
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
