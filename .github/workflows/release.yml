@@ -269,6 +269,11 @@ jobs:
         with:
           java-version: '25'
           distribution: 'microsoft'
+      # cache-read-only=false：PR run 默认只读不写（每轮全量冷下载，撞 Maven
+      # Central 429）；GHA cache 按分支隔离，PR 写的缓存仅本分支可读，不污染 master
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name != 'pull_request' }}
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
       - name: Download native libs
