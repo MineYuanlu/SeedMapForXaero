@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Branch / tag / SHA to build (default: master)'
+        description: 'Git ref (branch / tag / SHA) to build. Empty = dispatch ref.'
         required: false
-        default: 'master'
+        default: ''
       runTests:
         description: 'Run C unit tests in package job'
         required: false
@@ -23,14 +23,14 @@ jobs:
   natives:
     uses: ./.github/workflows/reusable-native-build.yml
     with:
-      ref: ${{ inputs.ref }}
+      ref: ${{ inputs.ref || github.ref }}
     secrets: inherit
 
   package:
     needs: natives
     uses: ./.github/workflows/reusable-package.yml
     with:
-      ref: ${{ inputs.ref }}
+      ref: ${{ inputs.ref || github.ref }}
       artifact-name: seed-map-for-xaero-test
       run-ctests: ${{ inputs.runTests }}
       verify-natives: true
