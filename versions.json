@@ -1,22 +1,24 @@
 {
-  "schema": 1,
-  "generated": "2026-11-09T11:25:15Z",
-  "minMinecraft": "26.1",
+  "schema": 2,
+  "generated": "2026-11-20T18:00:36Z",
+  "minMinecraft": "1.21.11",
   "versions": [
     {
       "id": "26.3",
+      "artifact": "modern",
+      "artifactVersion": "26.x",
       "java": 25,
-      "loomPlugin": null,
       "xaeroArtifactLine": "26.3",
       "xaeroOldest": "1.46.2",
       "xaeroNewest": "1.47.2",
       "xaeroMinimap": "26.6.2",
-      "fabricApi": "0.165.2+26.3"
+      "fabricApi": "0.166.2+26.3"
     },
     {
       "id": "26.2",
+      "artifact": "modern",
+      "artifactVersion": "26.x",
       "java": 25,
-      "loomPlugin": null,
       "xaeroArtifactLine": "26.2",
       "xaeroOldest": "1.41.0",
       "xaeroNewest": "1.47.2",
@@ -25,8 +27,9 @@
     },
     {
       "id": "26.1.2",
+      "artifact": "modern",
+      "artifactVersion": "26.x",
       "java": 25,
-      "loomPlugin": null,
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.40.14",
       "xaeroNewest": "1.47.2",
@@ -35,8 +38,9 @@
     },
     {
       "id": "26.1.1",
+      "artifact": "modern",
+      "artifactVersion": "26.x",
       "java": 25,
-      "loomPlugin": null,
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.41.3",
       "xaeroNewest": "1.47.2",
@@ -45,13 +49,25 @@
     },
     {
       "id": "26.1",
+      "artifact": "modern",
+      "artifactVersion": "26.x",
       "java": 25,
-      "loomPlugin": null,
       "xaeroArtifactLine": "26.1.2",
       "xaeroOldest": "1.41.3",
       "xaeroNewest": "1.47.2",
       "xaeroMinimap": "26.6.2",
       "fabricApi": "0.155.3+26.1.2"
+    },
+    {
+      "id": "1.21.11",
+      "artifact": "legacy",
+      "artifactVersion": "1.21.11",
+      "java": 21,
+      "xaeroArtifactLine": "1.21.11",
+      "xaeroOldest": "1.40.4",
+      "xaeroNewest": "1.47.2",
+      "xaeroMinimap": "26.6.2",
+      "fabricApi": "0.141.6+1.21.11"
     }
   ]
 }

@@ -57,13 +57,13 @@
 
 | 依赖              | 版本                                                  |
 | ----------------- | ----------------------------------------------------- |
-| Minecraft         | 26.1 / 26.1.1 / 26.1.2 / 26.2 / **26.3**              |
-| Xaero's World Map | 1.40.14+（26.1.x）/ 1.41.0+（26.2）/ 1.46.2+（26.3） |
-| Fabric API        | 0.155.3+（26.1.x）/ 0.161.0+（26.2 / 26.3）          |
+| Minecraft         | 1.21.11 / 26.1 / 26.1.1 / 26.1.2 / 26.2 / **26.3**    |
+| Xaero's World Map | 1.40.4+（1.21.11）/ 1.40.14+（26.1.x）/ 1.41.0+（26.2）/ 1.46.2+（26.3） |
+| Fabric API        | 0.141.6+（1.21.11）/ 0.155.3+（26.1.x）/ 0.161.0+（26.2）/ 0.166.2+（26.3） |
 | Fabric Loader     | 最新                                                  |
-| Java              | **25**（现代启动器一般已内置）                        |
+| Java              | **21**（1.21.11）/ **25**（26.x，现代启动器一般已内置） |
 
-**一个 JAR 支持以上全部版本**——下载时无需挑选 MC 版本，所有版本组合均在 CI 上用同一安装包真实启动验证过。
+**两个发布 JAR**：26.x 共用一个 universal JAR（下载时无需挑版本）；1.21.11 是独立的 legacy JAR。所有版本组合均在 CI 上用对应安装包真实启动验证过。
 
 ---
 
@@ -76,14 +76,14 @@ Fabric 模组，通过 Mixin 注入 Xaero World Map 的渲染管线，利用 cub
 #### 核心组件
 
 - **C 原生层** (`src/main/c/xsm/apis/render.cpp`) — 基于 cubiomes 的生物群系/结构/地形生成与光照，编译为 `libxsmcore.so`（Linux）/ `xsmcore.dll`（Windows）/ `libxsmcore.dylib`（macOS）
-- **Java FFM 绑定** (`src/client/.../nativeapi/Xsm.java`) — 通过 jextract 生成的 FFM 接口调用 C 侧函数
+- **Java JNI 绑定** (`src/client/.../nativeapi/`) — 手写 JNI（`XsmNative.java` stub + `Xsm.java` 数组传输），Java 21/25 通吃，双 MC 线共用
 - **缓存系统** (`CellCache` + `StructureCache` + `QueryPointCache`) — 多级缩放（1, 4, 16, 64, 256）的 GPU 纹理缓存 + 结构查询缓存，异步生成
 - **侧面板** (`SeedMapPanel`) — SM 按钮打开的设置面板，支持逐生物群系/结构类型开关、图标大小滑条
-- **7 个 Mixin** — `SeedMapMixin`（渲染）、`SeedMapCursorMixin`（光标信息）、`SeedMapToggleMixin`（开关）、`XsmMainPanelMixin`（侧面板）、`WorldSwitchMixin`（世界切换）、`GuiMapSwitchingMixin`（种子输入）、`StructureOverlayMixin`（结构图标）
+- **11 个客户端 Mixin** — `SeedMapMixin`（渲染）、`SeedMapCursorMixin`（光标信息）、`SeedMapToggleMixin`（开关）、`XsmMainPanelMixin`（侧面板）、`WorldSwitchMixin`（世界切换）、`GuiMapSwitchingMixin`（种子输入）、`StructureOverlayMixin` + `StructureClickMixin`（结构图标/点击）、`GuiMapVersionDropdownMixin` + `DropDownWidgetTitleMixin`（版本选择器）、`GameRendererAccessorMixin`（渲染状态访问）
 
-#### 单 JAR 多版本兼容
+#### 多版本支持（Stonecutter 单源码树）
 
-发布产物为单个 universal JAR：以最老支持线（Xaero 1.40.14）编译，`fabric.mod.json` 声明 `"minecraft": ">=26.1"`，版本敏感的 MC API 全部经 `client/compat/` 反射门面封装（设计见 `doc/compat-layer.md`），由 CI 用同一个 JAR 在全部支持版本上真实启动验证（E2E，见 `doc/testing.md`）。
+发布产物为两个 JAR：**modern universal**（26.1–26.3 共用一个，以本线最老 Xaero 1.40.14 编译，`fabric.mod.json` 声明 `"minecraft": ">=26.1"`）与 **legacy**（1.21.11 专属，intermediary remap）。版本敏感的 MC API 全部经 `client/compat/` 门面封装（modern = 反射，legacy = 直调，设计见 `doc/compat-layer.md`），由 CI 在全部支持版本上真实启动验证（E2E，见 `doc/testing.md`）。
 
 #### 渲染流程
 
@@ -108,24 +108,24 @@ Fabric 模组，通过 Mixin 注入 Xaero World Map 的渲染管线，利用 cub
 
 #### 前置要求
 
-- Java 25
+- Java 25（构建/开发用；1.21.11 线以 `--release 21` 交叉编译）
 - git submodule（cubiomes）
 
 #### 命令
 
 ```bash
 git submodule update --init
-./gradlew build -x compileNativeWindows   # Linux .so + JAR
-./gradlew runClient                       # 启动 Minecraft
+./gradlew :26.1.2:build :1.21.11:build -x compileNativeWindows   # 双变体构建（JAR + JVM 测试）
+./gradlew :26.1.2:runClient                       # 启动 Minecraft（按节点）
 ```
 
 可选参数：
 
 | 参数                          | 作用                    |
 | ----------------------------- | ----------------------- |
-| `-PjextractPath=/path/to/ext` | 使用本地 jextract 拷贝  |
 | `-PskipNativeBuild`           | 跳过原生编译（仅 Java） |
 | `-PskipNativeWindows`         | 跳过 Windows 交叉编译   |
+| `-PndkPath=<ndk>`             | Android NDK 路径（`compileNativeAndroid`，或 `$ANDROID_NDK_HOME`） |
 
 `gradle.local.properties`（gitignored）可用于持久化本地属性覆盖。
 
@@ -141,13 +141,13 @@ cmake --build build-test --target xsmtest
 
 ### CI/CD
 
-`.github/workflows/` 下四个 workflow：
+`.github/workflows/` 下五个 workflow：
 
 | 工作流                 | 触发方式          | 行为                                                        |
 | ---------------------- | ----------------- | ----------------------------------------------------------- |
 | `build.yml`            | 推送 / PR         | 非 master：Linux 构建；master/tag：全平台原生编译 + 打包    |
 | `build-test-jar.yml`   | workflow_dispatch | 手动构建 universal JAR（全平台 native + 内置校验），不 bump/不发版 |
-| `matrix-test.yml`      | 推送 / 手动       | 10 组合版本矩阵（5 个 MC × 新旧 Xaero）+ 客户端 E2E GameTest |
+| `matrix-test.yml`      | 推送 / 手动       | 每节点 × 新旧 Xaero 的版本矩阵 + 客户端 E2E GameTest          |
 | `refresh-versions.yml` | 每周一 + 手动     | 刷新 `versions.json` 版本矩阵（有变更才提交）               |
 | `release.yml`          | workflow_dispatch | 版本提升 + 全平台编译 + Modrinth + Release                  |
 
@@ -181,7 +181,7 @@ Modrinth project ID: `UoJSF4vW`
 | Fabric API        | 0.153.0+26.1.2（默认）                                                                                          |
 | Xaero's World Map | 1.41.0（默认）                                                                                                  |
 | cubiomes          | Git submodule（C 原生库），[Cubitect](https://github.com/Cubitect) 原作，[xpple](https://github.com/xpple) 维护 |
-| Java              | 25（FFM API）                                                                                                   |
+| Java              | 25（构建 / gradle daemon）                                                                                      |
 | 构建工具          | Gradle + CMake                                                                                                  |
 
 ---

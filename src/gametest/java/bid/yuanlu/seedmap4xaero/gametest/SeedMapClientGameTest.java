@@ -172,6 +172,17 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
      */
     private static void waitForChunksRender(TestSingleplayerContext singleplayer) {
         try {
+            // 4.x（fabric-api 0.141，MC 1.21.11）路径：TestClientWorldContext.waitForChunksRender(boolean,int)
+            Object world = TestSingleplayerContext.class.getMethod("getClientWorld").invoke(singleplayer);
+            world.getClass().getMethod("waitForChunksRender", boolean.class, int.class).invoke(world, false, 600);
+            return;
+        } catch (NoSuchMethodException e) {
+            // 5.x+：getClientWorld 已移除
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("waitForChunksRender (getClientWorld path) failed", e);
+        }
+
+        try {
             Object level = TestSingleplayerContext.class.getMethod("getClientLevel").invoke(singleplayer);
             level.getClass().getMethod("waitForChunksRender").invoke(level);
             return;
@@ -197,7 +208,11 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
                 throw new AssertionError("resolveSeed() = " + seed + ", expected " + KNOWN_SEED);
             }
             // 直接验证单机服务器已用该种子
+            //? if >=26.1 {
             Long serverSeed = client.getSingleplayerServer().getWorldGenSettings().options().seed();
+            //?} else {
+            /*Long serverSeed = client.getSingleplayerServer().getWorldData().worldGenOptions().seed();
+            *///?}
             if (!Objects.equals(serverSeed, KNOWN_SEED)) {
                 throw new AssertionError("server seed = " + serverSeed + ", expected " + KNOWN_SEED);
             }

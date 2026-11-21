@@ -1,6 +1,6 @@
 name: pr-check
 
-# feature 分支（dev/xxx、fix/xxx）推送与 PR 的快速检查：Linux 上跑 C 单测 + JUnit + 编译 JAR（仅含 Linux native）。
+# feature 分支（dev/xxx、fix/xxx）推送与 PR 的快速检查：Linux 上跑 C 单测 + JUnit + 编译双变体 JAR（仅含 Linux native）。
 # PR → master 走全面门禁：matrix-test（版本矩阵 + E2E）+ build.yml（全平台 native + 打包）。
 # 产物仅供人工取用，不等同 release 产物。
 on:
@@ -27,20 +27,33 @@ jobs:
         with:
           java-version: '25'
           distribution: 'microsoft'
+      # cache-read-only=false：PR run 默认只读不写（每轮全量冷下载，撞 Maven
+      # Central 429）；GHA cache 按分支隔离，PR 写的缓存仅本分支可读，不污染 master
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name != 'pull_request' }}
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
-      - name: Guardrail — version-sensitive MC APIs only inside client/compat
+      - name: Guardrail — version-sensitive MC APIs only inside compat
         run: tools/check_compat_imports.sh
+      - name: Guardrail — shared tree must be switch-normalized (stonecutter)
+        run: |
+          # 活跃节点（26.1.2）直接编译共享源码树：条件注释必须处于 switch 规范化
+          # 状态（非活跃分支包成注释）且活跃代码为 modern 替换词写法。
+          # ⚠ 不用 stonecutter switch 任务做此检查：vcs 节点的 generate 是原样
+          #   拷贝，switch 回 26.1.2 不会修复树（实测 2026-11），静态检查才可靠。
+          python3 tools/check_switch_normalized.py
       - name: Run C unit tests
         run: |
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
           cmake --build build-test --target xsmtest
           ./build-test/xsmtest
-      - name: Build JAR
+      - name: Build both variants (modern universal + legacy)
         run: |
           chmod +x ./gradlew
-          ./gradlew build -x compileNativeWindows
+          tools/gradle_retry.sh ./gradlew :26.1.2:modJar :1.21.11:modJar -x compileNativeWindows
       - uses: actions/upload-artifact@v7
         with:
           name: seed-map-for-xaero-linux
-          path: build/libs/
+          path: |
+            versions/*/build/libs/

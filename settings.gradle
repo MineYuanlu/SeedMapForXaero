@@ -4,6 +4,39 @@ pluginManagement {
 			name = 'Fabric'
 			url = 'https://maven.fabricmc.net/'
 		}
+		maven {
+			name = 'KikuGie Releases'
+			url = 'https://maven.kikugie.dev/releases'
+		}
 		gradlePluginPortal()
+	}
+}
+
+plugins {
+	// 多版本单源码树：versioned 子项目（versions/<ver>/）共享根 src/，
+	// 每个子项目以各自 MC 版本独立评估根 build.gradle（centralScript）。
+	// 文档: https://stonecutter.kikugie.dev/
+	id 'dev.kikugie.stonecutter' version '0.10'
+	// 统一 fabric-loom（26.x unobf 线）与 fabric-loom-remap（≤1.21.11 混淆线）：
+	// 按 stonecutter 版本自动选择 loom 变体，并提供 modImplementation 别名 /
+	// loomx.applyMojangMappings() / loomx.modJar 等跨变体 API。
+	// https://codeberg.org/KikuGie/loom-back-compat
+	id 'dev.kikugie.loom-back-compat' version '0.4.3'
+	// 按需自动下载缺失的 JDK toolchain（legacy 线 Java 21 / modern 线 Java 25）
+	id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+stonecutter {
+	// controller 脚本（stonecutter.gradle.kts）用 Kotlin DSL——parameters/replacements
+	// 语法更简洁；版本化脚本（centralScript）仍是 Groovy 的 build.gradle
+	kotlinController = true
+	centralScript = 'build.gradle'
+
+	create(rootProject) {
+		// 每个节点一个独立 loom 子项目；节点名 = MC 版本。
+		// 26.x 线 unobf + Java 25 + 反射兼容层 → universal jar；
+		// 1.21.x 线混淆 + Java 21 + mojmap→intermediary remap → legacy jar。
+		versions '1.21.11', '26.1', '26.1.1', '26.1.2', '26.2', '26.3'
+		vcsVersion = '26.1.2'
 	}
 }

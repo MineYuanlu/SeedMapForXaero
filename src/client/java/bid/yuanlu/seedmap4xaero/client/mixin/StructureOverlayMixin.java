@@ -134,7 +134,11 @@ public class StructureOverlayMixin {
         final float iconHalf = ICON_SIZE * iconScale * 0.5f;
 
         final Minecraft mc = Minecraft.getInstance();
+        //? if >=26.1 {
         final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
+        //?} else {
+        /*final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$guiRenderState();
+        *///?}
         // 新开一层 stratum: 保证图标渲染在 map composite 之上 (addBlitToCurrentLayer 只挂到
         // current, 而 current 在 Xaero 的 debug 文本等操作后不可靠, 可能在地图之下被覆盖)
         guiRenderState.nextStratum();
@@ -295,7 +299,11 @@ public class StructureOverlayMixin {
         // 物品 tooltip 渲染到新 stratum (与 SeedMapper 一致)
         var tooltip = widget.getPendingItemTooltip();
         if (tooltip != null) {
+            //? if >=26.1 {
             final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$gameRenderState().guiRenderState;
+            //?} else {
+            /*final var guiRenderState = ((GameRendererAccessor) mc.gameRenderer).xsm$guiRenderState();
+            *///?}
             guiRenderState.nextStratum();
             CompatGui.tooltip(guiGraphics, mc.font, tooltip,
                     widget.getPendingTooltipX(), widget.getPendingTooltipY());

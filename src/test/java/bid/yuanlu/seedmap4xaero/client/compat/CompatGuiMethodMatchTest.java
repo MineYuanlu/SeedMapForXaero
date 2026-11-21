@@ -1,5 +1,8 @@
 package bid.yuanlu.seedmap4xaero.client.compat;
 
+//? if >=26.1 {
+// modern-only：测试 master CompatGui 反射重载匹配器（legacy 版无反射机制）。
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -131,3 +134,4 @@ class CompatGuiMethodMatchTest {
 		assertEquals(float.class, pt[6]);
 	}
 }
+//?}

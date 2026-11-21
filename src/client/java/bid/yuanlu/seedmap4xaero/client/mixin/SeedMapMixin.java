@@ -11,6 +11,10 @@ import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.compat.CompatTextures;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
 import bid.yuanlu.seedmap4xaero.client.configs.perf.PerfConfig;
+//? if <26.1 {
+/*import xaero.map.graphics.renderer.multitexture.MultiTextureRenderTypeRendererProvider;
+*///?}
+
 import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
 
@@ -291,7 +295,14 @@ public class SeedMapMixin {
         final var rendererProvider = this.mapProcessor.getMultiTextureRenderTypeRenderers();
         if (rendererProvider == null)
             return;
+        //? if >=26.1 {
         final var renderer = rendererProvider.getRenderer(CustomRenderTypes.MAP);
+        //?} else {
+        /*// legacy Xaero 1.40.4 无 1 参 getRenderer(RenderType) 便捷重载:
+        final var renderer = rendererProvider.getRenderer(
+                MultiTextureRenderTypeRendererProvider::defaultTextureBind, CustomRenderTypes.MAP);
+        *///?}
+
         if (renderer == null)
             return;
         final var matrix = WorldMap.worldMapClientOnly.getMapScreenPoseStack().last().pose();

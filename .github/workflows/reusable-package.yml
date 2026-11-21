@@ -1,9 +1,10 @@
 name: reusable-package
 
-# 可复用 workflow：汇总 reusable-native-build 产出的全平台 native 进一个 universal JAR。
+# 可复用 workflow：汇总 reusable-native-build 产出的全平台 native 进发布 JAR。
 # 流程：下载 5 个 native artifact → 放到 src/main/c/build*/ 对应目录 →
-# gradle 以 -PskipNativeBuild 打包（processClientResources 映射进 JAR 的 /native/<os>/<arch>/）→
-# 可选 C 单测 + 内置校验（断言 JAR 内含全平台 6 个 native 文件）→ 上传 artifact。
+# gradle 以 -PskipNativeBuild 打包双 jar（modern universal :26.1.2 + legacy :1.21.11，
+# processClientResources 映射进 JAR 的 /native/<os>/<arch>/）→
+# 可选 C 单测 + 内置校验（断言两个 JAR 各含全平台 6 个 native 文件）→ 上传 artifact。
 on:
   workflow_call:
     inputs:
@@ -44,6 +45,11 @@ jobs:
         with:
           java-version: '25'
           distribution: 'microsoft'
+      # cache-read-only=false：PR run 默认只读不写（每轮全量冷下载，撞 Maven
+      # Central 429）；GHA cache 按分支隔离，PR 写的缓存仅本分支可读，不污染 master
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name != 'pull_request' }}
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
       - name: Download native libs
@@ -67,32 +73,37 @@ jobs:
           cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
           cmake --build build-test --target xsmtest
           ./build-test/xsmtest
-      - name: Build JAR (skip native, use prebuilt libs)
+      - name: Build both jars (skip native, use prebuilt libs)
         run: |
           chmod +x ./gradlew
-          ./gradlew build -PskipNativeBuild -x compileNative -x compileNativeWindows
-      - name: Verify JAR bundles all platform natives
+          # modern universal（:26.1.2，26.1–26.3 通吃）+ legacy（:1.21.11，intermediary remap）
+          # 两者内嵌同一套全平台 native（JNI 导出两线共用）。
+          tools/gradle_retry.sh ./gradlew :26.1.2:modJar :1.21.11:modJar \
+            -PskipNativeBuild -x compileNative -x compileNativeWindows
+      - name: Verify both JARs bundle all platform natives
         if: inputs.verify-natives
         run: |
-          JAR=$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)
-          test -n "$JAR" || {
-            echo "::error::no jar found in build/libs"
-            exit 1
-          }
-          for lib in \
-            native/linux/x86_64/libxsmcore.so \
-            native/linux/aarch64/libxsmcore.so \
-            native/android/arm64/libxsmcore.so \
-            native/android/x86_64/libxsmcore.so \
-            native/macos/universal/libxsmcore.dylib \
-            native/windows/x86_64/xsmcore.dll; do
-            unzip -l "$JAR" | grep -q "$lib" || {
-              echo "::error::missing $lib in $JAR"
-              exit 1
-            }
+          for JAR in \
+            versions/26.1.2/build/libs/seed-map-for-xaero-*.jar \
+            versions/1.21.11/build/libs/seed-map-for-xaero-*.jar; do
+            case "$JAR" in *-sources.jar) continue ;; esac
+            test -f "$JAR" || { echo "::error::missing jar: $JAR"; exit 1; }
+            for lib in \
+              native/linux/x86_64/libxsmcore.so \
+              native/linux/aarch64/libxsmcore.so \
+              native/android/arm64/libxsmcore.so \
+              native/android/x86_64/libxsmcore.so \
+              native/macos/universal/libxsmcore.dylib \
+              native/windows/x86_64/xsmcore.dll; do
+              unzip -l "$JAR" | grep -q "$lib" || {
+                echo "::error::missing $lib in $JAR"
+                exit 1
+              }
+            done
+            echo "JAR bundles all platforms: $JAR"
           done
-          echo "JAR bundles all platforms: $JAR"
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
-          path: build/libs/
+          path: |
+            versions/*/build/libs/

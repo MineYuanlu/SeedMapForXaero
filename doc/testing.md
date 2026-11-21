@@ -33,22 +33,38 @@
 4. **结构缓存**：`StructureCache.REGIONS` 非空（异步 CACHE_WORKER 查询）
 5. **HUD 高亮背后隐藏**：从 REGIONS 高亮最近的真实结构，正视断言 `HighlightHudRenderer.lastFrameHighlightBlits == 1`、转向水平镜像点（结构恰好正背后）断言 `== 0`——回归 26.2 线性深度约定下背后点 `NDC.z<0` 漏过旧 `z>1` 检查导致的镜像图标 bug（版本相关深度约定的回归只能靠真实投影的 E2E 抓）。结构超 400 格时先服务端传送玩家到附近并等落地。
 
-断言通过后打印 `seed-map E2E assertions passed` 供 CI grep。主 mod 和测试 mod 的 `fabric.mod.json` 都用宽松下限写死版本（`>=26.1`），**不 expand**——单 jar 在任意支持版本上通用，无需跟随矩阵精确版本。
+断言通过后打印 `seed-map E2E assertions passed` 供 CI grep。主 mod 和测试 mod 的 `fabric.mod.json` 版本区间（`minecraft_dep`/`loader_version`）由构建按节点 expand（modern `>=26.1` / legacy `>=1.21.11 <1.22`）——jar 在各自家族内通用，无需跟随矩阵精确版本。
 
-## 版本矩阵与单 jar 策略
+## 版本矩阵与双 artifact 策略
 
-- `versions.json` + `tools/resolve_versions.py`（update/check/matrix 三模式）解析出 **8 组合**：4 个 MC 版本（26.1/26.1.1/26.1.2/26.2）× 每版本 oldest/newest 两个 Xaero 版本。
-- 版本覆盖用 `-P` 属性传入，**key 与 gradle.properties 同名**（见下节）。
+- 构建是 **Stonecutter 多版本单源码树**：`versions/<MC 版本>/` 每目录一个节点
+  （当前 `1.21.11`、`26.1`、`26.1.1`、`26.1.2`、`26.2`、`26.3`），共享根 `src/`。
+- `versions.json` + `tools/resolve_versions.py`（update/check/matrix 三模式）按节点
+  目录生成行（**支持的 MC 版本 = 节点目录 ∩ piston release**），矩阵 = 每行
+  oldest/newest Xaero 两组合。行带 `artifact` 字段（modern/legacy）与按家族的
+  `java`（25/21）。
+- 版本覆盖用 `-P` 传入：CI 矩阵换 Xaero 端点用**节点作用域** key
+  `-PxaeroMapVersion.<节点>=...`（`-P` 是 build 全局属性，一次调用会配置全部
+  stonecutter 节点，全局 key 会毒化兄弟节点）；fabricApi/minimap 等由
+  versions.json 行按节点 id 提供，`-P` 可覆盖。
 - `refresh-versions.yml` 每周一自动跑 `update` 并仅在有真实变更时提交。
-- **发布产物是单 jar（universal jar）**：`fabric.mod.json` 的 `"minecraft": ">=26.1"` 让 loader 接受全部版本；编译目标取全局最老 Xaero（1.40.14，26.1.2 线），引用的符号是全部支持版本集合的子集，向前兼容所有版本。未来 MC 若有破坏性变更，由 CI 的 universal E2E（矩阵随 versions.json 自动增长）提前暴露。
+- **发布产物是双 jar**：
+  - **modern universal**（`:26.1.2` 产出，`X.Y.Z+mc26.x`）：`"minecraft": ">=26.1"`
+    通吃 26.1–26.3；编译目标取本线最老 Xaero（1.40.14），引用符号是全家族子集；
+    搬家类型 API 经 `compat/` 反射缝适配（src-modern/）。
+  - **legacy**（`:1.21.11` 产出，`X.Y.Z+mc1.21.11`）：`"minecraft": ">=1.21.11 <1.22"`；
+    mojmap 编译 → loom remapJar 到 intermediary；1.21.11 无反射必要（单版本），
+    compat 直调强类型（src-legacy/），JNI 传输层两线共用。
+- 未来 MC 若有破坏性变更，由 CI 的 E2E（矩阵随 versions.json 自动增长）提前暴露；
+  新增支持版本 = 建 `versions/<MC>/` 节点目录 + settings.gradle 注册节点。
 
 ## 运行
 
 ### 本地
 
 ```bash
-# JVM 单元测试 + native 集成测试（含 JUnit）
-./gradlew build -x compileNativeWindows
+# JVM 单元测试 + native 集成测试（按节点；-x compileNativeWindows 跳过 Windows 交叉编译）
+./gradlew :26.1.2:build :1.21.11:build -x compileNativeWindows
 
 # C 单元测试（独立，doctest）
 cmake -S src/main/c -B build-test -DCMAKE_BUILD_TYPE=Release
@@ -56,12 +72,14 @@ cmake --build build-test --target xsmtest
 XSM_TEST_MC_VERSION=<mc> ./build-test/xsmtest   # 可选指定 MC 版本常量
 
 # E2E client gametest（需真实显示或用 -PclientGameTestXVFB=true 无头）
-./gradlew runProductionClientGameTest -PskipNativeWindows=true
+./gradlew :26.1.2:runProductionClientGameTest -PskipNativeWindows=true
 
-# 用预构建 universal jar 跑 E2E（验证发布产物，不在目标版本上重编译 mod）
+# 用预构建发布 jar 跑 E2E（验证发布产物，不在目标版本上重编译 mod）
 # 排除 -sources.jar：其 fabric.mod.json 是未展开的 ${version} 模板，误载会解析失败
-./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true \
-  -PuniversalJar="$(find build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
+./gradlew :26.1.2:runProductionClientGameTestUniversal -PskipNativeWindows=true \
+  -PuniversalJar="$(find versions/26.1.2/build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
+./gradlew :1.21.11:runProductionClientGameTestUniversal -PskipNativeWindows=true \
+  -PuniversalJar="$(find versions/1.21.11/build/libs -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
 ```
 
 **无头环境注意（MC 26.3+）**：26.3 渲染栈换成 SDL3+renderpearl，其 `GlDevice`
@@ -79,11 +97,11 @@ backend 失败后客户端会挂死。CI 在 `universal-e2e` 设
 单人开发流程（GitHub Flow）：`dev/xxx`、`fix/xxx` 只跑 `pr-check.yml` 快速检查；**PR → master 与 master 推送是全面门禁**（`matrix-test.yml` 版本矩阵 + E2E 与 `build.yml` 全平台 native + 打包都触发）。
 
 - `resolve`：校验 `versions.json` 新鲜度（过期仅告警不阻塞）+ 输出两套矩阵
-  - `matrix`：8 组合（4 MC × oldest/newest Xaero），`test` 用
-  - `matrix-e2e`：4 组合（每 MC × **newest** Xaero），`universal-e2e` 用
-- `test`（8 行，**源码兼容预警**）：`cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）。保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；产物是编译载体，不发布
-- `build-universal`（1 行）：编一个 universal jar（最老 Xaero 线 1.40.14），上传 artifact
-- `universal-e2e`（4 行，依赖 `build-universal`）：真实启动 MC 的 E2E，**复用同一个 universal jar**，`./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true -PuniversalJar=<artifact>` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
+  - `matrix`：每节点 × oldest/newest Xaero（行数随 versions.json 增长，当前 6 节点 = 12 组合），`test` 用
+  - `matrix-e2e`：每节点一行 × **newest** Xaero（当前 6 组合），`universal-e2e` 用
+- `test`（每节点 oldest/newest 各一行，**源码兼容预警**）：`cmake` C 单测（带 `XSM_TEST_MC_VERSION`）→ `./gradlew build -x compileNativeWindows`（含 JUnit）。保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；产物是编译载体，不发布
+- `build-universal`（1 job）：编两个发布 jar（`:26.1.2:modJar` + `:1.21.11:modJar`），按 artifact 家族上传 `universal-jar` / `legacy-jar` artifact
+- `universal-e2e`（每节点一行，依赖 `build-universal`）：真实启动 MC 的 E2E，**按行 artifact 字段复用对应发布 jar**，`./gradlew runProductionClientGameTestUniversal -PskipNativeWindows=true -PuniversalJar=<artifact>` + 版本 `-P` 覆盖，grep `seed-map E2E assertions passed` 判定成功；每组合的 `gametest.log` + `run/screenshots` 按 `mc` 命名始终上传
 - `gate`（聚合，固定名字）：任一上游 job 失败/取消/跳过即失败；branch protection 的 required check 用它（动态矩阵 job 名含版本号会变，不能作 required check）。`build.yml` 同样有聚合 job `build-gate`（reusable workflow 调用的 check 名是 `调用job / 被调job` 格式）
 
 **native 架构矩阵**：定义在 `reusable-native-build.yml`（5 个 compile job），被 `build.yml`（master/tag push + PR → master）、`release.yml`、`build-test-jar.yml` 通过 `uses:` 调用；汇总打包统一在 `reusable-package.yml`（下载 natives → universal JAR，含内置校验）。feature 分支/PR 的快速检查在 `pr-check.yml`。
@@ -99,7 +117,7 @@ backend 失败后客户端会挂死。CI 在 `universal-e2e` 设
 
 Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 ELF 校验 + 真机/模拟器上的 FCL 手动 E2E 兜底。
 
-> **运行时 vs 编译**：`test` 的 8 组合矩阵保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；`universal-e2e` 用发布产物（单个 universal jar）在全部 MC × newest Xaero 上真实启动，验证 mixin 的运行时应用（目标方法/字段在对应版本真实存在、注入点命中）与渲染链路。两个 job 互补，缺一不可。
+> **运行时 vs 编译**：`test` 的全节点 × oldest/newest 矩阵保证源码在全部 MC × Xaero 组合下可编译 + JUnit 通过；`universal-e2e` 用发布产物（按行 artifact 家族选 modern/legacy jar）在全部 MC × newest Xaero 上真实启动，验证 mixin 的运行时应用（目标方法/字段在对应版本真实存在、注入点命中）与渲染链路。两个 job 互补，缺一不可。
 
 ### 失败诊断
 
@@ -118,5 +136,5 @@ Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 E
 
 ## 参数命名约定
 
-- `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMapVersion`、`xaeroMinimapVersion`、`minecraft_version`、`loader_version`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
-- 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PjextractPath`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）、`-PndkPath`（`compileNativeAndroid` 用，或环境变量 `ANDROID_NDK_HOME`）。
+- 根 `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMinimapVersion`（MC/loader 版本真值在 `versions/<节点>/gradle.properties`）；Xaero 端点例外，用节点作用域 key `xaeroMapVersion.<节点名>`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
+- 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）、`-PndkPath`（`compileNativeAndroid` 用，或环境变量 `ANDROID_NDK_HOME`）。

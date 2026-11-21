@@ -112,8 +112,14 @@ public class GuiMapSwitchingMixin {
                     minecraft.keyboardHandler.setClipboard(String.valueOf(seed));
                     xsm$LOGGER.info("copy: copied seed={}", seed);
                     if (minecraft.player != null) {
+                        //? if >=26.1 {
                         minecraft.player.sendOverlayMessage(
                                 Component.translatable("xsm.gui.switching.copied", seed));
+                        //?} else {
+                        /*minecraft.player.displayClientMessage(
+                                Component.translatable("xsm.gui.switching.copied", seed), true);
+                        *///?}
+
                     }
                 }).bounds(width / 2 + 105, 148, 40, 20).build();
         xsm$seedCopyBtn.active = xsm$currentSeed != null;
