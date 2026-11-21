@@ -40,12 +40,12 @@ flowchart TD
 
     T1 --> XSM
 
-    %% Layer 4: FFM
-    subgraph FFM["FFM 绑定层 - Xsm.java"]
+    %% Layer 4: JNI
+    subgraph JNI["JNI 绑定层 - Xsm.java + XsmNative.java"]
         XSM[genCellImg queryPoint queryExactChunkHeight setWorld setBiomeColorTable]
     end
 
-    XSM -->|FFM jextract| RCPP
+    XSM -->|JNI| RCPP
 
     %% Layer 5: C Native
     subgraph Native["C 原生层 - libxsmcore.so"]
@@ -57,14 +57,14 @@ flowchart TD
     classDef mixin fill:#FFF3E0,stroke:#E65100
     classDef cache fill:#F3E5F5,stroke:#6A1B9A
     classDef worker fill:#E8F5E9,stroke:#2E7D32
-    classDef ffm fill:#FFEBEE,stroke:#C62828
+    classDef jni fill:#FFEBEE,stroke:#C62828
     classDef native fill:#ECEFF1,stroke:#37474F
 
     class App app
     class Mixin mixin
     class Cache,CC,QPC,CH cache
     class CW,T1,T2 worker
-    class FFM,XSM ffm
+    class JNI,XSM jni
     class Native,RCPP,CUB native
 ```
 
@@ -346,7 +346,7 @@ classDiagram
 - 默认 `Native`，通过 `BiomeColorSchemeMixin` 右按钮 `cycleProvider()`
 - 切换时调用 `Xsm.setBiomeColorTable(BiomeColorTable.getProvider())` + `CellCache.clear()`
 - `NativeBiomeColor` 直接调 `setBiomeColorTableNative()`，C 侧用硬编码 `initBiomeColors`
-- 其余 Provider 将 (biomeID, color) 对通过 FFM 传入 C 侧 `setBiomeColorTable`
+- 其余 Provider 将 (biomeID, color) 对通过 JNI 传入 C 侧 `setBiomeColorTable`
 
 ## 文件树
 
@@ -362,10 +362,9 @@ src/
 |       +-- CMakeLists.txt                       # CMake 构建 (xsmcore + xsmtest + xsmsandbox)
 |       +-- cubiomes/                            # git submodule
 |       +-- mingw-toolchain.cmake                # MinGW 交叉编译
-|       +-- includes.txt                         # jextract --include-function 列表
 |       +-- xsm/
 |       |   +-- apis/
-|       |   |   +-- all.h                        # jextract 入口头文件
+|       |   |   +-- all.h                        # C API 入口头文件（JNI 导出声明源）
 |       |   |   +-- api.h / api.c                # hello() 测试
 |       |   |   +-- render.h                     # C API 声明
 |       |   |   +-- render.cpp                   # ★ 核心实现
@@ -394,8 +393,8 @@ src/
         |   +-- SeedMapToggleMixin.java          # "S" 开关
         |   +-- BiomeColorSchemeMixin.java       # 配色切换
         +-- nativeapi/
-        |   +-- Xsm.java                         # ★ System.load + FFM 封装
-        |   +-- XsmNative.java                   # jextract 生成（gitignored）
+        |   +-- Xsm.java                         # ★ System.load + 数组传输封装
+        |   +-- XsmNative.java                   # 手写 JNI stub（提交入库）
         +-- render/
             +-- BiomeColorProvider.java          # 配色接口
             +-- BiomeColorTable.java             # 配色注册表
@@ -441,7 +440,7 @@ flowchart LR
 
 ```
 Xaero extractRenderState -> SeedMapMixin -> CellCache.getOrRequest ->
-CACHE_WORKER -> Xsm.genCellImg(FFM) -> libxsmcore.so(genCellImg) ->
+CACHE_WORKER -> Xsm.genCellImg(JNI) -> libxsmcore.so(genCellImg) ->
 64x64 RGB -> Java ABGR -> uploadTexture -> GpuTextureAndView ->
 fillCellGaps(三级决策树) -> drawQuad -> 屏幕
 ```
