@@ -102,7 +102,14 @@ base {
 }
 
 repositories {
-	maven { url "https://chocolateminecraft.com/maven" }
+	// xaero 组（map/lib/pvp…）只在此仓库发布。exclusiveContent 把这些组的解析
+	// 限制到该仓库：xaerolib 是动态版本区间（[1.1.0,)），Gradle 会向每个仓库
+	// 逐个列版本（maven-metadata.xml）——maven central 等的网络抖动会让整仓
+	// 被禁用并挂掉整个解析（CI 实测两次，包 job 的 gson/ow2 GET 失败同源）。
+	exclusiveContent {
+		forRepositories(maven { url "https://chocolateminecraft.com/maven" })
+		filter { includeGroupByRegex("xaero\\..*") }
+	}
 	maven { url "https://api.modrinth.com/maven" }
 	maven { url "https://maven.aliyun.com/repository/public" }
 	mavenCentral()
