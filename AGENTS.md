@@ -60,7 +60,7 @@ MC × newest Xaero 上跑。未来破坏性 MC 变更由 E2E 随 versions.json �
 **新增支持版本 = 建 `versions/<MC>/` 节点目录 + settings.gradle 注册**（resolver
 按节点目录过滤行）。
 
-版本参数：`gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMapVersion`/`xaeroMinimapVersion`）。
+版本参数：根 `gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMinimapVersion`）；Xaero 端点用**节点作用域** key `-PxaeroMapVersion.<节点>=<版本>`（`-P` 是 build 全局属性，会波及所有节点，禁用全局 `xaeroMapVersion`——曾毒化兄弟节点致矩阵全挂）。
 CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 
 ### CI 触发矩阵（单人开发流程，GitHub Flow）

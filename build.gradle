@@ -25,27 +25,32 @@ def isLegacyLine = stonecutter.current.parsed.matches('<26')
 // Java 线别：26.x (unobf) = 25；≤1.21.11（混淆线）= 21。mixin compatibilityLevel 同步取值。
 def targetJavaVersion = isLegacyLine ? 21 : 25
 
-// 依赖版本真值源 = versions.json（tools/resolve_versions.py 周刷新）；
-// 本节点行按 id 匹配，-P 显式覆盖优先（CI 矩阵对同一节点换 xaero 新旧端点）。
-def depFromVersionsJson = { String propKey, String rowKey ->
-	if (project.hasProperty(propKey)) return project.property(propKey)
+// 依赖版本真值源 = versions.json（tools/resolve_versions.py 周刷新）；本节点行按 id 匹配。
+// ⚠ -P 属性是 build 全局的：一次调用会配置全部 stonecutter 节点，全局 key 的覆盖
+// 会波及所有节点（CI 矩阵曾因此让兄弟节点拿别人的 Xaero 端点解析自己的线而挂）。
+// 按节点覆盖的参数必须用节点作用域 key：xaeroMapVersion.<节点名>=<Xaero 版本>。
+def fromVersionsJsonRow = { String rowKey ->
 	def row = null
 	def vjson = new JsonSlurper().parse(rootProject.file('versions.json'))
 	vjson.versions.each { if (it.id == scVersion) row = it }
 	if (row == null || row.get(rowKey) == null) {
-		throw new RuntimeException(
-			"versions.json has no row ${scVersion}.${rowKey} and no -P${propKey} override")
+		throw new RuntimeException("versions.json has no row ${scVersion}.${rowKey}")
 	}
 	return row.get(rowKey)
 }
+def depFromVersionsJson = { String propKey, String rowKey ->
+	if (project.hasProperty(propKey)) return project.property(propKey)
+	return fromVersionsJsonRow(rowKey)
+}
 def fabricApiVersion = depFromVersionsJson('fabricApiVersion', 'fabricApi')
 def xaeroMapLine = depFromVersionsJson('xaeroMapLine', 'xaeroArtifactLine')
-// 编译目标默认取本线最老 Xaero：引用符号是全部支持版本的子集（universal jar 策略）
-def xaeroMapVersion = depFromVersionsJson('xaeroMapVersion', 'xaeroOldest')
+// 编译目标默认取本线最老 Xaero：引用符号是全部支持版本的子集（universal jar 策略）；
+// CI 矩阵用节点作用域 key 换新旧端点（只被本节点读取，兄弟节点不受影响）
+def xaeroMapVersion = project.findProperty("xaeroMapVersion.${scVersion}") ?: fromVersionsJsonRow('xaeroOldest')
 def xaeroMinimapVersion = depFromVersionsJson('xaeroMinimapVersion', 'xaeroMinimap')
 // 发布 jar 的版本后缀（version = "<modVersion>+mc<artifactVersion>"）：
 // modern universal 家族共享 "26.x"，legacy 用节点 id（1.21.11）。release.yml 校验同源。
-def artifactVersion = depFromVersionsJson('artifactVersion', 'artifactVersion')
+def artifactVersion = fromVersionsJsonRow('artifactVersion')
 
 // 版本号从 git 状态确定性计算（单一事实源 = release tag），不再依赖 gradle.properties。
 // 算法：
@@ -246,7 +251,10 @@ tasks.register("runProductionClientGameTestUniversal", net.fabricmc.loom.task.pr
 	useXVFB = (xvfbProp != null) ? (xvfbProp as boolean) : (System.getenv('CI') != null)
 	def ujar = project.findProperty('universalJar')
 	if (ujar) {
-		mods.setFrom(files(ujar), configurations.named("productionRuntimeMods"))
+		// 相对路径按仓库根解析：CI 的 find 从根目录跑，Gradle 默认按节点项目目录
+		// 解析会拼成 versions/<节点>/universal/…（文件不存在 → loader "Skipping
+		// missing mod path" → 主 mod 缺失）
+		mods.setFrom(rootProject.files(ujar), configurations.named("productionRuntimeMods"))
 	}
 }
 

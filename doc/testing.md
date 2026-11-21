@@ -43,8 +43,10 @@
   目录生成行（**支持的 MC 版本 = 节点目录 ∩ piston release**），矩阵 = 每行
   oldest/newest Xaero 两组合。行带 `artifact` 字段（modern/legacy）与按家族的
   `java`（25/21）。
-- 版本覆盖用 `-P` 传入（如 CI 矩阵换 Xaero 端点用 `-PxaeroMapVersion=...`）；
-  fabricApi/minimap 等由 versions.json 行按节点 id 提供，`-P` 可覆盖。
+- 版本覆盖用 `-P` 传入：CI 矩阵换 Xaero 端点用**节点作用域** key
+  `-PxaeroMapVersion.<节点>=...`（`-P` 是 build 全局属性，一次调用会配置全部
+  stonecutter 节点，全局 key 会毒化兄弟节点）；fabricApi/minimap 等由
+  versions.json 行按节点 id 提供，`-P` 可覆盖。
 - `refresh-versions.yml` 每周一自动跑 `update` 并仅在有真实变更时提交。
 - **发布产物是双 jar**：
   - **modern universal**（`:26.1.2` 产出，`X.Y.Z+mc26.x`）：`"minecraft": ">=26.1"`
@@ -134,5 +136,5 @@ Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 E
 
 ## 参数命名约定
 
-- 根 `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMapVersion`、`xaeroMinimapVersion`（MC/loader 版本真值在 `versions/<节点>/gradle.properties`）。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
+- 根 `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMinimapVersion`（MC/loader 版本真值在 `versions/<节点>/gradle.properties`）；Xaero 端点例外，用节点作用域 key `xaeroMapVersion.<节点名>`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
 - 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）、`-PndkPath`（`compileNativeAndroid` 用，或环境变量 `ANDROID_NDK_HOME`）。

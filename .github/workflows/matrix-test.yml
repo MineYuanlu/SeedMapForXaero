@@ -76,9 +76,10 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
+      # Gradle/stonecutter 需 JVM 25；legacy 的 21 只是 --release 编译目标（JDK25 javac 交叉编译）
       - uses: actions/setup-java@v5
         with:
-          java-version: ${{ matrix.java }}
+          java-version: '25'
           distribution: 'microsoft'
       - uses: gradle/actions/setup-gradle@v4
       - name: Install dependencies
@@ -91,8 +92,10 @@ jobs:
       - name: Compile + JUnit tests (source coverage, not published)
         run: |
           chmod +x ./gradlew
+          # 节点作用域 key：-P 是 build 全局的，会配置全部 stonecutter 节点；
+          # 全局 key 会让兄弟节点拿别人的 Xaero 端点解析自己的线而挂
           ./gradlew :${{ matrix.node }}:build -x compileNativeWindows \
-            -PxaeroMapVersion=${{ matrix.xaeroVersion }}
+            -PxaeroMapVersion.${{ matrix.node }}=${{ matrix.xaeroVersion }}
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v7
@@ -175,9 +178,10 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
+      # Gradle/stonecutter 需 JVM 25；legacy 的 21 只是 --release 编译目标（JDK25 javac 交叉编译）
       - uses: actions/setup-java@v5
         with:
-          java-version: ${{ matrix.java }}
+          java-version: '25'
           distribution: 'microsoft'
       - uses: gradle/actions/setup-gradle@v4
       - name: Install dependencies (cmake/gcc/xvfb/egl)
@@ -194,7 +198,9 @@ jobs:
           chmod +x ./gradlew
           # 只选生产 jar，排除 -sources.jar（其 fabric.mod.json 为未展开的 ${version} 模板），
           # 并断言所选 jar 内模板已展开，防止任何错误 jar 被误载。
-          UJAR=$(find universal -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)
+          # 绝对路径：-PuniversalJar 的相对路径会按节点项目目录解析（build.gradle 按
+          # 仓库根解析兜底，这里双保险），拼错目录会让 loader "Skipping missing mod path"
+          UJAR="$PWD/$(find universal -name 'seed-map-for-xaero-*.jar' ! -name '*-sources.jar' | head -1)"
           test -n "$UJAR" || {
             echo "::error::no production jar found (mc=${{ matrix.mc }}, artifact=${{ matrix.artifact }})"
             exit 1
@@ -207,7 +213,7 @@ jobs:
           # （节点默认 = oldest，这里显式覆盖）；-PskipNativeWindows=true 规避 CI 无 MinGW。
           ./gradlew :${{ matrix.node }}:runProductionClientGameTestUniversal -PskipNativeWindows=true \
             -PuniversalJar="$UJAR" \
-            -PxaeroMapVersion=${{ matrix.xaeroVersion }} \
+            -PxaeroMapVersion.${{ matrix.node }}=${{ matrix.xaeroVersion }} \
             --stacktrace > gametest.log 2>&1
           # 断言全部通过才算成功；挂起由 timeout-minutes 兜底 kill
           grep -q "seed-map E2E assertions passed" gametest.log || {
