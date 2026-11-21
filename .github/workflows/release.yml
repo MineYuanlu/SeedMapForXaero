@@ -2,7 +2,7 @@ name: release
 
 # 手动发布：bump 版本并打 tag → 【notes: AI 生成发布说明 ∥ natives: 编译全平台 native
 # （reusable-native-build）】→ 汇总 JAR、发布 Modrinth + GitHub Release。
-# 发布说明三级回退：手动 input → AI 生成（notes job）→ git log changelog。
+# 发布说明三级回退：手动 input → AI 生成（notes job）→ git log changelog；AI 生成可经 notes_prompt 微调。
 on:
   workflow_dispatch:
     inputs:
@@ -29,6 +29,11 @@ on:
         description: 'AI 生成发布说明所用的 opencode 模型引用（无效/弃用时发布终止）'
         required: false
         default: 'opencode/deepseek-v4.1-flash-free'
+        type: string
+      notes_prompt:
+        description: 'AI 生成发布说明的附加指导（可选）。注入模板"用户附加信息"节并优先遵守，但不可推翻输出硬性约束（raw markdown / "# vX.Y.Z" 首行）。'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -115,9 +120,11 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           bash scripts/prepare_opencode_cmd.sh \
             .opencode/commands/release-notes.md /tmp/prompt.md \
-            "${PREV_TAG}" "v${{ needs.bump.outputs.version }}"
+            "${PREV_TAG}" "v${{ needs.bump.outputs.version }}" "${NOTES_PROMPT}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 模板内 !`gh api` 需要
+          # 经 env 传入：用户 input 禁止 ${{ }} 内联进 run:（脚本注入面）
+          NOTES_PROMPT: ${{ inputs.notes_prompt }}
       - name: Verify model reference
         if: steps.prompt.outputs.skip == 'false'
         run: |

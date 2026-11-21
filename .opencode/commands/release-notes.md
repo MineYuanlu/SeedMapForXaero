@@ -1,5 +1,5 @@
 ---
-description: 生成最新的发布记录 /release-notes vX.X.X(旧版) vX.X.X(新版)
+description: 生成最新的发布记录 /release-notes vX.X.X(旧版) vX.X.X(新版) [附加指导]
 agent: plan
 ---
 
@@ -76,8 +76,8 @@ $2 中的提交（数据来自于 `git log --oneline --no-merges $1..$2`）：
 
 ## 用户附加信息:
 
-以下是用户提供的额外信息，如果有，你应该优先遵守：
+以下是用户为本次发布提供的额外指导，为空则忽略。如有内容，优先遵守；与上文冲突时以此为准，但**输出硬性约束**不可被推翻（仍须 raw markdown、无代码围栏、首行 `# vX.Y.Z <标题>`）:
 
 ```
-$ARGUMENTS
+$3
 ```
