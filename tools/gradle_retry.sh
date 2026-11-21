@@ -14,7 +14,11 @@
 #               防止矩阵 job 同步重试再次撞限流）
 #
 # 真缺失构件（"Could not find xaero.map:..."）不含下方网络特征，不会触发
-# 重试；网络型解析失败的深层 cause 必然含 Could not GET/429/超时之一。
+# 重试。网络型失败特征除 429/连接类外还有两类实测形态（master 首跑
+# 2026-11）：loom 下载 MC 失败（"Failed to setup Minecraft" / DownloadException，
+# loom 有 SHA1 校验坏件不落缓存，重跑自愈）；仓库瞬间坏响应导致坏 POM 落进
+# ~/.gradle（"Could not parse POM"）——这种普通重试每次都秒挂（确定性解析
+# 失败），命中时自动改用 --refresh-dependencies 强制重新校验下载自愈。
 set -u
 
 MAX="${RETRY_MAX:-3}"
@@ -29,12 +33,21 @@ PATTERNS=(
   "Read timed out"
   "Connection reset"
   "Connection refused"
+  # loom 下载 MC 失败（配置期汇总行 + 异常类型；不带既有特征时实测 0 重试直接挂）
+  "Failed to setup Minecraft"
+  "DownloadException"
 )
 
 attempt=1
+refresh_args=""
 while :; do
   log="$(mktemp)"
-  "$@" 2>&1 | tee "$log"
+  if [ -n "$refresh_args" ]; then
+    echo "::notice::retrying with $refresh_args (corrupt cached metadata suspected)"
+    "$@" "$refresh_args" 2>&1 | tee "$log"
+  else
+    "$@" 2>&1 | tee "$log"
+  fi
   rc=${PIPESTATUS[0]}
   if [ "$rc" -eq 0 ]; then
     rm -f "$log"
@@ -45,6 +58,8 @@ while :; do
   for p in "${PATTERNS[@]}"; do
     if grep -qi -- "$p" "$log"; then hit="$p"; break; fi
   done
+  # 单独判定 parse-POM（首个命中的 hit 可能是日志里并存的 Could not GET 等）
+  if grep -qi -- "Could not parse POM" "$log"; then refresh_args="--refresh-dependencies"; fi
   rm -f "$log"
 
   if [ -z "$hit" ]; then

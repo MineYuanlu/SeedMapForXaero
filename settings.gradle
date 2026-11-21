@@ -3,10 +3,24 @@ pluginManagement {
 		maven {
 			name = 'Fabric'
 			url = 'https://maven.fabricmc.net/'
+			// 只取 fabric 自有构件（loom 变体 / marker / intermediary 等 net.fabricmc.*）。
+			// 第三方传递依赖（如 loom 的 org.ow2.asm:asm）不走它：fabric maven 的
+			// central 代理件对部分 CDN 边缘持续吐坏响应（200 + 非 POM 内容 → Gradle
+			// "Could not parse POM"，--refresh-dependencies 重下也救不了），曾连挂
+			// master CI 的 buildscript 解析（run 44893510988 / 44896234157）；
+			// asm 等改走 portal → central（429 属可重试错误，无坏缓存副作用）。
+			content {
+				includeGroupByRegex 'net\\.fabricmc.*'
+			}
 		}
 		maven {
 			name = 'KikuGie Releases'
 			url = 'https://maven.kikugie.dev/releases'
+			// 同理只取 KikuGie 自有构件（stonecutter / loom-back-compat），
+			// 第三方直接跳到 portal，省一跳 404
+			content {
+				includeGroupByRegex 'dev\\.kikugie.*'
+			}
 		}
 		gradlePluginPortal()
 	}

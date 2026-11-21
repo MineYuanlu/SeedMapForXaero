@@ -27,11 +27,17 @@ jobs:
         with:
           java-version: '25'
           distribution: 'microsoft'
-      # cache-read-only=false：PR run 默认只读不写（每轮全量冷下载，撞 Maven
-      # Central 429）；GHA cache 按分支隔离，PR 写的缓存仅本分支可读，不污染 master
+      # false：默认行为是"仅默认分支可写"，但 master 推送恰恰必须可写，否则
+      # master 作用域永远建立不了缓存（GHA cache 按 ref 隔离：refs/pull/N/merge
+      # 与 refs/heads/master 互不可见，merge 不转移缓存）
+      # includes 只留 modules-2（依赖 jar/pom）：fabric-loom 的 MC 产物/资源占
+      # 单条 1.2-1.5GB，来自 Mojang CDN 不限流、重下 1-2 分钟，缓存它会让一轮
+      # 矩阵 ~23GB 写入挤爆 10GB 配额；依赖包才是限流敏感、值得缓存的部分
       - uses: gradle/actions/setup-gradle@v4
         with:
-          cache-read-only: ${{ github.event_name != 'pull_request' }}
+          cache-read-only: false
+          gradle-home-cache-includes: |
+            caches/modules-2
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake gcc
       - name: Guardrail — version-sensitive MC APIs only inside compat
