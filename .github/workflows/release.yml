@@ -309,7 +309,7 @@ jobs:
           for NODE in 26.1.2 1.21.11; do
             # jar 后缀真值源 = versions.json 行的 artifactVersion（modern=26.x / legacy=1.21.11），与 build.gradle 同源
             SUFFIX=$(python3 -c "import json;v=json.load(open('versions.json'));print(next(r['artifactVersion'] for r in v['versions'] if r['id']=='$NODE'))")
-            COMPUTED=$(./gradlew -q --console=plain ":$NODE:properties" | grep -E '^version: ' | cut -d' ' -f2)
+            COMPUTED=$(tools/gradle_retry.sh ./gradlew -q --console=plain ":$NODE:properties" | grep -E '^version: ' | cut -d' ' -f2)
             echo "node=$NODE computed=$COMPUTED expected=${EXPECTED}+mc$SUFFIX"
             # 必须精确 X.Y.Z+mc<artifact>：带其他后缀说明工作区 dirty 或 tag 没取到（tag-only 发布的硬性前提）
             if ! [[ "$COMPUTED" =~ ^${EXPECTED}\+mc$SUFFIX$ ]]; then
@@ -320,7 +320,7 @@ jobs:
       # 显式构建双发布 JAR（publishMods 复用同一产物；xaero 编译目标 = versions.json 行默认 xaeroOldest）
       - name: Build release JARs (modern universal + legacy)
         run: |
-          ./gradlew :26.1.2:modJar :1.21.11:modJar \
+          tools/gradle_retry.sh ./gradlew :26.1.2:modJar :1.21.11:modJar \
             -PskipNativeBuild -x compileNative -x compileNativeWindows
           # 汇总到一个目录，供 SHA256SUMS / attestation / Release 引用
           mkdir -p build/release
@@ -343,6 +343,7 @@ jobs:
         run: |
           # 双 artifact 分开上报：modern 节点带 26.x 游戏版本行，legacy 节点带 1.21.x 行
           # （publishMods 的 minecraftVersions 按 versions.json 行 artifact 家族过滤）
+          # ⚠ 不经 gradle_retry.sh：发布失败可能是版本半创建，盲目重试会重复发布，需人工重跑
           ./gradlew :26.1.2:publishMods :1.21.11:publishMods \
             -PskipNativeBuild -x compileNative -x compileNativeWindows
         env:

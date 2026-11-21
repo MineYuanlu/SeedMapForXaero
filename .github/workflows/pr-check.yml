@@ -46,7 +46,7 @@ jobs:
       - name: Build both variants (modern universal + legacy)
         run: |
           chmod +x ./gradlew
-          ./gradlew :26.1.2:modJar :1.21.11:modJar -x compileNativeWindows
+          tools/gradle_retry.sh ./gradlew :26.1.2:modJar :1.21.11:modJar -x compileNativeWindows
       - uses: actions/upload-artifact@v7
         with:
           name: seed-map-for-xaero-linux

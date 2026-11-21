@@ -73,7 +73,7 @@ jobs:
           chmod +x ./gradlew
           # modern universal（:26.1.2，26.1–26.3 通吃）+ legacy（:1.21.11，intermediary remap）
           # 两者内嵌同一套全平台 native（JNI 导出两线共用）。
-          ./gradlew :26.1.2:modJar :1.21.11:modJar \
+          tools/gradle_retry.sh ./gradlew :26.1.2:modJar :1.21.11:modJar \
             -PskipNativeBuild -x compileNative -x compileNativeWindows
       - name: Verify both JARs bundle all platform natives
         if: inputs.verify-natives

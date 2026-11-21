@@ -94,7 +94,7 @@ jobs:
           chmod +x ./gradlew
           # 节点作用域 key：-P 是 build 全局的，会配置全部 stonecutter 节点；
           # 全局 key 会让兄弟节点拿别人的 Xaero 端点解析自己的线而挂
-          ./gradlew :${{ matrix.node }}:build -x compileNativeWindows \
+          tools/gradle_retry.sh ./gradlew :${{ matrix.node }}:build -x compileNativeWindows \
             -PxaeroMapVersion.${{ matrix.node }}=${{ matrix.xaeroVersion }}
       - name: Upload test results
         if: failure()
@@ -129,7 +129,7 @@ jobs:
           chmod +x ./gradlew
           # CI ubuntu 无 MinGW → -PskipNativeWindows=true；jar 只需内含 Linux .so
           # 供 universal-e2e 使用（release 流程单独打全平台 native）。
-          ./gradlew :26.1.2:modJar :1.21.11:modJar \
+          tools/gradle_retry.sh ./gradlew :26.1.2:modJar :1.21.11:modJar \
             -x compileNativeWindows \
             -PskipNativeWindows=true
       - name: Upload modern universal jar
@@ -211,7 +211,7 @@ jobs:
           }
           # -PuniversalJar 让 mod 本体用预构建 jar（不重编译）；E2E 矩阵取 newest Xaero
           # （节点默认 = oldest，这里显式覆盖）；-PskipNativeWindows=true 规避 CI 无 MinGW。
-          ./gradlew :${{ matrix.node }}:runProductionClientGameTestUniversal -PskipNativeWindows=true \
+          tools/gradle_retry.sh ./gradlew :${{ matrix.node }}:runProductionClientGameTestUniversal -PskipNativeWindows=true \
             -PuniversalJar="$UJAR" \
             -PxaeroMapVersion.${{ matrix.node }}=${{ matrix.xaeroVersion }} \
             --stacktrace > gametest.log 2>&1
