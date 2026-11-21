@@ -137,9 +137,13 @@ def resolve() -> "list[dict]":
             # 世界图支持而 minimap 不支持的 MC 目前不存在，防御性告警即可
             print(f"  WARN {mc}: no release Xaero Minimap build found")
         is_legacy = version_key(mc) < (26,)
+        # 发布 jar 的版本后缀（+mc<artifactVersion>，build.gradle / release.yml 消费）：
+        # legacy 只有一个版本 → 用自身 id；modern 是跨版本 universal jar → 家族标签。
+        # MC 27 出现时需重审标签策略（届时家族拆分是自然的重审点）。
         rows.append({
             "id": mc,
             "artifact": "legacy" if is_legacy else "modern",
+            "artifactVersion": mc if is_legacy else "26.x",
             "java": 21 if is_legacy else 25,
             "xaeroArtifactLine": xaero["line"],
             "xaeroOldest": xaero["oldest"],

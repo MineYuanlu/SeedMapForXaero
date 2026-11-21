@@ -50,7 +50,7 @@ cmake --build build-test --target xsmtest && ./build-test/xsmtest   # C 单测
 # （复用预构建发布 jar；排除 -sources.jar，其 fabric.mod.json 是未展开的 ${version} 模板）
 ```
 
-**双发布 jar**（`X.Y.Z+mc<节点>`）：
+**双发布 jar**（`X.Y.Z+mc26.x` / `X.Y.Z+mc1.21.11`，后缀 = versions.json 行 `artifactVersion`）：
 - **modern universal**（`:26.1.2`）：`"minecraft": ">=26.1"` 通吃 26.1–26.3，编译目标 = 本线最老 Xaero（versions.json 行 `xaeroOldest`），搬家 API 经 compat/ 反射缝适配
 - **legacy**（`:1.21.11`）：`">=1.21.11 <1.22"`，mojmap→intermediary remap，compat 直调
 

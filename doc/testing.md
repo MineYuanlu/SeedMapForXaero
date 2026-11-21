@@ -47,7 +47,7 @@
   fabricApi/minimap 等由 versions.json 行按节点 id 提供，`-P` 可覆盖。
 - `refresh-versions.yml` 每周一自动跑 `update` 并仅在有真实变更时提交。
 - **发布产物是双 jar**：
-  - **modern universal**（`:26.1.2` 产出，`X.Y.Z+mc26.1.2`）：`"minecraft": ">=26.1"`
+  - **modern universal**（`:26.1.2` 产出，`X.Y.Z+mc26.x`）：`"minecraft": ">=26.1"`
     通吃 26.1–26.3；编译目标取本线最老 Xaero（1.40.14），引用符号是全家族子集；
     搬家类型 API 经 `compat/` 反射缝适配（src-modern/）。
   - **legacy**（`:1.21.11` 产出，`X.Y.Z+mc1.21.11`）：`"minecraft": ">=1.21.11 <1.22"`；

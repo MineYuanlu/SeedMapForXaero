@@ -43,6 +43,9 @@ def xaeroMapLine = depFromVersionsJson('xaeroMapLine', 'xaeroArtifactLine')
 // 编译目标默认取本线最老 Xaero：引用符号是全部支持版本的子集（universal jar 策略）
 def xaeroMapVersion = depFromVersionsJson('xaeroMapVersion', 'xaeroOldest')
 def xaeroMinimapVersion = depFromVersionsJson('xaeroMinimapVersion', 'xaeroMinimap')
+// 发布 jar 的版本后缀（version = "<modVersion>+mc<artifactVersion>"）：
+// modern universal 家族共享 "26.x"，legacy 用节点 id（1.21.11）。release.yml 校验同源。
+def artifactVersion = depFromVersionsJson('artifactVersion', 'artifactVersion')
 
 // 版本号从 git 状态确定性计算（单一事实源 = release tag），不再依赖 gradle.properties。
 // 算法：
@@ -50,7 +53,7 @@ def xaeroMinimapVersion = depFromVersionsJson('xaeroMinimapVersion', 'xaeroMinim
 //   n     = rev-list --count <base>..HEAD（无 base 时为总提交数）
 //   dirty = status --porcelain 非空（含 untracked，语义同 git describe --dirty）
 //   HEAD == tag 且干净 → "X.Y.Z"；否则 → "X.Y.Z+<n>.<hash>[.dirty]"
-// 追加 "+mc<节点>" 后缀区分双 artifact（modern universal / legacy remap jar）。
+// 追加 "+mc<artifactVersion>" 后缀区分双 artifact（标签在 versions.json 行：modern="26.x"/legacy=节点 id）。
 // 边界：非 git 环境（源码 zip 构建）回退 "0.0.0-local"；-Pmod_version=... 可手动覆盖。
 // 注意：CI checkout 需 fetch-depth: 0 + fetch-tags: true，shallow clone 会退化为 "0.0.0+<n>.<hash>"。
 def gitOut = { List<String> args ->
@@ -86,7 +89,7 @@ if (modVersion == null) {
 		}
 	}
 }
-version = "${modVersion}+mc${scVersion}"
+version = "${modVersion}+mc${artifactVersion}"
 group = project.maven_group
 
 base {
@@ -524,7 +527,7 @@ publishing {
 def nodeArtifactFamily = isLegacyLine ? 'legacy' : 'modern'
 
 publishMods {
-	displayName = "Release ${modVersion} (mc${scVersion})"
+	displayName = "Release ${modVersion} (mc${artifactVersion})"
 	file = loomx.modJar.flatMap { it.archiveFile }
 	type = STABLE
 	modLoaders.add('fabric')
