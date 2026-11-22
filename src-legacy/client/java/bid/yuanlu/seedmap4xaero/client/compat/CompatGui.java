@@ -68,11 +68,12 @@ public final class CompatGui {
 	/**
 	 * 等价于 {@code g.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x, y, w, h, alpha)}。
 	 * 1.21.11 第 7 参 = ARGB tint（传入 BlitRenderState 的顶点色），
-	 * float alpha → 白色 RGB × alpha 通道换算。
+	 * float alpha（约定 [0,1]）→ 白色 RGB × alpha 通道换算（clamp 防 >1 时溢出到 RGB 位）。
 	 */
 	public static void blitSprite(@NotNull GuiGraphics g, @NotNull Identifier sprite,
 			int x, int y, int w, int h, float alpha) {
-		final int tint = ((int) (alpha * 255.0F + 0.5F) << 24) | 0xFFFFFF;
+		final int a = Math.min(255, Math.max(0, (int) (alpha * 255.0F + 0.5F)));
+		final int tint = (a << 24) | 0xFFFFFF;
 		g.blitSprite(CompatTextures.guiTexturedPipeline(), sprite, x, y, w, h, tint);
 		blitSpriteCallCount++;
 	}

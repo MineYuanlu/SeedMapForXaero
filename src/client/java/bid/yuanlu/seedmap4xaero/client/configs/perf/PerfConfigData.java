@@ -22,8 +22,8 @@ import com.google.gson.JsonObject;
  * prefetchEnabled     : boolean, 视野外圈预取
  * pregenEnabled       : boolean, 游玩中主动预生成（默认关）
  * pregenRadiusBlocks  : int, 预生成世界半径（方块）
- * diskCacheEnabled    : boolean, 磁盘缓存开关（默认关，实现见 doc/perf.md）
- * diskCacheMaxMB      : int, 磁盘缓存体积上限
+ * diskCacheEnabled    : boolean, 磁盘缓存开关（预留, UI/实现尚未接入, 仅持久化原值）
+ * diskCacheMaxMB      : int, 磁盘缓存体积上限（预留, 同上）
  * debugOverlay        : boolean, 性能统计 HUD
  * </pre>
  */
@@ -52,11 +52,6 @@ public class PerfConfigData {
     final AtomicBoolean dirty = new AtomicBoolean(false);
 
     PerfConfigData() {
-    }
-
-    /** 公开工厂：供外部（单测等）构造默认配置；常规运行时访问一律经 {@link PerfConfig}。 */
-    public static PerfConfigData empty() {
-        return new PerfConfigData();
     }
 
     public void makeDirty() {

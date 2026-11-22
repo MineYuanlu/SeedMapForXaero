@@ -48,11 +48,6 @@ public final class VanillaBiomeColor implements BiomeColorProvider {
 		}
 		initData();
 		initAquatic();
-		for (int i = 0; i < 256; i++) {
-			if (FALLBACK[i] == UNKNOWN_COLOR && TYPE[i] != GRASS) {
-				FALLBACK[i] = UNKNOWN_COLOR;
-			}
-		}
 	}
 
 	private static void grass(int id, float temp, float downfall, int fallbackRgb) {
@@ -219,11 +214,6 @@ public final class VanillaBiomeColor implements BiomeColorProvider {
 	@Override
 	public String translationKey() {
 		return "xsm.color_provider.minecraft_native";
-	}
-
-	@Override
-	public int getColor(int biomeId) {
-		return getColor(biomeId, 0, 0);
 	}
 
 	@Override

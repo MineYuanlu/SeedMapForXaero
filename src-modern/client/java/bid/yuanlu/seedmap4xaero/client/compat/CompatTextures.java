@@ -80,8 +80,8 @@ public final class CompatTextures {
 	public static @NotNull GpuTextureAndView createUploadTexture(@NotNull String label, int usage, int side,
 			@NotNull int[] abgrPixels) {
 		final Cache c = cache();
+		final NativeImage img = new NativeImage(NativeImage.Format.RGBA, side, side, false);
 		try {
-			final NativeImage img = new NativeImage(NativeImage.Format.RGBA, side, side, false);
 			for (int i = 0; i < abgrPixels.length; i++) {
 				img.setPixelABGR(i % side, i / side, abgrPixels[i]);
 			}
@@ -90,11 +90,12 @@ public final class CompatTextures {
 					side, side, 1, 1);
 			final Object encoder = c.createCommandEncoder.invoke(device);
 			c.writeToTexture.invoke(encoder, gpuTexture, img);
-			img.close();
 			final Object view = c.createTextureView.invoke(device, gpuTexture);
 			return xsm$wrap(c, gpuTexture, view);
 		} catch (Throwable e) {
 			throw new RuntimeException("CompatTextures.createUploadTexture failed: " + label, e);
+		} finally {
+			img.close();
 		}
 	}
 

@@ -36,14 +36,14 @@ public final class CompatNoise {
 	private final int[] p = new int[256];
 	public final double xo;
 	public final double yo;
-	public final double zo;
 
 	/** 等价于 {@code new PerlinSimplexNoise(RandomSource.create(seed), List.of(0))}。 */
 	public CompatNoise(long seed) {
 		LegacyRandom random = new LegacyRandom(seed);
 		this.xo = random.nextDouble() * 256.0;
 		this.yo = random.nextDouble() * 256.0;
-		this.zo = random.nextDouble() * 256.0;
+		// 第三次 nextDouble 消耗不可删: RNG 序列逐位对齐依赖 (2D 噪声不用其值)
+		random.nextDouble();
 		for (int i = 0; i < 256; i++) {
 			this.p[i] = i;
 		}

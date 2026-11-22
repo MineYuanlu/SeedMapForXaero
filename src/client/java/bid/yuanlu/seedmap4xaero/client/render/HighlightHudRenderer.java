@@ -92,8 +92,6 @@ public final class HighlightHudRenderer {
             final double dist = Math.hypot(bx - cam.x, bz - cam.z);
             if (dist > MAX_RENDER_DISTANCE)
                 continue;
-            // 26.2/26.3 的 Projection 交换 near/far 做 reversed-Z，NDC z 的符号还取决于
-            // 驱动是否支持 GL_ARB_clip_control，不能靠 z 判前后。
             if (isBehind(cam.x, cam.z, forward, bx, bz))
                 continue;
             final Vec3 ndc = mc.gameRenderer.projectPointToScreen(new Vec3(bx, cam.y, bz));

@@ -179,7 +179,8 @@ public class StructureOverlayMixin {
                 xsm$hoverGuiZ = guiZ;
                 String hover = I18n.get(type.translationKey());
                 String vk = type.variantTranslationKey(variant);
-                if (vk != null)
+                // 无 override 的类型回退到类型自身 key, 此时不再追加, 避免 "X (X)"
+                if (vk != null && !vk.equals(type.translationKey()))
                     hover += " (" + I18n.get(vk) + ")";
                 xsm$hoverText = hover;
                 xsm$buildHoverLines(type, blockX, blockZ, mark);

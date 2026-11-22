@@ -24,13 +24,6 @@ public abstract class SeedMapToggleMixin implements SeedMapToggleAccessor {
     }
 
     @Override
-    public void xsm$setSeedMapEnabled(boolean enabled) {
-        var cfg = ServerConfig.getActiveConfig();
-        if (cfg != null)
-            cfg.setInvisibleBiomes(!enabled);
-    }
-
-    @Override
     public void xsm$setSeedMapLoadedWorldInfo(boolean loaded) {
         this.xsm$isLoadedWorldInfo = loaded;
     }

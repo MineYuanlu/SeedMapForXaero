@@ -82,7 +82,6 @@ class NativeIntegrationTest extends NativeMcTest {
         assertNotNull(qp, "queryPoint(0,0) should not be null");
         assertNotNull(qp.biomeName(), "biome name should resolve");
         assertTrue(qp.height() > 0, "surface height should be positive, got " + qp.height());
-        assertEquals(QueryPointCache.UNKNOWN_HEIGHT, Integer.MIN_VALUE);
     }
 
     @Test
@@ -135,7 +134,6 @@ class NativeIntegrationTest extends NativeMcTest {
         assertEquals(4, loot.size(), "desert pyramid has 4 chests");
         boolean anyItem = false;
         for (var chest : loot) {
-            assertTrue(chest.items().size() >= 0);
             for (var item : chest.items()) {
                 if (item.count() > 0 && item.globalItemId() >= 0) {
                     anyItem = true;

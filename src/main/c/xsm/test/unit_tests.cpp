@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "../../cubiomes/finders.h"
+#include "../../cubiomes/terrainnoise.h"
 #include "../../cubiomes/util.h"
 #include "../apis/render.h"
 
@@ -544,6 +545,38 @@ TEST_CASE("structure variants") {
       CHECK(a[i].v == b[i].v);
     }
   }
+}
+
+TEST_CASE("shipwreck beached variant must match biome") {
+  setupOrFail();
+  // 搁浅与否由锚点群系决定: 非海洋 → beached, 海洋 → 普通。
+  // 回归: 旧实现用模板序号 start<11 判搁浅, 约 55% 海洋沉船被误标。
+  // 此处独立建一份 TerrainNoise, 复刻 xsmStructureBiome 的 1.18+ 采样
+  // (getBiomeAt g,0, chunkX*4+2, 319>>2, chunkZ*4+2) 逐点核对。
+  if (testMcEnum() <= MC_1_17)
+    return;  // pre-1.18 走 entry 层采样路径, 测试不复刻 (见 render.cpp)
+
+  TerrainNoise tn{};  // 零初始化 (与 render.cpp 一致, 指针/spline 状态依赖零值)
+  REQUIRE(setupTerrainNoise(&tn, testMcEnum(), 0) == 1);
+  REQUIRE(initTerrainNoise(&tn, 0, 0) == 1);
+
+  auto hits = queryHits(Shipwreck, 0, 0, 64, 64);
+  REQUIRE_MESSAGE(hits.size() > 0, "no shipwreck found in region range");
+  int beachedCount = 0, oceanCount = 0;
+  for (auto& h : hits) {
+    const int biomeID = getBiomeAt(&tn.g, 0, (h.x >> 4) * 4 + 2, 319 >> 2,
+                                   (h.z >> 4) * 4 + 2);
+    const bool beached = biomeID >= 0 && !isOceanic(biomeID);
+    CHECK_MESSAGE((h.v == XSM_VAR_SHIPWRECK_BEACHED) == beached,
+                  "shipwreck at (", h.x, ",", h.z, ") variant=", h.v,
+                  " but biome=", biomeID);
+    if (beached)
+      beachedCount++;
+    else
+      oceanCount++;
+  }
+  CHECK_MESSAGE(beachedCount > 0, "no beached shipwreck seen (sampling broken?)");
+  CHECK_MESSAGE(oceanCount > 0, "no ocean shipwreck seen");
 }
 
 TEST_CASE("xsmQueryStructureLoot: desert pyramid deterministic loot") {

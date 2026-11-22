@@ -14,8 +14,10 @@ public:
 
     void lock() {
         while (flag.test_and_set(std::memory_order_acquire)) {
-#ifdef __x86_64__
+#if defined(__x86_64__)
             __builtin_ia32_pause();
+#elif defined(__aarch64__)
+            __builtin_arm_yield();  // Android/ARM 关键平台, 避免纯忙等
 #endif
         }
     }

@@ -33,7 +33,7 @@ import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.item.enchantment.Enchantment;
 
 /**
- * 结构战利品悬浮框: 移植自 SeedMapper ChestLootWidget。
+ * 结构战利品悬浮框: 3×9 物品网格容器 (设计参照 SeedMapper 同名组件)。
  * <p>
  * 按箱子翻页 (chestIndex), 3×9 物品网格 + 物品 tooltip + 标题 extraInfo
  * (pieceName / chestPos / lootTable / lootSeed)。物品/附魔 id 由 C 端
@@ -127,11 +127,10 @@ public class ChestLootWidget {
 
     /** 平铺模式: 所有容器同时显示, 无翻页箭头。 */
     private void renderTiled(GuiGraphicsExtractor g, int mouseX, int mouseY, Font font) {
-        boolean tooltipRendered = false;
         for (int i = 0; i < this.chestDataList.size(); i++) {
             int tileX = this.x + (i % TILE_COLS) * (CONTAINER_WIDTH + TILE_GAP);
             int tileY = this.y + (i / TILE_COLS) * (CONTAINER_HEIGHT + TILE_GAP);
-            tooltipRendered |= renderContainer(g, mouseX, mouseY, font, this.chestDataList.get(i), i, tileX, tileY);
+            renderContainer(g, mouseX, mouseY, font, this.chestDataList.get(i), i, tileX, tileY);
         }
     }
 
@@ -150,10 +149,10 @@ public class ChestLootWidget {
     }
 
     /**
-     * 渲染一个箱子容器 (背景 + 标题 + 3×9 物品网格 + 物品 tooltip)。
-     * 返回是否渲染了物品 tooltip (用于平铺模式跨格只渲染首个)。
+     * 渲染一个箱子容器 (背景 + 标题 + 3×9 物品网格; 命中的槽位挂 tooltip,
+     * 同容器内仅首个命中槽位生效)。
      */
-    private boolean renderContainer(GuiGraphicsExtractor g, int mouseX, int mouseY, Font font,
+    private void renderContainer(GuiGraphicsExtractor g, int mouseX, int mouseY, Font font,
             ChestLoot chestData, int index, int boxX, int boxY) {
         CompatGui.blitTexture(g, CHEST_CONTAINER,
                 boxX, boxY, 0, 0, CONTAINER_WIDTH, CONTAINER_HEIGHT,
@@ -206,7 +205,6 @@ public class ChestLootWidget {
                 }
             }
         }
-        return tooltipRendered;
     }
 
     /** 按容器槽位取物品: 战利品按生成顺序放入 27 格容器。 */
@@ -332,7 +330,7 @@ public class ChestLootWidget {
         return tiled ? totalHeight(this.chestDataList.size()) : CONTAINER_HEIGHT;
     }
 
-    /** 平铺模式 (2 列) 下 N 个容器的总宽。 */
+    /** 平铺模式总宽 (恒 2 列, 与容器数无关; 参数仅为与 {@link #totalHeight} 对称)。 */
     public static int totalWidth(int chestCount) {
         return TILE_COLS * CONTAINER_WIDTH + (TILE_COLS - 1) * TILE_GAP;
     }

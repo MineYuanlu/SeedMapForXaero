@@ -27,9 +27,6 @@ public final class StructureRightClick implements IRightClickableElement {
     /** 结构无 Y 坐标, 用 Xaero 的 32767 约定标记 "无 Y"。 */
     public static final int NO_Y = 32767;
 
-    /** 菜单标题栏背景色 (深绿)。 */
-    public static final int TITLE_BACKGROUND_COLOR = 0xFF2A5C3A;
-
     private final GuiMap guiMap;
     private final StructureType type;
     private final int variant;
@@ -47,26 +44,6 @@ public final class StructureRightClick implements IRightClickableElement {
         this.blockZ = blockZ;
         this.dimId = dimId;
         this.dimScale = dimScale;
-    }
-
-    public StructureType getType() {
-        return type;
-    }
-
-    public int getVariant() {
-        return variant;
-    }
-
-    public int getBlockX() {
-        return blockX;
-    }
-
-    public int getBlockZ() {
-        return blockZ;
-    }
-
-    public ResourceKey<Level> getDimId() {
-        return dimId;
     }
 
     @Override
@@ -136,16 +113,12 @@ public final class StructureRightClick implements IRightClickableElement {
         return true;
     }
 
-    @Override
-    public int getRightClickTitleBackgroundColor() {
-        return TITLE_BACKGROUND_COLOR;
-    }
-
     /** 结构显示名, 如 "Village (Plains)"。 */
     private String displayName() {
         String name = I18n.get(type.translationKey());
         String vk = type.variantTranslationKey(variant);
-        if (vk != null)
+        // 无 override 的类型回退到类型自身 key, 此时不再追加, 避免 "X (X)"
+        if (vk != null && !vk.equals(type.translationKey()))
             name += " (" + I18n.get(vk) + ")";
         return name;
     }

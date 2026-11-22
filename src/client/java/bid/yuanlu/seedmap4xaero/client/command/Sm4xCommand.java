@@ -17,6 +17,9 @@ import bid.yuanlu.seedmap4xaero.client.configs.structure.StructureDataConfig;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import java.util.function.ObjIntConsumer;
+
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
@@ -24,7 +27,7 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 
 /**
- * {@code /sm4x} 客户端命令：种子历史与结构标记数据的查看/清理（二阶段）。
+ * {@code /sm4x} 客户端命令：种子历史与结构标记数据的查看/清理（两级子命令）。
  * <p>
  * 全部输出走聊天栏；种子以绿色 {@code [seed]} 呈现，点击复制到剪贴板；
  * 列表分页，页脚 ◀▶ 可点击翻页（{@code ClickEvent.RunCommand}）。
@@ -42,7 +45,7 @@ public final class Sm4xCommand {
     }
 
     /** {@code /sm4x} 根节点: 无参显示帮助。 */
-    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdSm4x() {
+    private static LiteralArgumentBuilder<FabricClientCommandSource> cmdSm4x() {
         return ClientCommands.literal("sm4x")
             .executes(ctx -> {
                 ctx.getSource().sendFeedback(Component.translatable("xsm.command.help"));
@@ -52,20 +55,20 @@ public final class Sm4xCommand {
     }
 
     /** {@code /sm4x history …}: 种子历史 / 结构数据。 */
-    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdHistory() {
+    private static LiteralArgumentBuilder<FabricClientCommandSource> cmdHistory() {
         return ClientCommands.literal("history")
             .then(cmdHistorySeed())
             .then(cmdHistoryStructure());
     }
 
     /** {@code /sm4x history seed list [page=1]}: 种子历史 (MRU)。 */
-    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdHistorySeed() {
+    private static LiteralArgumentBuilder<FabricClientCommandSource> cmdHistorySeed() {
         return ClientCommands.literal("seed")
             .then(listNode(Sm4xCommand::listSeedHistory));
     }
 
     /** {@code /sm4x history structure list [page=1] | remove <seed>}。 */
-    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> cmdHistoryStructure() {
+    private static LiteralArgumentBuilder<FabricClientCommandSource> cmdHistoryStructure() {
         return ClientCommands.literal("structure")
             .then(listNode(Sm4xCommand::listStructureData))
             .then(ClientCommands.literal("remove")
@@ -77,8 +80,8 @@ public final class Sm4xCommand {
     }
 
     /** {@code list [page=1]} 子树; handler 首参 = 页码。 */
-    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> listNode(
-            java.util.function.ObjIntConsumer<FabricClientCommandSource> handler) {
+    private static LiteralArgumentBuilder<FabricClientCommandSource> listNode(
+            ObjIntConsumer<FabricClientCommandSource> handler) {
         return ClientCommands.literal("list")
             .executes(ctx -> {
                 handler.accept(ctx.getSource(), 1);

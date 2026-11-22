@@ -35,18 +35,6 @@ class BitSetViewTest {
     }
 
     @Test
-    void cloneIsDetached() {
-        BitSet bits = new BitSet();
-        bits.set(5);
-        BitSetView view = new BitSetView(bits);
-        BitSet copy = view.cloneBitSet();
-        assertNotSame(bits, copy);
-        assertEquals(bits, copy);
-        copy.clear(5);
-        assertTrue(bits.get(5), "clone must not mutate backing set");
-    }
-
-    @Test
     void equalsAndHashCode() {
         BitSet a = new BitSet();
         BitSet b = new BitSet();

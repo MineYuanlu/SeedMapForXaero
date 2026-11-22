@@ -7,8 +7,6 @@ public interface SeedMapToggleAccessor {
      */
     boolean xsm$isSeedMapEnabled();
 
-    void xsm$setSeedMapEnabled(boolean enabled);
-
     /**
      * 标识种子地图当前是否已经正确加载世界信息(seed,dim)
      */

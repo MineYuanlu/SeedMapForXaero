@@ -21,24 +21,24 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 /**
- * basic 配置文档（{@code server_config.sm4x}）的数据体：服务器级设置 + worlds 表 + 种子历史。
+ * basic 配置文档（{@code server_config.json}）的数据体：服务器级设置 + worlds 表 + 种子历史。
  * <p>
- * 只负责数据与自身序列化；magic word 帧包装、原子写、损坏回退在
- * {@link bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile}。
- * 
+ * 只负责数据与自身序列化；原子写、损坏回退、legacy {@code .sm4x} 迁移在
+ * {@link bid.yuanlu.seedmap4xaero.client.configs.core.JsonConfigFile}
+ * （legacy 帧包装见 {@link bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xFile}）。
+ *
  * <pre>
  * worlds : { mwId → WorldConfig }
- * all_seeds : [ SeedEntry … ]
+ * seedHistory : [ SeedEntry … ]
  * theme : String|null
  * invisibleBiomes : Boolean
  * invisibleStructures : Boolean
  * structureIconSize : float
- * lootPreview + lootDisplayMode (version 1+)
+ * lootPreview + lootDisplayMode
  * </pre>
  */
 public class ConfigData {
     private static final int MAX_SEEDS = 1000;
-    // mwId → 世界配置
     private final ConcurrentHashMap<String, WorldConfig> worlds = new ConcurrentHashMap<>();
     private final ArrayList<SeedEntry> allSeeds = new ArrayList<>();
 

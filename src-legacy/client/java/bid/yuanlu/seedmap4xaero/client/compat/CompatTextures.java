@@ -3,8 +3,6 @@ package bid.yuanlu.seedmap4xaero.client.compat;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3x2f;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.CommandEncoder;
@@ -46,8 +44,6 @@ import xaero.map.region.texture.RegionTexture;
  */
 public final class CompatTextures {
 
-	private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/CompatTextures");
-
 	private CompatTextures() {
 	}
 
@@ -67,8 +63,8 @@ public final class CompatTextures {
 	 */
 	public static @NotNull GpuTextureAndView createUploadTexture(@NotNull String label, int usage, int side,
 			@NotNull int[] abgrPixels) {
+		final NativeImage img = new NativeImage(NativeImage.Format.RGBA, side, side, false);
 		try {
-			final NativeImage img = new NativeImage(NativeImage.Format.RGBA, side, side, false);
 			for (int i = 0; i < abgrPixels.length; i++) {
 				img.setPixelABGR(i % side, i / side, abgrPixels[i]);
 			}
@@ -77,11 +73,12 @@ public final class CompatTextures {
 					RegionTexture.DEFAULT_INTERNAL_FORMAT, side, side, 1, 1);
 			final CommandEncoder encoder = device.createCommandEncoder();
 			encoder.writeToTexture(gpuTexture, img);
-			img.close();
 			final GpuTextureView view = device.createTextureView(gpuTexture);
 			return new GpuTextureAndView(gpuTexture, view);
 		} catch (Throwable e) {
 			throw new RuntimeException("CompatTextures.createUploadTexture failed: " + label, e);
+		} finally {
+			img.close();
 		}
 	}
 

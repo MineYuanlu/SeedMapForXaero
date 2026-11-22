@@ -267,7 +267,7 @@ public enum StructureType {
 
     static {
         for (StructureType t : values()) {
-            BY_ID[t.id] = t;// 同ID alias取第后一个
+            BY_ID[t.id] = t;// id 冲突时后写入者覆盖 (当前枚举 id 唯一)
         }
     }
 

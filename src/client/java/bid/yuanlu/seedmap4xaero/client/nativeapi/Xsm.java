@@ -183,8 +183,9 @@ public final class Xsm {
     /**
      * 版本选择器展示的 MC 版本（倒序，仅 26.1+；ViaVersion 跨版本场景）。
      * <p>
-     * C 侧 {@code mcVersionMap} 支持更多旧版本（配置中已有的值仍可生效），
-     * 但 UI 仅提供 26.1+ 选项；新 MC 版本发布时在此追加。
+     * C 侧 {@code mcVersionMap} 含更多历史版本串但 pre-1.18 无法初始化
+     * TerrainNoise 会被 {@code setGameVersion} 拒绝；UI 仅提供 26.1+ 选项，
+     * 新 MC 版本发布时在此追加。
      */
     public static final List<String> SUPPORTED_VERSIONS = List.of(
             "26.3", "26.2", "26.1");
@@ -195,6 +196,10 @@ public final class Xsm {
         if (!success) {
             throw new IllegalStateException("Unsupported game version: " + version);
         }
+        // C 侧成功 setGameVersion 会重置 gen_setWorld; 若不重置 Java 去重哨兵,
+        // 后续 setWorld(相同 seed/dim) 会被跳过, C 侧停在"世界未设置", 查询全失败
+        resetWorldState();
+        CacheHelper.invalidateAll();
     }
 
     /**
@@ -222,7 +227,7 @@ public final class Xsm {
     }
 
     /** 重置种子/维度去重哨兵，强制下一次 setWorld 真正下发到 C 侧。 */
-    public static void resetWorldState() {
+    private static void resetWorldState() {
         lastSeed = Long.MIN_VALUE;
         lastDim = Integer.MIN_VALUE;
     }
@@ -234,13 +239,6 @@ public final class Xsm {
         lastSeed = seed;
         lastDim = dim;
         XsmNative.setWorld(seed, dim);
-    }
-
-    /**
-     * 将生物群系颜色表设为内置颜色表
-     */
-    public static void setBiomeColorTable() {
-        XsmNative.setBiomeColorTableNative();
     }
 
     public static void setBiomeColorTable(BiomeColorProvider provider) {
@@ -297,23 +295,21 @@ public final class Xsm {
             return null;
         }
         int[] pixels = new int[64 * 64];
-        for (int i = 0; i < pixels.length; i++) {
-            int off = i * 4;
-            int r = data[off] & 0xFF;
-            int g = data[off + 1] & 0xFF;
-            int b = data[off + 2] & 0xFF;
-            pixels[i] = (0xFF << 24) | (b << 16) | (g << 8) | r;
-        }
+        // C 侧输出 R,G,B,A 字节 + alpha 恒 0xFF, LE int32 读出即 0xAABBGGRR = ABGR,
+        // 与逐像素组装等价, 可整块拷贝
+        java.nio.ByteBuffer.wrap(data).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                .asIntBuffer().get(pixels);
         return pixels;
     }
 
     public static @Nullable QueryPointCache queryPoint(int worldX, int worldZ) {
-        byte[] biomeName = new byte[32];
+        // 缓冲需容纳最长群系名 + NUL (cubiomes biome2str 最长 32 字符: modified_wooded_badlands_plateau)
+        byte[] biomeName = new byte[64];
         int[] height = new int[1];
-        int ret = XsmNative.queryPoint(worldX, worldZ, biomeName, 32, height);
+        int ret = XsmNative.queryPoint(worldX, worldZ, biomeName, biomeName.length, height);
         if (ret == 0) {
             final var name = cstr(biomeName);
-            if (name == null || name.isEmpty())
+            if (name.isEmpty())
                 return null;
             return new QueryPointCache(name, height[0]);
         } else {

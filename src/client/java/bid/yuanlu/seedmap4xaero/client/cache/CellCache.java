@@ -23,8 +23,8 @@ import xaero.lib.client.graphics.GpuTextureAndView;
  * 内存上限恒定；拖拽尖峰由 pending backpressure（{@link #MAX_PENDING}）封顶。
  * <p>
  * 生成请求进入 {@link GenScheduler}（粗层优先/近相机优先/prefetch 最低）。
- * 渲染线程 API：{@link #updateCamera} / {@link #beginFrame} / {@link #endFrame}
- * 须按帧调用（相机驱动优先级；endFrame 关闭本帧被驱逐的 GPU 纹理）。
+ * 渲染线程 API：{@link #beginFrame} / {@link #endFrame}
+ * 须按帧调用（beginFrame 内部把相机喂给调度器驱动优先级；endFrame 关闭本帧被驱逐的 GPU 纹理）。
  */
 public class CellCache {
 
@@ -159,7 +159,9 @@ public class CellCache {
             }
             cache.clear();
         }
-        deferredClose.clear(); // 上一帧的待关纹理就地关闭
+        GpuTextureAndView t;
+        while ((t = deferredClose.poll()) != null)
+            t.close(); // 与 endFrame 同语义，清空待关队列
         totalEntries = 0;
         CacheHelper.SCHEDULER.clearTiles();
     }
@@ -232,10 +234,6 @@ public class CellCache {
     }
 
     // ─── 内部: 生成与上传 ───────────────────────────────────────
-
-    public static @NotNull GpuTextureAndView getPlaceholderTexture() {
-        return CompatTextures.placeholderTexture();
-    }
 
     private static GpuTextureAndView uploadTexture(CellData data) {
         final int[] pixels = data.pixels;

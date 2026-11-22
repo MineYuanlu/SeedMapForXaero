@@ -157,7 +157,7 @@ public class StructureBitFlag implements StructureBitFlagView {
             for (int i = 0; i < length; i++) {
                 flags[i] = in.readInt();
             }
-            return new StructureBitFlag(flags);// 一次拷贝, 懒得优化了
+            return new StructureBitFlag(flags);// 数据量极小 (每结构一 int), 整拷贝开销可接受
         } else {
             throw new IOException("Unsupported StructureBitFlag version: " + version);
         }

@@ -149,7 +149,8 @@ def download_fernflower():
     if os.path.isfile(FERNFLOWER_JAR):
         return
     url = "https://jitpack.io/com/github/JetBrains/fernflower/master/fernflower-master.jar"
-    response = requests.get(url)
+    response = requests.get(url, timeout=60)
+    response.raise_for_status()  # jitpack 报错页不能落盘成 jar
     os.makedirs(os.path.dirname(FERNFLOWER_JAR), exist_ok=True)
     with open(FERNFLOWER_JAR, 'wb') as f:
         f.write(response.content)
