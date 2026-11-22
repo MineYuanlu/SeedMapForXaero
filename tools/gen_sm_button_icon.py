@@ -3,7 +3,7 @@
 
 from PIL import Image
 from PIL.Image import Resampling
-import os, sys
+import os
 
 # 脚本位于 <repo>/tools/，产物直接写到 client 资源目录
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -59,8 +59,6 @@ def text_to_px(s, x0, y0, gap=1):
         for j, row in enumerate(g):
             for i, c in enumerate(row):
                 px[(cx + i, y0 + j)] = color_map(c)
-                # if c == "#":
-                #     px[(cx + i, y0 + j)] = color
         cx += len(g[0]) + gap
     return px
 

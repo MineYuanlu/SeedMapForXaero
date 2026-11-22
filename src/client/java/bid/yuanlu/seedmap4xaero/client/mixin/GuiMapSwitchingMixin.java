@@ -63,7 +63,7 @@ public class GuiMapSwitchingMixin {
 
     @Inject(method = "init", at = @At("TAIL"), remap = false)
     private void xsm$onInitTail(GuiMap mapScreen, Minecraft minecraft, int width, int height, CallbackInfo ci) {
-        xsm$LOGGER.info("init: active={}, mapProcessor={}", this.active, this.mapProcessor);
+        xsm$LOGGER.debug("init: active={}, mapProcessor={}", this.active, this.mapProcessor);
         if (this.active && this.mapProcessor != null) {
             ServerConfig.activate(this.mapProcessor);
             StructureDataConfig.activate(this.mapProcessor);
@@ -78,7 +78,7 @@ public class GuiMapSwitchingMixin {
             return;
 
         xsm$currentSeed = ServerConfig.resolveSeed();
-        xsm$LOGGER.info("init: resolveSeed={}", xsm$currentSeed);
+        xsm$LOGGER.debug("init: resolveSeed={}", xsm$currentSeed);
         xsm$seedInput = new EditBox(minecraft.font, width / 2 - 100, 148, 145, 20, Component.translatable("xsm.gui.switching.seed"));
         if (xsm$currentSeed != null) {
             xsm$seedInput.setSuggestion(String.valueOf(xsm$currentSeed));
@@ -91,7 +91,7 @@ public class GuiMapSwitchingMixin {
                     if (!text.isEmpty()) {
                         try {
                             long seed = Long.parseLong(text);
-                            xsm$LOGGER.info("confirm: parsed seed={}", seed);
+                            xsm$LOGGER.debug("confirm: parsed seed={}", seed);
                             xsm$useSeed(seed);
                             CellCache.clear();
                             xsm$seedInput.setValue("");
@@ -110,7 +110,7 @@ public class GuiMapSwitchingMixin {
                     if (seed == null)
                         return;
                     minecraft.keyboardHandler.setClipboard(String.valueOf(seed));
-                    xsm$LOGGER.info("copy: copied seed={}", seed);
+                    xsm$LOGGER.debug("copy: copied seed={}", seed);
                     if (minecraft.player != null) {
                         //? if >=26.1 {
                         minecraft.player.sendOverlayMessage(

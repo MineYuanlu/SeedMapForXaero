@@ -19,7 +19,6 @@ import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlag;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlagView;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureKeys;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
-import bid.yuanlu.seedmap4xaero.client.configs.core.JsonCodec;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
 
 /**
@@ -296,38 +295,4 @@ public class WorldConfig {
         return wc;
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o)
-            return true;
-        if (!(o instanceof WorldConfig that))
-            return false;
-        return Objects.equals(main, that.main)
-                && Objects.equals(seed, that.seed)
-                && Objects.equals(disabledStructure, that.disabledStructure)
-                && Objects.equals(disabledBiomes, that.disabledBiomes)
-                && Objects.equals(mcVersion, that.mcVersion)
-                && Objects.equals(orphanStructureFlags, that.orphanStructureFlags)
-                && Objects.equals(orphanBiomeKeys, that.orphanBiomeKeys);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(main, seed, disabledStructure, disabledBiomes, mcVersion,
-                orphanStructureFlags, orphanBiomeKeys);
-    }
-
-    /** 世界配置文档的 JSON 编解码器，配合 {@code JsonConfigFile} 使用。 */
-    public static final JsonCodec<WorldConfig> JSON_CODEC = new JsonCodec<>() {
-        @Override
-        public JsonObject write(WorldConfig data) {
-            return data.writeJson();
-        }
-
-        @Override
-        public WorldConfig read(JsonObject json) throws IOException {
-            // 独立使用 (单测) 时挂一个空宿主; 生产路径经 ConfigData.readJson 传入真实宿主
-            return WorldConfig.readJson(new ConfigData(), json);
-        }
-    };
 }

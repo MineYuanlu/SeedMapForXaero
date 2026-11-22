@@ -44,7 +44,7 @@ class StructureBitFlagTest {
         f.setStructure(StructureType.VILLAGE.id, true);
         assertTrue(f.isStructureSet(StructureType.VILLAGE.id));
         // 可见性 = !isStructureSet && !isVariantSet (调用方组合)
-        assertFalse(!f.isStructureSet(StructureType.VILLAGE.id));
+        assertFalse(f.isVariantSet(StructureType.VILLAGE.id, 0));
     }
 
     @Test

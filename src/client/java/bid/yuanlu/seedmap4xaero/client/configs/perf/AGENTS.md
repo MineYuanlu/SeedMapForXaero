@@ -20,7 +20,7 @@
 ```
 { "version": 1,
   "generationThreads": 0,      // 0=自动 min(4, cores/4)，手动 1..cores（setter 钳 0..64）
-  "cacheCapacityMB": 128,      // CellCache 全局 LRU 预算 32..512；1MB=64 条(16KB/条)
+  "cacheCapacityMB": 128,      // CellCache 全局 LRU 预算 64..512；1MB=64 条(16KB/条)
   "prefetchEnabled": true,     // 视野外圈预取
   "pregenEnabled": false,      // 主动预生成（默认关）
   "pregenRadiusBlocks": 8192,  // 1024..65536

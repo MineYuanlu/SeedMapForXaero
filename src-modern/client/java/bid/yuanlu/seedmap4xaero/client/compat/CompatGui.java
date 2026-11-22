@@ -64,8 +64,8 @@ public final class CompatGui {
 	 *
 	 * <p>
 	 * 解析按运行时字段类型（{@code Screen}）与访问器返回类型扫描，首次调用后缓存
-	 * MethodHandle。两者皆不可得时返回 {@code null}（调用方自行决定降级行为），
-	 * 不抛异常以免拖垮每 tick 调用方。
+	 * MethodHandle。解析失败（两版本都找不到访问器）时返回 {@code null}（调用方
+	 * 自行决定降级行为）；解析成功但 {@code invoke} 失败仍会抛 RuntimeException。
 	 */
 	public static @Nullable Screen currentScreen(@NotNull Minecraft mc) {
 		try {

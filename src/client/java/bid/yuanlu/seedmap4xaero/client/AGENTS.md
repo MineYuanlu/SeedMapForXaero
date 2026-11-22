@@ -9,7 +9,7 @@ universal jar 就在其它版本上 NoSuchMethod/FieldError，且编译期不可
 反射封装，业务代码只调门面。MC 跨版本迁移的公有字段/访问器（如 26.2 的 `Minecraft.screen`
 → `Gui.screen()`）同样只允许经 compat 读取。设计与缝清单见 `doc/compat-layer.md`。
 
-## 10 client mixins
+## 11 client mixins
 
 | Mixin                   | Targets                              | Role                                            |
 | ----------------------- | ------------------------------------ | ----------------------------------------------- |
@@ -18,7 +18,9 @@ universal jar 就在其它版本上 NoSuchMethod/FieldError，且编译期不可
 | `SeedMapToggleMixin`    | `GuiMap.init`                        | "S" toggle button, state from config            |
 | `XsmMainPanelMixin`     | `GuiMap.init`                        | Settings panel button + mouse routing           |
 | `WorldSwitchMixin`      | `MapProcessor.checkForWorldUpdate`   | Detect world change → reload config             |
-| `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          || `GuiMapVersionDropdownMixin` | `GuiMap.mouseClicked/mouseScrolled` | Route clicks/wheel to `VersionDropdown` (world MC version picker) |
+| `GuiMapSwitchingMixin`  | `GuiMapSwitching.init`               | Seed input UI on world-switching panel          |
+| `GuiMapVersionDropdownMixin` | `GuiMap.mouseClicked/mouseScrolled` | Route clicks/wheel to `VersionDropdown` (world MC version picker) |
+| `GameRendererAccessorMixin` | `GameRenderer` (@Accessor)       | Read `gameRenderState`/`mainCamera` for render pipeline (field renamed across 26.x, see accessor) |
 | `StructureOverlayMixin` | `GuiMap.extractRenderState`          | Structure icon overlay + hover tooltip          |
 | `StructureClickMixin`   | `GuiMap.mouseClicked` + `mapClicked` | Right-click structure icon → combined Xaero menu + appended (waypoint / highlight) |
 | `DropDownWidgetTitleMixin` | `DropDownWidget.drawSlot` (XaeroLib) | Title rows in right-click menu use `selectedBackground` grey via `@ModifyArg` on `fill(IIIII)V` |

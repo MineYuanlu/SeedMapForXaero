@@ -61,7 +61,7 @@ modern 线新缝出现时的做法：在 compat 门面加方法 + 反射解析�
 `NativeImage`、`PoseStack`、`VertexConsumer`/`BufferBuilder`、`InputConstants`、
 `GuiGraphicsExtractor` 及其 `fill/text/item` 等（legacy 线为 `GuiGraphics`/`fill/drawString/renderItem`）、Xaero `GpuTextureAndView`/
 `MultiTextureRenderTypeRenderer`/`MapRenderHelper`/`ImprovedFramebuffer`（签名已核对
-1.40.14 ↔ 1.46.4 一致）。这些若在未来版本搬家，修复点 = compat 内的 import + 解析逻辑。
+1.40.14 ↔ 1.47.2 一致，核对时点 2026-11）。这些若在未来版本搬家，修复点 = compat 内的 import + 解析逻辑。
 
 ## CompatNoise（PerlinSimplexNoise 副本）
 

@@ -136,7 +136,6 @@ class ServerConfigTest {
 
         String text = Files.readString(paths(tmp, "plain").target(), StandardCharsets.UTF_8);
         assertTrue(text.strip().startsWith("{"), "pure JSON, no magic envelope");
-        assertTrue(text.contains("\"minecraft:Village\"") == false || true); // key 形态断言见 bitsets 用例
         assertTrue(text.contains("server_config") == false, "no file name inside document");
         // 轮替契约之外: 文档带 version 字段
         assertTrue(text.contains("\"version\""));
@@ -167,10 +166,16 @@ class ServerConfigTest {
         for (int id = 0; id < 10; id++)
             assertTrue(dis.get(id));
 
-        // key 形态: 原版结构带 minecraft: 前缀
+        // key 形态: 原版结构带 minecraft: 前缀; 变种码 8 精确落盘 (gson pretty-print 为多行数组, 解析断言)
         String text = Files.readString(paths(tmp, "bits").target(), StandardCharsets.UTF_8);
         assertTrue(text.contains("\"minecraft:stronghold\""), text);
-        assertTrue(text.contains("\"variants\": [8]") || text.contains("8"), text);
+        var variants = com.google.gson.JsonParser.parseString(text)
+                .getAsJsonObject().getAsJsonObject("worlds").getAsJsonObject("w")
+                .getAsJsonObject("disabledStructures").getAsJsonObject("minecraft:village")
+                .getAsJsonArray("variants");
+        assertEquals(2, variants.size());
+        assertEquals(8, variants.get(0).getAsInt());
+        assertEquals(30, variants.get(1).getAsInt());
     }
 
     @Test
@@ -316,7 +321,7 @@ class ServerConfigTest {
         // 模拟旧版 (v0) 文件: seeds 后直接跟结尾 MAGIC_WORD, 无 lootPreview/mode 字节
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try (DataOutputStream out = new DataOutputStream(bos)) {
-            out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8));
+            out.write(Sm4xFile.MAGIC_WORD);
             out.writeInt(0); // version 0
             out.writeInt(0); // worlds 为空
             out.writeBoolean(false); // no theme
@@ -324,7 +329,7 @@ class ServerConfigTest {
             out.writeBoolean(false); // invisibleStructures
             out.writeFloat(1.0f); // structureIconSize
             out.writeInt(0); // seeds 为空
-            out.write("SEEDMAP4XAERO".getBytes(StandardCharsets.UTF_8)); // 结尾 MAGIC, 无 lootPreview
+            out.write(Sm4xFile.MAGIC_WORD); // 结尾 MAGIC, 无 lootPreview
         }
         Path legacy = paths(tmp, "oldv0").legacy();
         Files.createDirectories(legacy.getParent());

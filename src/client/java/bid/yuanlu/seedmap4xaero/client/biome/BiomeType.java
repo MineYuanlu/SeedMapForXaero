@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.nativeapi.Xsm;
-import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.Identifier;
 
 public final class BiomeType {
@@ -57,11 +56,9 @@ public final class BiomeType {
                     int biomeId = Integer.parseInt(parts[0].trim());
                     int spriteIdx = Integer.parseInt(parts[1].trim());
                     String name = Xsm.biome2str(biomeId);
+                    // 名称缺失时用确定性占位名, 保证 id→name 一一对应
+                    // (持久化 key 依赖名称唯一性, 不得走 I18n——译文随客户端语言漂移)
                     if (name == null || name.isEmpty())
-                        name = I18n.get("xsm.biome.unknown", biomeId);
-                    // 名称缺失/回退串 (无 native 或无语言资源的环境) 时用确定性占位名,
-                    // 保证 id→name 一一对应 (持久化 key 依赖名称唯一性)
-                    if (name == null || name.isEmpty() || name.equals("xsm.biome.unknown"))
                         name = "unknown_" + biomeId;
                     var bt = new BiomeType(biomeId, name, spriteIdx);
                     if (biomeId >= 0 && biomeId < MAX_ID)

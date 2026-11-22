@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ACTIVE = (26, 1, 2)  # vcsVersion，与 settings.gradle 的 stonecutter 配置保持一致
 SCAN_DIRS = ["src", "src-modern", "src-legacy"]  # 结构检查范围
-TOKEN_SCOPE = ["src"]  # 替换词检查范围：仅共享树（src-legacy 按设计直调 legacy API）
+TOKEN_SCOPE = ["src", "src-modern"]  # 替换词检查范围: modern 节点 generate 作用于两者 (build.gradle 把 src-modern 并入 client sourceSet)；src-legacy 按设计直调 legacy API, 不检查
 
 COND_RE = re.compile(r"^\s*//\? if\s+(>=|<=|>|<|==|=)\s*([\d.]+)\s*\{\s*$")
 # 结束标记可能紧跟被包裹分支的注释闭合：`*///?}` / `*///?} else {`

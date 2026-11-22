@@ -48,7 +48,7 @@ public class SeedMapPanel {
     private final Minecraft mc;
     private final Font font;
 
-    // session-scoped UI state: survives map screen reopen, cleared only when the game closes
+    // 会话级 UI 状态: 窗口缩放 re-init 后保持; 地图界面关闭时由 XsmMainPanelMixin 复位
     public static boolean panelOpen;
 
     // section expand state
@@ -62,7 +62,7 @@ public class SeedMapPanel {
     private static int biomeScrollOff;
     private static int structScrollOff;
 
-    // search state (keys only, no EditBox widget for now)
+    // search 文本 (EditBox responder 回写, 会话级)
     private static String biomeSearchText = "";
     private static String structSearchText = "";
 
@@ -118,7 +118,7 @@ public class SeedMapPanel {
 
     // slider
     private float sliderValue = 1.0f;
-    public boolean sliderDragging;
+    private boolean sliderDragging;
 
     // ─── 性能区 (perf_config.json 全局配置) ─────────────────────
     /** 滑条 id: 1=线程 2=缓存 3=预生成半径 4=磁盘上限。 */
@@ -270,7 +270,7 @@ public class SeedMapPanel {
         if (sliderDragging) {
             updateSlider(mouseX);
         }
-        // color slider drag: live preview (flush on release)
+        // color slider drag: live preview (落盘在 完成 提交或离开编辑器, 见 editorColorDirty)
         if (colorSliderDrag > 0) {
             applyColorSliderDrag(mouseX);
         }
@@ -1425,18 +1425,6 @@ public class SeedMapPanel {
         }
         if (button == CompatInput.MOUSE_LEFT && colorSliderDrag > 0) {
             colorSliderDrag = -1; // 颜色不在此处落盘: 完成 提交或离开编辑器时 flush
-            return true;
-        }
-        return false;
-    }
-
-    public boolean mouseDragged(double mouseX, double mouseY, int button) {
-        if (button == CompatInput.MOUSE_LEFT && sliderDragging) {
-            updateSlider((int) mouseX);
-            return true;
-        }
-        if (button == 0 && perfSliderDrag > 0) {
-            applyPerfSlider((int) mouseX, perfSliderDrag);
             return true;
         }
         return false;

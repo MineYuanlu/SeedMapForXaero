@@ -77,8 +77,8 @@ public class StructureClickMixin {
 
         // 左键点击悬浮的战利品结构图标 → 固定悬浮框
         if (event.button() == CompatInput.MOUSE_LEFT && ServerConfig.isLootPreviewEnabled()
-                && LootPreviewState.isPinned() == false
-                && LootPreviewState.tryPin() && LootPreviewState.hasWidget()) {
+                && !LootPreviewState.isPinned()
+                && LootPreviewState.tryPin()) {
             cir.setReturnValue(true);
             return;
         }

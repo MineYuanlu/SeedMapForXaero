@@ -1,6 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.biome;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,7 +37,11 @@ class BiomeTypeTest extends McBootstrap {
         var plains = BiomeType.byId(1);
         assertNotNull(plains, "plains (id=1) should be registered");
         assertTrue(plains.spriteIndex >= 0);
-        assertEquals(plains, BiomeType.byId(1));
+        // 回退名必须确定性: 不得泄露 I18n key (否则持久化 key 随客户端语言漂移)。
+        // 有 native 时为 "plains", 无 native 的 JVM 环境为 "unknown_1"。
+        assertTrue(plains.name.equals("plains") || plains.name.equals("unknown_1"),
+                "unexpected biome name: " + plains.name);
+        assertNotEquals("xsm.biome.unknown", plains.name);
     }
 
     @Test

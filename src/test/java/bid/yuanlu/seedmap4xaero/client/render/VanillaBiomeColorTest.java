@@ -1,6 +1,7 @@
 package bid.yuanlu.seedmap4xaero.client.render;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,8 +27,8 @@ class VanillaBiomeColorTest extends McBootstrap {
 
     @Test
     void plainsFixedColor() {
-        // plains=1 → grass(1, 0.8, 0.4, 0x91BD59); fallback color when grass-map yields magenta
-        // getColor must not be 0xFF00FF nor fallback unknown
+        // plains=1 → grass(1, 0.8, 0.4, 0x91BD59); JVM 测试环境无 grass 贴图,
+        // computeGrassColor 的 vanilla 分支不可用 → 只锁非品红/非 UNKNOWN 两不变量
         int c = VanillaBiomeColor.INSTANCE.getColor(1);
         assertNotEquals(0xFF00FF, c);
         assertNotEquals(UNKNOWN_COLOR, c);
@@ -44,8 +45,8 @@ class VanillaBiomeColorTest extends McBootstrap {
     void aquaticFlags() {
         assertTrue(VanillaBiomeColor.INSTANCE.isAquatic(0));  // ocean
         assertTrue(VanillaBiomeColor.INSTANCE.isAquatic(10)); // frozen_ocean
-        org.junit.jupiter.api.Assertions.assertFalse(VanillaBiomeColor.INSTANCE.isAquatic(1)); // plains
-        org.junit.jupiter.api.Assertions.assertFalse(VanillaBiomeColor.INSTANCE.isAquatic(-1));
+        assertFalse(VanillaBiomeColor.INSTANCE.isAquatic(1)); // plains
+        assertFalse(VanillaBiomeColor.INSTANCE.isAquatic(-1));
     }
 
     @Test

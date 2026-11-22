@@ -13,18 +13,9 @@ public final class BitSetView {
         this.bitSet = Objects.requireNonNull(bitSet);
     }
 
-    public @NotNull BitSet cloneBitSet() {
-        return (BitSet) this.bitSet.clone();
-    }
-
     /** @see BitSet#isEmpty() */
     public boolean isEmpty() {
         return this.bitSet.isEmpty();
-    }
-
-    /** @see BitSet#size() */
-    public int size() {
-        return this.bitSet.size();
     }
 
     /** @see BitSet#nextSetBit(int) */

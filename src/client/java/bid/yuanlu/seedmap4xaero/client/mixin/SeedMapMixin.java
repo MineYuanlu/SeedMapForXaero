@@ -189,10 +189,10 @@ public class SeedMapMixin {
      * 对应 Xaero GuiMap.extractRenderState 中 textureLevel 的计算逻辑。
      * textureLevel 决定从 Xaero 的哪个 LOD 层级读取纹理数据：
      * <ul>
-     * <li>0 (userScale ≥ 1.0)： 最精细，1 像素 = 1 方块</li>
-     * <li>1 (userScale ∈ [0.5, 1.0))：1 像素 = 2 方块</li>
-     * <li>2 (userScale ∈ [0.25, 0.5))：1 像素 = 4 方块</li>
-     * <li>3 (userScale ∈ [0, 0.25)：最粗，1 像素 = 8 方块</li>
+     * <li>0 (userScale ∈ (0.5, 1.0])：最精细，1 像素 = 1 方块</li>
+     * <li>1 (userScale ∈ (0.25, 0.5])：1 像素 = 2 方块</li>
+     * <li>2 (userScale ∈ (0.125, 0.25])：1 像素 = 4 方块</li>
+     * <li>3 (userScale ≤ 0.125)：最粗，1 像素 = 8 方块</li>
      * </ul>
      * 公式：reversedScale=1/userScale，textureLevel = min(floor(log2(reversedScale)),
      * 3)
@@ -269,7 +269,6 @@ public class SeedMapMixin {
 
         final int dim = ServerConfig.resolveDimId();
         final int curScale = xsm$scaleForUserScale(this.userScale, dim);
-        final int blockSize = 64 * curScale;
         if (xsm$debug()) {
             this.xsm$debugScale = curScale;
             this.xsm$debugDecision = null;
@@ -284,6 +283,7 @@ public class SeedMapMixin {
         final double bottomBorder = topBorder + (double) windowH / this.scale;
 
         if (xsm$debug()) {
+            final int blockSize = 64 * curScale;
             this.xsm$debugTileX = Math.floorDiv(this.mouseBlockPosX, blockSize);
             this.xsm$debugTileZ = Math.floorDiv(this.mouseBlockPosZ, blockSize);
         }
@@ -678,7 +678,7 @@ public class SeedMapMixin {
 
                     if (!skipCheck) {
                         // Level 3: branch texture getHeight
-                        // Use the already-resolved region directly (same brX/brZ as outer loop)
+                        // region 已由外层解析, 按 (ltX,ltZ) 直接取分支纹理
                         int ltX = (wx >> (6 + textureLevel)) & 7;
                         int ltZ = (wz >> (6 + textureLevel)) & 7;
                         if (ltX != lastLtX || ltZ != lastLtZ) {

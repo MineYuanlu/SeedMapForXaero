@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xCodec;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 /**
@@ -43,8 +44,8 @@ public final class StructureDataLegacy {
     }
 
     /** legacy 编解码器，配合 {@code Sm4xFile.readFrame} 使用（magic 信封由其包装）。 */
-    public static final bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xCodec<Snapshot> LEGACY_CODEC =
-            new bid.yuanlu.seedmap4xaero.client.configs.core.Sm4xCodec<>() {
+    public static final Sm4xCodec<Snapshot> LEGACY_CODEC =
+            new Sm4xCodec<>() {
                 @Override
                 public void write(Snapshot data, DataOutputStream out) throws IOException {
                     StructureDataLegacy.write(data, out);

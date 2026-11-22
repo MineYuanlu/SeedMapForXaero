@@ -4,9 +4,8 @@ public interface BiomeColorProvider {
 
 	String name();
 
-	default String translationKey() {
-		return "xsm.color_provider." + name().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
-	}
+	/** lang key: {@code xsm.color_provider.<id>}，实现方必须显式提供合法 key 段。 */
+	String translationKey();
 
 	int getColor(int biomeId, int blockX, int blockZ);
 

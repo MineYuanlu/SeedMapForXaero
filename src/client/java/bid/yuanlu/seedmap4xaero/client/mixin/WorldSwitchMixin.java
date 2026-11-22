@@ -35,9 +35,10 @@ public class WorldSwitchMixin {
     @Inject(method = "checkForWorldUpdate", at = @At("RETURN"))
     private void xsm$onCheckForWorldUpdate(CallbackInfo ci) {
         String currentId = getCurrentWorldId();
-        xsm$LOGGER.info("checkForWorldUpdate: currentId={}, lastWorldId={}", currentId, xsm$lastWorldId);
         if (Objects.equals(currentId, xsm$lastWorldId))
             return;
+        // 本钩子在同世界内也会被多次调用 (出生点更新/level id 包/面板刷新), 只在真切换时打日志
+        xsm$LOGGER.info("checkForWorldUpdate: switching {} -> {}", xsm$lastWorldId, currentId);
         xsm$lastWorldId = currentId;
         if (currentId != null) {
             ServerConfig.activate((MapProcessor) (Object) this);

@@ -2,7 +2,6 @@ package bid.yuanlu.seedmap4xaero.client.configs.perf;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.slf4j.Logger;
@@ -74,7 +73,7 @@ public final class PerfConfig {
 
     /**
      * 实际生效的生成线程数：手动值钳制到 1..availableProcessors；
-     * 自动（0）= {@code max(1, min(4, cores/4))}——预留一半核给 MC 本体，
+     * 自动（0）= {@code max(1, min(4, cores/4))}——只占 1/4 核（其余留给 MC 本体），
      * 上限 4 避免 16 线程桌面全占。
      */
     public static int effectiveGenerationThreads() {
@@ -232,8 +231,4 @@ public final class PerfConfig {
         LISTENERS.clear();
     }
 
-    /** 已注册的监听器快照（测试断言用）。 */
-    static List<Runnable> listenersForTest() {
-        return List.copyOf(LISTENERS);
-    }
 }

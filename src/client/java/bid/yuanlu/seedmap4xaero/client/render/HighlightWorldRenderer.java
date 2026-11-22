@@ -74,7 +74,7 @@ public final class HighlightWorldRenderer {
             final int y0 = level.getMinY();
             final int y1 = level.getMaxY();
             final float tiles = (y1 - y0) / TILE_BLOCKS;
-            // 缓慢自转: 1°/tick, 一整圈 6 秒; partial tick 插值避免 20Hz 整数步进抖动
+            // 缓慢自转: 1°/tick, 一整圈 18 秒 (360 tick ÷ 20 tps); partial tick 插值避免 20Hz 整数步进抖动
             final float partialTicks = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
             final float rotation = (level.getGameTime() + partialTicks) % 360.0f;
             final RenderType renderType = RenderTypes.beaconBeam(BeaconRenderer.BEAM_LOCATION, false);

@@ -18,7 +18,7 @@ import java.util.Objects;
 import xaero.map.MapProcessor;
 
 /**
- * basic 配置（{@code server_config.sm4x}）的门面类。
+ * basic 配置（{@code server_config.json}；legacy {@code .sm4x} 自动迁移）的门面类。
  * <p>
  * 职责：
  * <ul>
@@ -64,8 +64,8 @@ public final class ServerConfig {
      * 激活与 {@code mp} 对应的世界配置。
      * <p>
      * 缓存 {@link MapProcessor} 引用供 {@link #resolveSeed} 使用，提取 {@code mainId}，
-     * 保存旧脏数据并加载新配置。由 {@link WorldSwitchMixin} 在检测到
-     * {@code getCurrentWorldId()} 变化时调用（Xaero 处理线程，非渲染线程）。
+     * 保存旧脏数据并加载新配置。由 {@link WorldSwitchMixin}（Xaero 处理线程）与
+     * GuiMapSwitchingMixin / SeedMapMixin（GUI init，渲染线程）调用。
      */
     public synchronized static void activate(MapProcessor mp) {
         if (mp == null) {
@@ -76,6 +76,8 @@ public final class ServerConfig {
         if (mainId == null && mp.getMapWorld() != null) {
             mainId = mp.getMapWorld().getMainId();
         }
+        if (mainId == null)
+            return; // 与 StructureDataConfig.activate 对齐: 无 mainId 时 nothing to do
         if (Objects.equals(activeMainId, mainId)) {
             activeMapProcessor = mp;
             return;

@@ -57,7 +57,7 @@ public final class MarksStore {
     public record SeedStats(int groups, int structures) {
     }
 
-    /** 一个种子维度内的标记文档（typeId → posKey → mark），原 StructureData.DimData。 */
+    /** 一个种子维度内的标记文档（typeId → posKey → mark）。 */
     public static final class DimData {
         private final Long2ObjectOpenHashMap<StructureMark>[] types;
         /** 自上次落盘后有变更的 region（打包坐标）。 */
@@ -91,8 +91,8 @@ public final class MarksStore {
 
         /** 记录一次访问, 取历史最小距离; 无变化不标脏。 */
         public void markVisited(int typeId, long key, int dist) {
-            var m = map(typeId);
             synchronized (this) {
+                var m = map(typeId); // 懒创建须在锁内, 否则与渲染线程并发首访时丢 map
                 var cur = m.get(key);
                 var next = cur == null ? new StructureMark(dist, StructureGroups.DEFAULT)
                         : cur.withVisit(dist);
@@ -108,8 +108,8 @@ public final class MarksStore {
          * (默认组 = 删除组)。记录不存在时若设置非默认组则新建 (未访问仅分组)。
          */
         public void setGroup(int typeId, long key, @Nullable String group) {
-            var m = map(typeId);
             synchronized (this) {
+                var m = map(typeId); // 懒创建须在锁内, 同 markVisited
                 if (group == null || group.equals(StructureGroups.DEFAULT)) {
                     if (m.remove(key) != null)
                         dirtyRegions.add(MarksStore.regionIdxOf(key));
@@ -314,9 +314,9 @@ public final class MarksStore {
         this.marksDir = marksDir;
     }
 
-    /** 结构持久 key: (blockX<<32)|blockZ（与门面 {@code keyOf} 一致）。 */
+    /** 结构持久 key: (blockX<<32)|blockZ（委托门面 {@link StructureDataConfig#keyOf}，单一事实源）。 */
     public static long keyOf(int blockX, int blockZ) {
-        return (long) blockX << 32 | (blockZ & 0xFFFFFFFFL);
+        return StructureDataConfig.keyOf(blockX, blockZ);
     }
 
     /** 标记 key → region 打包坐标 ((rx<<32)|rz)。 */
@@ -444,9 +444,15 @@ public final class MarksStore {
             dirty = dd.dirtyRegions.toLongArray();
         }
         for (long regionIdx : dirty) {
-            if (writeRegion(seed, mwId, dd, regionIdx, rotate)) {
+            // 先清脏再收集写入: 写入窗口内 worker 的新 markVisited 会重新标脏,
+            // 下轮 flush 重写（幂等）; 若先写后清, 快照与清脏之间的并发变更会被抹掉丢失。
+            synchronized (dd) {
+                if (!dd.dirtyRegions.remove(regionIdx))
+                    continue;
+            }
+            if (!writeRegion(seed, mwId, dd, regionIdx, rotate)) {
                 synchronized (dd) {
-                    dd.dirtyRegions.remove(regionIdx);
+                    dd.dirtyRegions.add(regionIdx); // 写失败标回, 下轮重写
                 }
             }
         }

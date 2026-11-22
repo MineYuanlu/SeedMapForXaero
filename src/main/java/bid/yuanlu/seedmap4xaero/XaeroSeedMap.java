@@ -4,24 +4,13 @@ import net.fabricmc.api.ModInitializer;
 
 import net.minecraft.resources.Identifier;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 public class XaeroSeedMap implements ModInitializer {
 	public static final String MOD_ID = "seed-map-for-xaero";
 
-	// This logger is used to write text to the console and the log file.
-	// It is considered best practice to use your mod id as the logger's name.
-	// That way, it's clear which mod wrote info, warnings, and errors.
-	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
-
 	@Override
 	public void onInitialize() {
-		// This code runs as soon as Minecraft is in a mod-load-ready state.
-		// However, some things (like resources) may still be uninitialized.
-		// Proceed with mild caution.
-
-		LOGGER.info("Hello Fabric world!");
+		// client 侧初始化在 XaeroSeedMapClient (fabric.mod.json entrypoints.client);
+		// common 侧目前仅提供 Identifier 辅助。
 	}
 
 	public static Identifier id(String path) {

@@ -89,7 +89,7 @@ bool gen_setGameVersion = false;  ///< 是否已经设置游戏版本
 bool gen_setWorld = false;        ///< 是否已经设置世界信息
 
 #if DEBUG_TIMINGS
-/// gen 时间统计 (纳秒累计)
+/// gen 时间统计 (毫秒累计, 见 XSM_TIME_ADD)
 std::atomic<uint64_t> timing_check{0};
 std::atomic<uint64_t> timing_alloc{0};
 std::atomic<uint64_t> timing_genbiomes{0};
@@ -210,8 +210,9 @@ static int32_t xsmComputeVariant(int32_t structureType, int32_t blockX,
   case Igloo:
     return sv.basement ? XSM_VAR_IGLOO_BASEMENT : 0;
   case Shipwreck:
-    // getVariant 内部以 biomeID 判定搁浅: 非海洋群系 nextInt(11), 海洋 nextInt(20)
-    return sv.start < 11 ? XSM_VAR_SHIPWRECK_BEACHED : 0;
+    // 搁浅与否由群系决定 (cubiomes getVariant: 非海洋 nextInt(11), 海洋 nextInt(20)),
+    // 模板序号 start 不携带该信息——用 start 判会误标约 55% 海洋沉船
+    return (biomeID >= 0 && !isOceanic(biomeID)) ? XSM_VAR_SHIPWRECK_BEACHED : 0;
   case Ruined_Portal:
   case Ruined_Portal_N:
     // 只保留 普通(0)/巨型(1); 地下/空穴等位折叠进普通, 不单独区分
@@ -251,6 +252,7 @@ bool setBiomeColorTable(uint32_t* colors, uint32_t size) {
   for (uint32_t i = 0; i < size; i++) {
     auto id = colors[i * 2];
     auto hex = colors[i * 2 + 1];
+    if (id >= MAX_BIOMES) return false;  // 防越界写全局表
     biomeColorTable[id][0] = (hex >> 16) & 0xff;
     biomeColorTable[id][1] = (hex >> 8) & 0xff;
     biomeColorTable[id][2] = (hex >> 0) & 0xff;
@@ -275,7 +277,8 @@ bool setGameVersion(const char* version) {
   const auto v = mcVersionMap.find(std::string(version));
   if (v == mcVersionMap.end()) return false;
   memset(&tn.ss, 0, sizeof(tn.ss));
-  setupTerrainNoise(&tn, v->second, 0);
+  // pre-1.18: cubiomes 不支持 TerrainNoise 初始化, 拒绝而非静默在零值 Generator 上出垃圾
+  if (setupTerrainNoise(&tn, v->second, 0) == 0) return false;
   gen_setWorld = false;
   gen_setGameVersion = true;
   return true;
@@ -292,7 +295,7 @@ int32_t xsmGetMCVersion(const char* version) {
 bool setWorld(uint64_t seed, int dim) {
   std::lock_guard<xsm::mutex> lock(setting_mtx);
   if (!gen_setGameVersion) return false;
-  initTerrainNoise(&tn, seed, dim);
+  if (initTerrainNoise(&tn, seed, dim) == 0) return false;  // 与 setGameVersion 同理
   initSurfaceNoise(&endSn, DIM_END, seed);
   gen_setWorld = true;
   return true;

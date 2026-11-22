@@ -1,6 +1,5 @@
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <iostream>
 #include <string>
 #include <tuple>
@@ -62,7 +61,7 @@ int help(const std::string& exe, std::string need_func = "") {
       return 0;
     }
   }
-  return 1;  // should not happen
+  return 1;  // 未知函数名 (main 仅传已知名, 正常不可达)
 }
 
 

@@ -4,8 +4,6 @@ import java.util.List;
 import java.util.Set;
 
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.ServerConfig;
@@ -30,8 +28,6 @@ import net.minecraft.client.input.MouseButtonEvent;
  * {@link #clearCache()} 清空。
  */
 public final class LootPreviewState {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/LootPreviewState");
 
     private LootPreviewState() {
     }
@@ -61,7 +57,7 @@ public final class LootPreviewState {
             25  // Stronghold
     );
 
-    private static final java.util.Map<Long, List<ChestLoot>> LOOT_CACHE = new java.util.HashMap<>();
+    private static final java.util.Map<LootKey, List<ChestLoot>> LOOT_CACHE = new java.util.HashMap<>();
 
     /** 当前活跃的悬浮框; null = 无。 */
     private static @Nullable ChestLootWidget activeWidget;
@@ -73,28 +69,25 @@ public final class LootPreviewState {
     private static double hoverGuiX, hoverGuiZ;
     /** 当前屏幕 (GUI 缩放后) 尺寸, 用于容器右下角定位的钳制。 */
     private static double hoverGuiW, hoverGuiH;
-    /** 当前 widget 对应的结构坐标 key; 未变化时避免逐帧重建 (保留翻页状态)。 */
-    private static long widgetKey = Long.MIN_VALUE;
+    /** 当前 widget 对应的结构坐标; 未变化时避免逐帧重建 (保留翻页状态)。 */
+    private static @Nullable LootPos widgetPos;
 
     /** 该结构类型是否支持战利品查询。 */
     public static boolean isLootSupported(StructureType type) {
         return LOOT_SUPPORTED.contains(type.id);
     }
 
-    /** 生成缓存的 key (structureType, blockX, blockZ) 压缩为 long。 */
-    private static long key(int type, int blockX, int blockZ) {
-        return ((long) type << 42) | (((long) blockX & 0x7FFFFFL) << 21)
-                | ((long) blockZ & 0x7FFFFFL);
+    /** 生成缓存的 key (structureType, blockX, blockZ)。 */
+    private record LootKey(int type, int blockX, int blockZ) {
     }
 
     /** 结构坐标 key (不含类型), 用于判断悬停目标是否变化。 */
-    private static long posKey(int blockX, int blockZ) {
-        return (((long) blockX & 0x7FFFFFL) << 21) | ((long) blockZ & 0x7FFFFFL);
+    private record LootPos(int blockX, int blockZ) {
     }
 
     /** 查询 (带缓存)。返回 null = native 错误 / 不支持。 */
     public static @Nullable List<ChestLoot> queryLoot(StructureType type, int blockX, int blockZ) {
-        long k = key(type.id, blockX, blockZ);
+        var k = new LootKey(type.id, blockX, blockZ);
         synchronized (LOOT_CACHE) {
             if (LOOT_CACHE.containsKey(k)) {
                 return LOOT_CACHE.get(k);
@@ -115,7 +108,7 @@ public final class LootPreviewState {
         activeWidget = null;
         pinned = false;
         hoverType = null;
-        widgetKey = Long.MIN_VALUE;
+        widgetPos = null;
     }
 
     /** 当前是否有可渲染的悬浮框。 */
@@ -154,7 +147,8 @@ public final class LootPreviewState {
         hoverGuiH = guiH;
         pinned = ServerConfig.getLootDisplayMode().isDetail();
         // 悬停目标未变化时保留现有 widget (含翻页状态), 仅更新固定态。
-        if (activeWidget != null && posKey(blockX, blockZ) == widgetKey) {
+        if (activeWidget != null && widgetPos != null
+                && widgetPos.equals(new LootPos(blockX, blockZ))) {
             return;
         }
         rebuildWidget();
@@ -165,7 +159,7 @@ public final class LootPreviewState {
         if (!pinned) {
             activeWidget = null;
             hoverType = null;
-            widgetKey = Long.MIN_VALUE;
+            widgetPos = null;
         }
     }
 
@@ -174,7 +168,7 @@ public final class LootPreviewState {
         activeWidget = null;
         pinned = false;
         hoverType = null;
-        widgetKey = Long.MIN_VALUE;
+        widgetPos = null;
     }
 
     /** 左键点击当前悬浮的图标 → 固定。返回是否消费了该点击。 */
@@ -210,7 +204,7 @@ public final class LootPreviewState {
         }
         double dx = mouseX - hoverGuiX;
         double dy = mouseY - hoverGuiZ;
-        return Math.max(Math.abs(dx), Math.abs(dy)) <= 10;
+        return Math.max(Math.abs(dx), Math.abs(dy)) <= ICON_HALF;
     }
 
     private static void rebuildWidget() {
@@ -234,7 +228,7 @@ public final class LootPreviewState {
             posY = Math.max(0, Math.min(posY, (int) (hoverGuiH - h)));
         }
         activeWidget = new ChestLootWidget(posX, posY, hoverType, loot, tiled);
-        widgetKey = posKey(hoverBlockX, hoverBlockZ);
+        widgetPos = new LootPos(hoverBlockX, hoverBlockZ);
     }
 
     /** 供鼠标点击路由: 点击命中 widget 翻页按钮时消费。 */

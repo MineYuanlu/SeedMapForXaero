@@ -44,18 +44,30 @@ class NativeVersionSwitchTest extends NativeMcTest {
     }
 
     @Test
+    void preTerrainNoiseVersionsRejected() {
+        // cubiomes 对 <=1.17 无法初始化 TerrainNoise, C 侧显式拒绝
+        // (回归: 旧实现静默接受并在零值 Generator 上产出垃圾数据)
+        assertFalse(Xsm.applyGameVersion("1.17.1"), "pre-1.18 must be rejected");
+        assertFalse(Xsm.applyGameVersion("1.16.5"), "pre-1.18 must be rejected");
+        // 拒绝后原版本继续可用
+        Xsm.setWorld(SEED, 0);
+        assertNotNull(Xsm.queryPoint(0, 0));
+        assertTrue(Xsm.applyGameVersion(null));
+    }
+
+    @Test
     void versionActuallyChangesGeneration() {
-        // 1.17 (旧地形噪声) 与 1.18+ (新噪声) 在同一种子下必然生成不同地形
+        // 1.18 (新地形噪声) 与 26.x (客户端版本) 在同一种子下必然生成不同地形
         int[][] coords = { { 0, 0 }, { 100_000, 100_000 }, { -50_000, 30_000 }, { -123_456, -65_432 } };
-        int[][] legacyPixels = pixelsUnder(coords, "1.17.1");
-        int[][] modernPixels = pixelsUnder(coords, "1.18.2");
+        int[][] legacyPixels = pixelsUnder(coords, "1.18.2");
+        int[][] modernPixels = pixelsUnder(coords, null);
         boolean differs = false;
         for (int i = 0; i < coords.length && !differs; i++) {
             if (legacyPixels[i] == null || modernPixels[i] == null)
                 continue;
             differs = !java.util.Arrays.equals(legacyPixels[i], modernPixels[i]);
         }
-        assertTrue(differs, "terrain generation must differ between 1.17.1 and 1.18.2");
+        assertTrue(differs, "terrain generation must differ between 1.18.2 and client version");
         assertTrue(Xsm.applyGameVersion(null));
     }
 

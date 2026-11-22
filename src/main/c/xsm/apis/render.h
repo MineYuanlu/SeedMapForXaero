@@ -6,26 +6,12 @@
 #include "../utils/micro.h"
 
 
-// void GenerateBiomeImage(
-//     int zoomLevel, // 已调整的 zoom
-//     int worldX, // 方块坐标
-//     int worldZ, // 方块坐标
-//     int yLevel, // Y 高度
-//     int shaderKind, // None/Simple/Stepped 地形阴影
-//     int contourKind, // None/Simple 等高线
-//     bool fade, // 边缘淡化
-//     bool desaturate, // 去饱和度
-//     bool highlight, // 高亮模式
-//     bool showSlime // 史莱姆区块
-// );
-
-
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
 /// @brief 设置生物群系颜色表
-/// @param colors 颜色表数组 size*2, 每2个为一组，代表BiomeID和颜色值(RGBA)
+/// @param colors 颜色表数组 size*2, 每2个为一组，代表BiomeID和颜色值(RGBA 打包, alpha 忽略)
 /// @param size 颜色表数组大小
 /// @return false: 设置失败, 参数异常
 XSM_API bool setBiomeColorTable(uint32_t* colors, uint32_t size);
@@ -121,7 +107,7 @@ XSM_API int32_t xsmGetStructFEATURE_NUM(void);
  *                  bit3 (8) 僵尸村
  * Bastion          bit0-1   类型 0兵营(units) 1猪灵兽厩(hoglin_stable)
  *                           2藏宝室(treasure) 3桥(bridge)
- * Ruined_Portal/   bit0 (1) 巨型  bit1 (2) 地下  bit2 (4) 气袋
+ * Ruined_Portal/   bit0 (1) 巨型; 其余形态 (地下/空穴等) 折叠为 0
  * Ruined_Portal_N
  * Trial_Chambers   bit0-1   变种 0走廊(corridor) 1结尾(end)
  */
@@ -145,7 +131,10 @@ XSM_API int32_t xsmGetStructFEATURE_NUM(void);
 ///     outVariant[index] = 变种位码 (见 XSM_VAR_*)
 ///  否则：
 ///     outFound[index] = 0
-/// 输出数组由调用方预分配，大小 = (rx1 - rx0) * (rz1 - rz0) - (rx3 - rx2) * (rz3 - rz2)。
+/// 输出数组由调用方预分配。index 为 x 优先的紧凑序号（跳过被排除 region，不占位），
+/// 大小上限 = (rx1 - rx0) * (rz1 - rz0)；排除矩形应先与扫描矩形求交、为空则视为
+/// 无排除，此时有效大小 = 扫描矩形 region 数 − 交集 region 数（Java 侧 Xsm 已做
+/// 该规范化）。
 XSM_API uint32_t queryRegionStructuresGrid(
     int32_t  structureType,
     int32_t  rx0, int32_t rz0,
@@ -159,8 +148,9 @@ XSM_API uint32_t queryRegionStructuresGrid(
 );
 
 /// @brief 查询要塞精确位置, 返回 index ∈ [from, to) 的部分
-/// @details 内部从 index 0 重放 RNG 链以保证链一致; 1.19.3+ 仅对目标区间
-/// 做生物群系搜索(区间外以近似推进), 旧版本为保证 RNG 链会对全部 index 搜索
+/// @details 内部从 index 0 重放 RNG 链以保证链一致; 1.19.4+ (cubiomes 枚举
+/// > MC_1_19_2; "1.19.3" 字符串映射到 MC_1_19_2, 同 1.19.2 全量搜索) 仅对目标
+/// 区间做生物群系搜索(区间外以近似推进), 旧版本为保证 RNG 链会对全部 index 搜索
 /// @param from 起始 index(含)
 /// @param to 结束 index(不含)
 /// @param outBlockX 输出 X, 容量 >= to-from
@@ -243,7 +233,7 @@ XSM_API bool xsmItemName(int32_t globalItemId, char* out, uint32_t outLen);
 XSM_API bool xsmEnchantmentName(int32_t enchantmentId, char* out, uint32_t outLen);
 
 #if DEBUG_TIMINGS
-/// @brief 获取 gen 内部 4 段时间的累计纳秒数 (0=校验, 1=缓存分配,
+/// @brief 获取 gen 内部 4 段时间的累计毫秒数 (0=校验, 1=缓存分配,
 /// 2=生物群系生成, 3=图像转换)
 XSM_API void getGenTimings(uint64_t out[4]);
 

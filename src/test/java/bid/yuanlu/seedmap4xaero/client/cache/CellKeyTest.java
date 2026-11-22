@@ -33,13 +33,14 @@ class CellKeyTest {
     }
 
     @Test
-    void cellCoversExactlyBlockSize() {
-        // 任意 cell 的 [worldX, worldX+blockSize) 应严格覆盖 64*scale 方块
+    void cellWorldXIsAlignedAndRoundTrips() {
+        // worldX 对齐 blockSize 且 (worldX, cell) 可互相还原; 覆盖 [worldX, worldX+blockSize)
+        // 由 cellKey 的 floorDiv 构造保证 (见 CellKey.of)
         for (int scale : new int[] {1, 4, 16, 64, 256}) {
             for (int cell : new int[] {-3, -1, 0, 1, 7}) {
                 var key = new CellCache.CellKey(scale, cell, cell);
-                assertEquals(key.worldX() % key.blockSize(), 0);
-                assertEquals(key.worldX() / key.blockSize(), cell);
+                assertEquals(0, key.worldX() % key.blockSize());
+                assertEquals(cell, key.worldX() / key.blockSize());
             }
         }
     }
