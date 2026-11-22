@@ -4,23 +4,23 @@
 
 ## 测试分层与覆盖
 
-### 1. JVM 单元测试 — `src/test/java`（JUnit 5，52 用例）
+### 1. JVM 单元测试 — `src/test/java`（JUnit 5，20 个测试类 / ~180 用例）
 
-无 native、无 MC 运行时的纯逻辑测试。覆盖：
+无 native、无 MC 运行时的纯逻辑测试。核心覆盖（用例数以 CI JUnit 报告为准，避免数字漂移）：
 
-| 测试类                  | 用例 | 覆盖                                                                         |
-| ----------------------- | ---- | ---------------------------------------------------------------------------- |
-| `ServerConfigTest`      | 12   | 配置二进制读写往返、损坏/截断拒绝、`.old` 回退链、多服务器隔离、种子使用标记 |
-| `StructureTypeTest`     | 11   | 26 种结构枚举一致性、稀疏结构概率配置                                        |
-| `VanillaBiomeColorTest` | 7    | vanilla 生物群系颜色表                                                       |
-| `BitSetViewTest`        | 6    | 不可变 BitSet 包装语义                                                       |
-| `NativeIntegrationTest` | 8    | **见下一层**（native 可用时执行）                                            |
-| `BiomeTypeTest`         | 4    | biome 图标索引映射                                                           |
-| `CellKeyTest`           | 4    | 缓存键坐标/尺度换算                                                          |
+- `ServerConfigTest` — 配置 JSON/legacy 读写往返、损坏/截断拒绝、`.old` 回退链、多服务器隔离、golden fixture 迁移
+- `StructureDataTest` — marks 分片落盘/迁移/分组重写
+- `StructureTypeTest` / `StructureBitFlagTest` / `StructureIconsTest` — 结构枚举、变种位码、图标零分配契约
+- `JsonConfigFileTest` — 轮替/损坏矩阵/legacy 保全不变量
+- `PerfConfigTest` — 性能配置钳制与监听器
+- `GenSchedulerPriorityTest` — 优先级排序语义（预生成不饿死可见瓦片）
+- `VanillaBiomeColorTest` / `BiomeTypeTest` / `CellKeyTest` / `BitSetViewTest` / `PageTest` / `LootDisplayModeTest` — 纯逻辑
+- `NativeIntegrationTest` / `NativeVersionSwitchTest` — **见下一层**（native 可用时执行）
+- `CompatGuiMethodMatchTest` / `CompatNoiseTest` / `HighlightHudRendererTest` / `HighlightedStructuresTest` — compat 形状匹配 / 噪声对照 / 渲染器
 
 ### 2. native 集成测试 — C doctest + `NativeIntegrationTest`
 
-- **C 侧**：`src/main/c/xsm/test/unit_tests.cpp`（doctest，8 个 `TEST_CASE`）——`setup+smoke`、`queryPoint`、`genCellImg`（scale=4 逐像素高度 / scale=1 region）、`queryRegionStructuresGrid`、`querySparseStructures`、`queryStrongholdsRange`、`structure variants`。
+- **C 侧**：`src/main/c/xsm/test/unit_tests.cpp`（doctest，13 个 `TEST_CASE`）——`setup+smoke`、`queryPoint`、`genCellImg`（scale=4 逐像素高度 / scale=1 region）、`queryRegionStructuresGrid`、`querySparseStructures`、`queryStrongholdsRange`、`structure variants`。
 - **Java 侧**：`NativeIntegrationTest extends NativeMcTest`。native 库（`libxsmcore`）缺失时整套 assumption 跳过（如 `-PskipNativeBuild`）；可用时执行真实 cubiomes 查询，断言跨 26.1/26.2 稳定的**事实值**（26 结构 id、维度、regionSize、biome id↔名、`queryPoint` 高度/确定性）而非逐版本快照。
 
 ### 3. E2E 客户端 GameTest — `src/gametest/java`（fabric-client-gametest）
@@ -110,9 +110,9 @@ backend 失败后客户端会挂死。CI 在 `universal-e2e` 设
 | --- | ------ | ---- | ---- |
 | `compile-native-linux` | `ubuntu-24.04` | `linux/x86_64/libxsmcore.so` | —（package 阶段跑 C 单测） |
 | `compile-native-linux-arm` | `ubuntu-24.04-arm`（原生） | `linux/aarch64/libxsmcore.so` | 该 job 内原生跑 `xsmtest` |
-| `compile-native-android` | `ubuntu-24.04` + NDK r27c | `android/arm64` + `android/x86_64`（bionic） | ELF 校验：`file` 确认 ABI + `readelf -d` DT_NEEDED 无版本化 SONAME（等价 FCL `checkElfIsAndroid`） |
-| `compile-native-macos` | `macos-latest` | `macos/universal/libxsmcore.dylib` | `lipo -info` 确认双架构 |
-| `compile-native-windows` | `windows-latest` (msys2) | `windows/x86_64/xsmcore.dll` | — |
+| `compile-native-android` | `ubuntu-24.04` + NDK（版本取 `.github/toolchain-versions.json`） | `android/arm64` + `android/x86_64`（bionic） | ELF 校验：`file` 确认 ABI + `readelf -d` DT_NEEDED 无版本化 SONAME（等价 FCL `checkElfIsAndroid`） |
+| `compile-native-macos` | `macos-15` | `macos/universal/libxsmcore.dylib` | `lipo -info` 确认双架构 |
+| `compile-native-windows` | `windows-2025` (msys2) | `windows/x86_64/xsmcore.dll` | — |
 | `package` | `ubuntu-24.04`（reusable-package） | 汇总全部进 JAR | C 单测 + JUnit + 逐项断言 6 个 native 文件 |
 
 Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 ELF 校验 + 真机/模拟器上的 FCL 手动 E2E 兜底。
@@ -130,11 +130,11 @@ Android 产物无法在 CI 直接运行（无 arm64 Android 模拟器），用 E
 2. **CI 无 MinGW**：`compileNativeWindows`（交叉编译 Windows dll）只在有 MinGW 的主机构建；CI 一律 `-PskipNativeWindows=true` 或 `-x compileNativeWindows`。
 3. **Android/FCL 产物不可在 CI 跑**：`compile-native-android` 用 NDK 编 bionic `.so`（arm64+x86_64），无法在 ubuntu runner 上 dlopen 验证，改用 ELF 校验（`file` + `readelf -d` DT_NEEDED 无 `libc.so.6`）等价复刻 FCL 的 `checkElfIsAndroid()`；真机/模拟器 FCL 手动 E2E 兜底。
 4. **E2E 退出死锁（MC 26）**：`IntegratedServer.halt` 先 `executeBlocking` 等 server 线程，而 fabric client gametest 的 phaser 让 server 卡在 `postRunTasks` → 三线死锁。绕开：断言后 `runOnServer(server -> server.halt(false))`（server 线程内不阻塞）。
-5. **fabric-client-gametest 跨版本 API**：5.1.x（26.1）`getClientLevel().waitForChunksRender()`；6.0.0（26.2）改用 `getConnection().waitForChunksRender()`——测试用反射兼容。同理 `Minecraft.setScreen` 在 26.2 移除，改 `setScreenAndShow`。
+5. **fabric-client-gametest 跨版本 API**：4.x（1.21.11）`getClientWorld().waitForChunksRender(boolean,int)`；5.1.x（26.1）`getClientLevel().waitForChunksRender()`；6.0.0（26.2+）改用 `getConnection().waitForChunksRender()`——测试按序反射兼容。同理 `Minecraft.setScreen` 在 26.2 移除，改 `setScreenAndShow`。
 6. **网络同步器 bug**：production run task 加 `-Dfabric.client.gametest.disableNetworkSynchronizer=true`（fabric-docs warning）。
 7. **Java 25 必需**；native 缺失时 native 集成测试自动跳过，但 CI 矩阵行总是完整执行。
 
 ## 参数命名约定
 
-- 根 `gradle.properties` 的 key **即** CI `-P` 覆盖的 key（camelCase）：`fabricApiVersion`、`xaeroMapLine`、`xaeroMinimapVersion`（MC/loader 版本真值在 `versions/<节点>/gradle.properties`）；Xaero 端点例外，用节点作用域 key `xaeroMapVersion.<节点名>`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
+- 依赖版本真值源 = 根 `versions.json`；build.gradle 按 camelCase key（`fabricApiVersion`、`xaeroMapLine`、`xaeroMinimapVersion` 等）读取并支持 CI `-P` 覆盖（缺省取 versions.json 行）。MC/loader 线别在 `versions/<节点>/gradle.properties`；Xaero 端点例外，用节点作用域 key `xaeroMapVersion.<节点名>`。本地可用 `gradle.local.properties`（gitignored）同格式覆盖。
 - 其他构建开关：`-PskipNativeBuild`、`-PskipNativeWindows`、`-PclientGameTestXVFB`、`-PuniversalJar`（runProductionClientGameTestUniversal 用，指向预构建 universal jar）、`-PndkPath`（`compileNativeAndroid` 用，或环境变量 `ANDROID_NDK_HOME`）。

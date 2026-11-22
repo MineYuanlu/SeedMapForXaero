@@ -1,5 +1,12 @@
 # Xaero Seed Map — 架构文档
 
+> ⚠ **历史设计快照**：本文写于项目早期，部分描述已随重构过时（现状以根/目录
+> AGENTS.md 为准），已知差异：CellCache 现为全局条目预算 access-order LRU
+> （非 TTL）；`BiomeColorSchemeMixin` 已删除（配色切换在 SeedMapPanel）；
+> 线程池现为 GenScheduler（kind/scale/相机优先级，`max(1,min(4,cores/4))`）；
+> genCellImg 现输出 RGBA 4B/px；包路径为 `bid.yuanlu.seedmap4xaero`。
+> 保留本文作为设计演进与论证（prefetch 分层、探索检测等）的参考。
+
 ## 整体架构
 
 ```mermaid

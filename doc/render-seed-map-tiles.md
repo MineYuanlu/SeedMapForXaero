@@ -1,8 +1,10 @@
 # SeedMapMixin — 探索检测与优化指南
 
+> 注：本文为设计说明，方法名已随重构更新（`xsm$fillGaps` → `xsm$fillCellGaps`）。
+
 ## 概述
 
-`xsm$fillGaps` 遍历种子地图 tile 内的 16×16 子tile，判断每个子tile 是否已被 Xaero World Map 探索。若已探索则保留 Xaero 画面，若未探索则覆盖种子地图纹理。
+`xsm$fillCellGaps` 遍历种子地图 tile 内的 16×16 子tile，判断每个子tile 是否已被 Xaero World Map 探索。若已探索则保留 Xaero 画面，若未探索则覆盖种子地图纹理。
 
 ## Xaero 数据结构
 
@@ -124,17 +126,17 @@ Level 3 缓存:
 
 5. **`texLevel = xsm$textureLevelForScale(userScale)` 是帧级常量**：
    - 不要每子tile 重新计算
-   - 在 `xsm$fillGaps` 入口计算一次即可
+   - 在 `xsm$fillCellGaps` 入口计算一次即可
 
 ## 缩放映射
 
 ```java
-userScale ≥ 2.0     → scale=1
-userScale ≥ 1.0     → scale=4
-userScale ≥ 0.5     → scale=16
-userScale ≥ 0.25    → scale=64
-else & dim==0       → scale=256
-else                → scale=64
+userScale ≥ 0.5      → scale=1
+userScale ≥ 0.125    → scale=4
+userScale ≥ 0.03125  → scale=16
+userScale ≥ 0.0078125 → scale=64
+else & dim==0        → scale=256
+else                 → scale=64
 ```
 
 textureLevel 映射：

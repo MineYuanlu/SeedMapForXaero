@@ -42,7 +42,8 @@ release.yml (workflow_dispatch)
 ├── bump job          — computes next semver from git tags, pushes tag vX.Y.Z
 ├── natives job       — calls reusable-native-build.yml
 │                       (5 parallel compile jobs, one per native target)
-└── release job       — calls the same packaging steps as reusable-package.yml
+├── notes job         — AI release notes (manual input → AI → git log fallback)
+└── release job       — packaging steps inlined (same steps as reusable-package.yml, not via uses:)
     ├── gradle jar    — bundles the CI-built natives into the universal JAR
     ├── SHA256SUMS    — sha256 of the JAR, attached to the GitHub Release
     ├── attest        — SLSA build provenance (actions/attest-build-provenance)

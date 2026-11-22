@@ -61,7 +61,7 @@ MC × newest Xaero 上跑。未来破坏性 MC 变更由 E2E 随 versions.json �
 按节点目录过滤行）。CI 所有 gradle 调用经 `tools/gradle_retry.sh` 包装：仅对
 瞬时网络类失败（429 限流/连接错误，特征匹配）重试，真编译错误立即退出。
 
-版本参数：根 `gradle.properties` 的 key 即 CI `-P` 覆盖的 key（`fabricApiVersion`/`xaeroMapLine`/`xaeroMinimapVersion`）；Xaero 端点用**节点作用域** key `-PxaeroMapVersion.<节点>=<版本>`（`-P` 是 build 全局属性，会波及所有节点，禁用全局 `xaeroMapVersion`——曾毒化兄弟节点致矩阵全挂）。
+版本参数：依赖版本（fabricApi/Xaero 线/minimap）真值源 = `versions.json`，build.gradle 按 `fabricApiVersion`/`xaeroMapLine`/`xaeroMinimapVersion` 等 camelCase key 读取并支持 CI `-P` 覆盖（缺省取 versions.json 行）；Xaero 端点用**节点作用域** key `-PxaeroMapVersion.<节点>=<版本>`（`-P` 是 build 全局属性，会波及所有节点，禁用全局 `xaeroMapVersion`——曾毒化兄弟节点致矩阵全挂）。
 CI 矩阵 + E2E 定义在 `.github/workflows/matrix-test.yml`。
 
 ### CI 触发矩阵（单人开发流程，GitHub Flow）
@@ -142,7 +142,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 │   ├── gui/           # AGENTS.md: SeedMapPanel side panel, XsmIconButton
 │   └── accessor/      # SeedMapToggleAccessor interface
 └── utils/             # BitSetView (immutable BitSet wrapper)
-src/client/resources/assets/seed-map-for-xaero/textures/icons/   # biomes.png, structures.png, biomes.ini
+src/client/resources/assets/seed-map-for-xaero/textures/icons/   # biomes.png, structures.png, structures_plain.png, biomes.ini, structures.ini
 src/main/
 ├── java/…/XaeroSeedMap.java   # ModInitializer + Identifier id() helper
 ├── resources/          # fabric.mod.json + mixins json + lang/ + icon.png
@@ -167,7 +167,7 @@ tools/                # resolve_versions.py, gen_biomes_icon.py, gen_structures_
 
 | Dependency      | Source                                                 |
 | --------------- | ------------------------------------------------------ |
-| Xaero World Map | `xaero.map:xaeroworldmap-fabric-26.1.2:1.41.0`         |
+| Xaero World Map | `xaero.map:xaeroworldmap-fabric-<MC线>:<版本>`，真值源 = `versions.json` 行（每节点编译目标 = 行内 `xaeroOldest`，26.1.2 行当前 = 1.40.14） |
 | cubiomes        | `src/main/c/cubiomes/` git submodule → `libxsmcore.so` |
 | stonecutter     | Gradle plugin 0.10（多版本单源码树）+ loom-back-compat 0.4.3 |
 

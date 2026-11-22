@@ -1,7 +1,7 @@
 name: reusable-native-build
 
 # 可复用 workflow：编译全平台 native 库并上传 artifact。
-# 被 build.yml / release.yml / build-test-jar.yml 调用（三处原本各自复制一份，已收敛到此处）。
+# 被 build.yml / release.yml / build-test-jar.yml 调用。
 # 产物按 src/main/c/build/<target>/ 分目录放置，由 reusable-package 汇总进 JAR 的 /native/<os>/<arch>/。
 on:
   workflow_call:
