@@ -22,6 +22,11 @@
   "xsm.gui.panel.loot_mode.tiled_peek": "Tiled Peek",
   "xsm.gui.panel.loot_mode.tiled_detail": "Tiled Detail",
 
+  "xsm.gui.panel.batch_all": "All",
+  "xsm.gui.panel.batch_none": "None",
+  "xsm.gui.panel.batch_invert": "Invert",
+  "xsm.gui.panel.batch_show_only": "Show Only",
+
   "xsm.value.on": "ON",
   "xsm.value.off": "OFF",
 

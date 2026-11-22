@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache;
 import bid.yuanlu.seedmap4xaero.client.cache.CellCache.CellKey;
 import bid.yuanlu.seedmap4xaero.client.cache.StructureCache;
+import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.compat.CompatGui;
 import bid.yuanlu.seedmap4xaero.client.compat.CompatInput;
 import bid.yuanlu.seedmap4xaero.client.configs.basic.LootDisplayMode;
@@ -151,6 +152,8 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
         context.takeScreenshot("seed-map-final");
 
         assertPanelScreenshots(context, singleplayer);
+
+        assertBatchSelectionOps(context);
 
         assertHighlightHudHiddenWhenBehind(context, singleplayer);
 
@@ -553,6 +556,51 @@ public class SeedMapClientGameTest implements FabricClientGameTest {
 
     private static void setStructTab(ClientGameTestContext context, int tab) {
         context.runOnClient(client -> SeedMapPanel.activePanel().testSelectStructTab(tab));
+    }
+
+    /**
+     * 批量选择操作 E2E (面板 全选/全不选/反选/只显搜索): 经 test 钩子走与真实点击
+     * 同路径的 section 批量方法 (BiomeSection.applyBatch / StructSection.applyBatch),
+     * 断言 WorldConfig 状态语义; 结束时恢复全启用态, 不影响后续用例。
+     */
+    private static void assertBatchSelectionOps(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            SeedMapPanel panel = SeedMapPanel.activePanel();
+            if (panel == null) {
+                throw new AssertionError("SeedMapPanel not registered for batch ops");
+            }
+            int totalBiomes = BiomeType.values().length;
+            int totalTypes = StructureType.values().length;
+
+            // 生物群系: 全不选 → 0; 只显搜索 → 仅命中 (0, total) 开区间
+            if (panel.testBiomeBatch("none") != 0) {
+                throw new AssertionError("biome batch 'none' should disable all known biomes");
+            }
+            panel.testSetBiomeSearch("ocean");
+            int only = panel.testBiomeBatch("only");
+            if (only <= 0 || only >= totalBiomes) {
+                throw new AssertionError("biome batch 'only' with search 'ocean' expected a strict subset, got "
+                        + only + "/" + totalBiomes);
+            }
+            panel.testSetBiomeSearch("");
+            if (panel.testBiomeBatch("all") != totalBiomes) {
+                throw new AssertionError("biome batch 'all' should enable all known biomes");
+            }
+            if (panel.testBiomeBatch("invert") != 0) {
+                throw new AssertionError("biome batch 'invert' from all-enabled should disable all");
+            }
+            // 还原全启用 (不污染后续用例)
+            panel.testBiomeBatch("all");
+
+            // 结构类型 tab: 全不选 → 0; 全选 → 全部 (同时清变种位)
+            if (panel.testStructBatch("none") != 0) {
+                throw new AssertionError("struct batch 'none' should disable all types");
+            }
+            if (panel.testStructBatch("all") != totalTypes) {
+                throw new AssertionError("struct batch 'all' should enable all types");
+            }
+            LOGGER.info("batch selection ops passed (biomes {}, types {})", totalBiomes, totalTypes);
+        });
     }
 
     /**
