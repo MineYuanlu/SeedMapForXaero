@@ -139,7 +139,7 @@ src/client/java/bid/yuanlu/seedmap4xaero/
 │   ├── render/        # BiomeColorTable + 3 providers (Native/Vanilla/Legacy)
 │   ├── structure/     # AGENTS.md: 结构运行时 — StructureType + 图标/交互/访问检测
 │   ├── biome/         # BiomeType (sprite index, loaded from biomes.ini)
-│   ├── gui/           # AGENTS.md: SeedMapPanel side panel, XsmIconButton
+│   ├── gui/           # AGENTS.md: SeedMapPanel 协调器 + PanelSection 三区块 (Biome/Struct/Perf) + BatchActionRow + VersionDropdown + XsmIconButton
 │   └── accessor/      # SeedMapToggleAccessor interface
 └── utils/             # BitSetView (immutable BitSet wrapper)
 src/client/resources/assets/seed-map-for-xaero/textures/icons/   # biomes.png, structures.png, structures_plain.png, biomes.ini, structures.ini

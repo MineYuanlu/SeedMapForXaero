@@ -22,6 +22,11 @@
   "xsm.gui.panel.loot_mode.tiled_peek": "平铺速览",
   "xsm.gui.panel.loot_mode.tiled_detail": "平铺详情",
 
+  "xsm.gui.panel.batch_all": "全选",
+  "xsm.gui.panel.batch_none": "全不选",
+  "xsm.gui.panel.batch_invert": "反选",
+  "xsm.gui.panel.batch_show_only": "只显搜索",
+
   "xsm.value.on": "开",
   "xsm.value.off": "关",
 

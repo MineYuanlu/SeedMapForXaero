@@ -15,11 +15,13 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import bid.yuanlu.seedmap4xaero.client.biome.BiomeKeys;
+import bid.yuanlu.seedmap4xaero.client.biome.BiomeType;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlag;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureBitFlagView;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureKeys;
 import bid.yuanlu.seedmap4xaero.client.structure.StructureType;
 import bid.yuanlu.seedmap4xaero.utils.BitSetView;
+import it.unimi.dsi.fastutil.ints.IntCollection;
 
 /**
  * 单个 (mainId, dim, mwId) 的世界配置。
@@ -88,6 +90,33 @@ public class WorldConfig {
         return new BitSetView(set);
     }
 
+    // ─── 结构批量操作 (render-only, 不触发 native/瓦片缓存同步) ──
+
+    /** 全部启用: 清全部类型位与变种位。 */
+    public void enableAllStructures() {
+        for (StructureType t : StructureType.values()) {
+            disabledStructure.setStructure(t.id, false);
+            for (int v = 0; v <= 30; v++)
+                if (disabledStructure.isVariantSet(t.id, v))
+                    disabledStructure.setVariant(t.id, v, false);
+        }
+        main.makeDirty();
+    }
+
+    /** 全部禁用: 置全部类型位 (变种位不动, 被禁用类型遮蔽)。 */
+    public void disableAllStructures() {
+        for (StructureType t : StructureType.values())
+            disabledStructure.setStructure(t.id, true);
+        main.makeDirty();
+    }
+
+    /** 反选: 翻转全部类型位 (变种位不动, 与逐类型手动切换语义一致)。 */
+    public void invertStructures() {
+        for (StructureType t : StructureType.values())
+            disabledStructure.flipStructure(t.id);
+        main.makeDirty();
+    }
+
     public void setBiomeDisabled(int id, boolean enabled) {
         if (disabledBiomes == null) {
             disabledBiomes = new BitSet();
@@ -101,6 +130,48 @@ public class WorldConfig {
         if (disabledBiomesView != null)
             return disabledBiomesView;
         return BitSetView.EMPTY;
+    }
+
+    // ─── 生物群系批量操作 (只作用于已知 BiomeType; orphan/未知 id 不动, 避免 JSON 膨胀) ──
+
+    private void ensureBiomeBits() {
+        if (disabledBiomes == null) {
+            disabledBiomes = new BitSet();
+            disabledBiomesView = new BitSetView(disabledBiomes);
+        }
+    }
+
+    /** 全部启用: 恢复 null 哨兵 (JSON 省略该字段, 不落空数组)。 */
+    public void enableAllBiomes() {
+        if (disabledBiomes == null)
+            return;
+        disabledBiomes = null;
+        disabledBiomesView = null;
+        main.makeDirty();
+    }
+
+    /** 全部禁用: 对全部已知 BiomeType 置位。 */
+    public void disableAllBiomes() {
+        ensureBiomeBits();
+        for (BiomeType b : BiomeType.values())
+            disabledBiomes.set(b.id);
+        main.makeDirty();
+    }
+
+    /** 反选: 翻转全部已知 BiomeType 位。 */
+    public void invertBiomes() {
+        ensureBiomeBits();
+        for (BiomeType b : BiomeType.values())
+            disabledBiomes.flip(b.id);
+        main.makeDirty();
+    }
+
+    /** 仅启用给定 id, 其余已知 id 禁用 — 「只显搜索」的过滤列表固化。 */
+    public void enableOnlyBiomes(IntCollection ids) {
+        ensureBiomeBits();
+        for (BiomeType b : BiomeType.values())
+            disabledBiomes.set(b.id, !ids.contains(b.id));
+        main.makeDirty();
     }
 
     /** 世界生成的 MC 版本 (如 "1.21.9"), null 表示跟随客户端。 */
