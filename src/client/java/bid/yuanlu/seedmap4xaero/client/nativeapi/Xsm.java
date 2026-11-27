@@ -181,14 +181,16 @@ public final class Xsm {
     private static String lastRejectedVersion = null;
 
     /**
-     * 版本选择器展示的 MC 版本（倒序，仅 26.1+；ViaVersion 跨版本场景）。
+     * 版本选择器展示的 MC 版本（倒序；ViaVersion 跨版本场景）。
      * <p>
-     * C 侧 {@code mcVersionMap} 含更多历史版本串但 pre-1.18 无法初始化
-     * TerrainNoise 会被 {@code setGameVersion} 拒绝；UI 仅提供 26.1+ 选项，
-     * 新 MC 版本发布时在此追加。
+     * 内容 = 本 mod 支持的发布线，每条线取一个 worldgen 家族代表（如 26.1.x 折叠为
+     * {@code 26.1}）；主线为 26.x 持续跟进，另按实际下探结果补入旧版本线（如
+     * {@code 1.21.11}）。C 侧 {@code mcVersionMap} 含更多历史版本串但 pre-1.18 无法
+     * 初始化 TerrainNoise 会被 {@code setGameVersion} 拒绝；新增发布线或新 MC 版本
+     * 发布时在此追加。
      */
     public static final List<String> SUPPORTED_VERSIONS = List.of(
-            "26.3", "26.2", "26.1");
+            "26.3", "26.2", "26.1", "1.21.11");
 
     public static void setGameVersion() {
         final var version = SharedConstants.getCurrentVersion().name();

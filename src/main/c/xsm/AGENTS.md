@@ -12,7 +12,7 @@
 - `genCellImg` C output is 64×64 **RGBA** (4 bytes/pixel, LE int32 = ABGR); Java converts to ABGR `int[]`
 - `queryPoint` height uses `NP_DEPTH / 76.0` — not surface Y. Use `queryExactChunkHeight` for exact heights
 - Terrain lighting: Overworld only (C-side hardcoded)
-- MC version string map in `render.cpp` (header `mcVersionMap` table) must be updated for new MC releases; sync the UI picker list in Java `Xsm.SUPPORTED_VERSIONS` (descending, 26.1+ only — `mcVersionMap` contains older strings but pre-1.18 cannot initialize TerrainNoise, so `setGameVersion`/`setWorld` fail there; treat 1.18+ as the real C floor)
+- MC version string map in `render.cpp` (header `mcVersionMap` table) must be updated for new MC releases; sync the UI picker list in Java `Xsm.SUPPORTED_VERSIONS` (descending, one entry per worldgen family of each supported release line — main line is the latest 26.x, older lines added as version back-porting lands; `mcVersionMap` contains older strings but pre-1.18 cannot initialize TerrainNoise, so `setGameVersion`/`setWorld` fail there; treat 1.18+ as the real C floor)
 - `setWorld` 每次都 `memset(&tn.ss)` + `setupTerrainNoise` 再 `initTerrainNoise`：`TerrainNoise` 里 Overworld 的 `SplineStack` 与末地 `SurfaceNoise` 共用 union 内存，切维度会互相覆写（cubiomes #41 崩溃）；不要"优化"成只在版本变化时 setup
 - `queryExactChunkHeight`：cubiomes 新版 `generateRegion` 需 `colYMin/colYMax`（1:8 垂直单元，Overworld 取 0/48），`ys` 语义 = 首个空气方块世界 Y（比旧版 +1，故调用处 `-1` 还原地表方块 Y）
 - `Xsm.setBiomeColorTable` must be called before any gen — C-side defaults to black image
