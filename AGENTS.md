@@ -17,6 +17,10 @@ python3 tools/check_switch_normalized.py           # 检查工作树 26.1.2 规�
 
 **Java 25 required**（gradle daemon）；legacy 节点 `--release 21` 由 JDK25 javac 交叉编译。
 
+**C 编译器需 GCC ≥ 11 / clang ≥ 11**（cubiomes 用 C23 形参名）；`compileNative` 会自动在
+`gcc-14`/`gcc-13`/`clang-21`/`clang` 中挑第一个可用的（可用 `CC=` 覆盖）。老发行版默认
+`cc` 可能是 GCC 9，直接 `cmake` 手动配置时需显式 `-DCMAKE_C_COMPILER=gcc-14`。
+
 ⚠ stonecutter replacements 是**双向**的（条件假侧应用反向替换）——改
 `stonecutter.gradle.kts` 前先全库 grep 验证正反两向目标串唯一性，并同步
 `tools/check_switch_normalized.py` 的 `TOKEN_RULES`；共享树必须保持 26.1.2

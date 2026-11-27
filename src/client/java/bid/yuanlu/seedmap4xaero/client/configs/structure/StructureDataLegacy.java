@@ -44,18 +44,17 @@ public final class StructureDataLegacy {
     }
 
     /** legacy 编解码器，配合 {@code Sm4xFile.readFrame} 使用（magic 信封由其包装）。 */
-    public static final Sm4xCodec<Snapshot> LEGACY_CODEC =
-            new Sm4xCodec<>() {
-                @Override
-                public void write(Snapshot data, DataOutputStream out) throws IOException {
-                    StructureDataLegacy.write(data, out);
-                }
+    public static final Sm4xCodec<Snapshot> LEGACY_CODEC = new Sm4xCodec<>() {
+        @Override
+        public void write(Snapshot data, DataOutputStream out) throws IOException {
+            StructureDataLegacy.write(data, out);
+        }
 
-                @Override
-                public Snapshot read(DataInputStream in) throws IOException {
-                    return StructureDataLegacy.read(in);
-                }
-            };
+        @Override
+        public Snapshot read(DataInputStream in) throws IOException {
+            return StructureDataLegacy.read(in);
+        }
+    };
 
     // ─── 读取 (frozen) ──────────────────────────────────────────
 
@@ -102,7 +101,7 @@ public final class StructureDataLegacy {
         int typeCount = in.readInt();
         final var types = new LinkedHashMap<Integer, List<LegacyMark>>();
         for (int i = 0; i < typeCount; i++) {
-            int typeId = in.readUnsignedByte();
+            int typeId = legacyIdToCurrent(in.readUnsignedByte());
             int entryCount = in.readInt();
             final var marks = new ArrayList<LegacyMark>(entryCount);
             for (int j = 0; j < entryCount; j++) {
@@ -114,6 +113,35 @@ public final class StructureDataLegacy {
             types.put(typeId, marks);
         }
         return new LegacyDim(types);
+    }
+
+    /**
+     * 旧 legacy 文件的结构 id → 当前 id。
+     * <p>
+     * 26.3 起 cubiomes 在 End_City 前插入 Nether_Fossil(20)、在 Stronghold 前插入
+     * Abandoned_Camp(26)，End_City..Stronghold 整体后移；旧文件（冻结格式，只可能由
+     * 旧版本写出）里 20..25 是 End_City..Stronghold，26 是 WORLD_SPAWN。
+     * 不迁移会把末地城标记读成下界化石等（数据静默错位）。
+     */
+    private static int legacyIdToCurrent(int legacyId) {
+        if (legacyId >= 20 && legacyId <= 24)
+            return legacyId + 1;
+        if (legacyId == 25 || legacyId == 26)
+            return legacyId + 2; // 旧 STRONGHOLD / WORLD_SPAWN（新增 2 个结构 id）
+        return legacyId;
+    }
+
+    /** {@link #legacyIdToCurrent} 的逆映射（写出仅用于测试 fixture，保持旧字节布局）。 */
+    private static int currentIdToLegacy(int id) {
+        if (id == 20 || id == 26)
+            throw new IllegalArgumentException("No legacy id for structure id " + id);
+        if (id >= 21 && id <= 25)
+            return id - 1;
+        if (id == 27)
+            return 25; // STRONGHOLD
+        if (id == 28)
+            return 26; // WORLD_SPAWN
+        return id;
     }
 
     // ─── 写出 (frozen, 仅测试 fixture) ──────────────────────────
@@ -147,7 +175,7 @@ public final class StructureDataLegacy {
         out.writeInt(0);
         out.writeInt(dim.types().size());
         for (var typeEntry : dim.types().entrySet()) {
-            out.writeByte(typeEntry.getKey());
+            out.writeByte(currentIdToLegacy(typeEntry.getKey()));
             var marks = typeEntry.getValue();
             out.writeInt(marks.size());
             for (LegacyMark mark : marks) {

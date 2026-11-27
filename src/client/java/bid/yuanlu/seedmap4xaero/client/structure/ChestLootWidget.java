@@ -82,6 +82,12 @@ public class ChestLootWidget {
     private int pendingTooltipX = 0;
     private int pendingTooltipY = 0;
 
+    /** 战利品表名去掉容器前缀（cubiomes 新版返回 chests/desert_pyramid 形式）。 */
+    private static String stripTablePrefix(String lootTable) {
+        int slash = lootTable.lastIndexOf('/');
+        return slash >= 0 && slash + 1 < lootTable.length() ? lootTable.substring(slash + 1) : lootTable;
+    }
+
     public ChestLootWidget(int x, int y, StructureType structureType, List<ChestLoot> chestDataList, boolean tiled) {
         this.x = x;
         this.y = y;
@@ -100,7 +106,7 @@ public class ChestLootWidget {
             tooltips.add(ClientTooltipComponent.create(Component.translatable(
                     "xsm.chestLoot.extraInfo.chestPos", chestPos).getVisualOrderText()));
             Component lootTable = Component.literal(
-                    chestData.lootTable() != null ? chestData.lootTable() : "unknown_loot_table");
+                    stripTablePrefix(chestData.lootTable() != null ? chestData.lootTable() : "unknown_loot_table"));
             tooltips.add(ClientTooltipComponent.create(Component.translatable(
                     "xsm.chestLoot.extraInfo.lootTable", lootTable).getVisualOrderText()));
             Component lootSeed = Component.literal(Long.toString(chestData.lootSeed()));

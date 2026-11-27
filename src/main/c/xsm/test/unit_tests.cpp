@@ -557,8 +557,8 @@ TEST_CASE("shipwreck beached variant must match biome") {
     return;  // pre-1.18 走 entry 层采样路径, 测试不复刻 (见 render.cpp)
 
   TerrainNoise tn{};  // 零初始化 (与 render.cpp 一致, 指针/spline 状态依赖零值)
-  REQUIRE(setupTerrainNoise(&tn, testMcEnum(), 0) == 1);
-  REQUIRE(initTerrainNoise(&tn, 0, 0) == 1);
+  setupTerrainNoise(&tn, testMcEnum(), 0);
+  initTerrainNoise(&tn, 0, 0);
 
   auto hits = queryHits(Shipwreck, 0, 0, 64, 64);
   REQUIRE_MESSAGE(hits.size() > 0, "no shipwreck found in region range");
@@ -614,8 +614,10 @@ TEST_CASE("xsmQueryStructureLoot: desert pyramid deterministic loot") {
   CHECK_MESSAGE(writtenA > 0, "loot buffer empty");
   CHECK_MESSAGE(names[0] != '\0', "piece name should be written");
   CHECK_MESSAGE(tables[0] != '\0', "loot table should be written");
-  CHECK_MESSAGE(strcmp(tables.data(), "desert_pyramid") == 0,
-                "loot table should be desert_pyramid, got ", tables.data());
+  // cubiomes 新版战利品表名带容器前缀（chests/…），C API 原样透出，
+  // 由 Java 显示层剥离前缀（ChestLootWidget）。
+  CHECK_MESSAGE(strcmp(tables.data(), "chests/desert_pyramid") == 0,
+                "loot table should be chests/desert_pyramid, got ", tables.data());
 
   b.resize(cap);
   rc = xsmQueryStructureLoot(Desert_Pyramid, px, pz, cap, b.data(),
