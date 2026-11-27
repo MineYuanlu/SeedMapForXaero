@@ -112,8 +112,9 @@ genBiomes(&g, cache, r); /* FNV-hash(cache[0 .. r.sx*r.sz]) */
 
 ### 本 mod 的版本映射（`src/main/c/xsm/apis/render.cpp:32-70`）
 
-C 侧 `mcVersionMap` 覆盖 **b1.7 → 26.3**；Java UI 下拉仅暴露 26.1+
-（`Xsm.java:189-190`），旧版本字符串经 `WorldConfig.mcVersion` 配置仍可生效。
+C 侧 `mcVersionMap` 覆盖 **b1.7 → 26.3**；Java UI 下拉只暴露本 mod 支持的发布线
+（每条线一个 worldgen 家族代表，`Xsm.SUPPORTED_VERSIONS`），旧版本字符串经
+`WorldConfig.mcVersion` 配置仍可生效。
 与上游 `str2mc` 对照，有三处偏差（均为"版本字符串 → 桶"选择）：
 
 | 版本字符串 | 本 mod | 上游分桶 | 影响 |

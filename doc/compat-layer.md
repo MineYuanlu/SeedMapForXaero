@@ -80,7 +80,8 @@ MC 26.3 彻底移除该类且无等价 API（`NoiseStack` 范式不同、无法�
 3. 编译矩阵暴露新断点 → modern 线在 compat 门面加缝/调整解析（legacy 线若该版本
    也支持，同步直调侧）；业务代码不动。
 4. C 侧 `render.cpp` `mcVersionMap` 加新版本映射（worldgen 未变则映射到上一版本，
-   如 26.3→MC_26_2）+ 同步 `Xsm.SUPPORTED_VERSIONS`（按家族条件注释）。
+   如 26.3→MC_26_2）+ 同步 `Xsm.SUPPORTED_VERSIONS`（倒序，每条发布线一个
+   worldgen 家族代表；主线 26.x 持续跟进，下探线按实际支持结果补入）。
 5. 本地复刻 E2E：编 jar → `:<MC>:runProductionClientGameTestUniversal`
    + `-PclientGameTestXVFB=true`（无头），grep `E2E assertions passed`。
 6. worldgen 若有变（E2E 事实断言失败）→ 升级 cubiomes 子模块，另立任务。
