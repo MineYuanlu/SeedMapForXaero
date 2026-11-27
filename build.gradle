@@ -269,16 +269,17 @@ tasks.register("runProductionClientGameTestUniversal", net.fabricmc.loom.task.pr
 // C 源码与产物目录全局共享（src/main/c/，全部 MC 线同一套 libxsmcore）。
 // 多节点并行构建时用 SharedBuildService 串行化 cmake（同一 build dir 不能并发 configure）。
 
-def skipNative = project.findProperty('skipNativeBuild') ?: 'false'
-def skipNativeWindows = project.findProperty('skipNativeWindows') ?: 'false'
-
-// gradle.local.properties（gitignored，根目录）里也可覆盖上面的属性，与 -P 同格式。
+// gradle.local.properties（gitignored，根目录）里也可覆盖下面的属性，与 -P 同格式。
+// 注意必须在属性读取之前加载，否则 skipNative*/ndkPath 等覆盖不生效。
 def localPropsFile = rootProject.file('gradle.local.properties')
 if (localPropsFile.exists()) {
 	def props = new Properties()
 	localPropsFile.withInputStream { props.load(it) }
 	props.each { k, v -> project.ext[k] = v }
 }
+
+def skipNative = project.findProperty('skipNativeBuild') ?: 'false'
+def skipNativeWindows = project.findProperty('skipNativeWindows') ?: 'false'
 
 abstract class CmakeLockService implements BuildService<BuildServiceParameters.None> {
 }
@@ -290,18 +291,21 @@ def cmakeLock = gradle.sharedServices.registerIfAbsent("xsm-cmake-lock", CmakeLo
 }
 
 def defaultCCompiler() {
-	// Prefer clang if available (supports cubiomes C patterns on older GCC hosts)
-	try {
-		def out = new ByteArrayOutputStream()
-		exec {
-			commandLine 'which', 'clang-21'
-			ignoreExitValue true
-			standardOutput = out
+	// cubiomes 新版使用 C23 形参名（如 loot/loot_functions.h 的
+	// `roll_count_constant(RandomSource*, ...)`），GCC < 11 / clang < 11 会直接
+	// 编译失败。按候选列表取第一个可用的现代编译器；都没有则回落 cc（CI 各平台的系统默认编译器均已满足要求）。
+	for (String cand : ['gcc-14', 'gcc-13', 'clang-21', 'clang', 'gcc']) {
+		try {
+			def p = new ProcessBuilder('which', cand).redirectErrorStream(true).start()
+			p.inputStream.text // 必须读空, 否则子进程可能阻塞
+			if (p.waitFor() == 0) {
+				return cand
+			}
+		} catch (Exception ignored) {
+			// 该候选不可用, 继续下一个
 		}
-		return out.toString().trim() ?: 'cc'
-	} catch (Exception ignored) {
-		return 'cc'
 	}
+	return 'cc'
 }
 
 // 产物按 <root>/src/main/c/build/<target>/ 分目录放置，processClientResources 再映射进

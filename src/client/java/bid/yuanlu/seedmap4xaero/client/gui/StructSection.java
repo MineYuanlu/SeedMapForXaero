@@ -381,6 +381,8 @@ class StructSection extends PanelSection {
     private void showOnlyMatched(WorldConfig wc) {
         String search = structSearchText.toLowerCase();
         for (StructureType s : StructureType.values()) {
+            if (!isListed(s))
+                continue;
             if (typeMatchesSearch(s, search)) {
                 wc.setStructureEnabled(s.id, true);
                 for (int v : s.getVariants())
@@ -396,6 +398,18 @@ class StructSection extends PanelSection {
             for (int v : s.getVariants())
                 wc.setVariantEnabled(s.id, v, matched.contains(v));
         }
+    }
+
+    /**
+     * 是否列入设置面板的结构列表。
+     * <p>
+     * id 0 = cubiomes 的 {@code Feature}，是 1.13 前「神殿类结构生成尝试点」的历史
+     * 类型（26.x 起 {@code getStructureConfig} 恒失败），Java 侧保留它只为对齐
+     * cubiomes 枚举序号；它没有结构配置、永远不会渲染图标，列表里只是一行点了也
+     * 没反应的噪音，故隐藏。
+     */
+    private static boolean isListed(StructureType s) {
+        return s != StructureType.FEATURE;
     }
 
     /** 类型行命中判定 (与 updateStructFilter 同源: id / key / 展示名)。 */
@@ -1008,6 +1022,8 @@ class StructSection extends PanelSection {
         var wc = ServerConfig.getActiveWorldConfig();
         StructureBitFlagView flags = wc != null ? wc.getDisabledStructures() : DEFAULT_FLAGS;
         for (StructureType s : StructureType.values()) {
+            if (!isListed(s))
+                continue;
             boolean structVisible = !flags.isStructureSet(s.id);
             IntList variants = s.getVariants();
             if (typeMatchesSearch(s, search)) {

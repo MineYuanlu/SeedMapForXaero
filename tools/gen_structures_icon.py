@@ -101,21 +101,23 @@ SPRITES: "dict[int, str | tuple[str, ...] | dict[int, str | tuple[str, ...]]]" =
         2: "EnvSprite_bastion-remnant.png",
         3: "EnvSprite_bastion-remnant.png",
     },
-    20: {  # end_city / ship
+    20: "EnvSprite_nether-fossil.png",  # nether_fossil
+    21: {  # end_city / ship
         0: "EnvSprite_end-city.png",
         1: "EnvSprite_end-ship.png",
     },
-    21: "EnvSprite_end-gateway.png",  # end_gateway
-    22: local_assets("end-island.png"),  # end_island
-    23: "ItemSprite_brush.png",  # trail_ruins
-    24: {  # trial_chambers: 0 entrance, 1 end, 2-3 corridor
+    22: "EnvSprite_end-gateway.png",  # end_gateway
+    23: local_assets("end-island.png"),  # end_island
+    24: "ItemSprite_brush.png",  # trail_ruins
+    25: {  # trial_chambers: 0 entrance, 1 end, 2-3 corridor
         0: "BlockSprite_trial-spawner-inactive.png",
         1: "BlockSprite_trial-spawner-inactive.png",
         2: "BlockSprite_trial-spawner-inactive.png",
         3: "BlockSprite_trial-spawner-inactive.png",
     },
-    25: "ItemSprite_ender-eye.png",  # stronghold
-    26: "ItemSprite_bed.png",  # world_spawn
+    26: "EnvSprite_abandoned-camp.png",  # abandoned_camp (26.3+)
+    27: "ItemSprite_ender-eye.png",  # stronghold
+    28: "ItemSprite_bed.png",  # world_spawn
 }
 
 

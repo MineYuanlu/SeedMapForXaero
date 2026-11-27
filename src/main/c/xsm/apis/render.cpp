@@ -67,7 +67,7 @@ static const std::unordered_map<std::string, MCVersion> mcVersionMap = {
     {"1.21.5", MC_1_21_5},   {"1.21.6", MC_1_21_5}, {"1.21.7", MC_1_21_5},
     {"1.21.8", MC_1_21_5},   {"1.21.9", MC_1_21_9}, {"1.21.10", MC_1_21_9},
     {"1.21.11", MC_1_21_11}, {"26.1", MC_26_1},     {"26.1.1", MC_26_1},
-    {"26.1.2", MC_26_1},     {"26.2", MC_26_2},     {"26.3", MC_26_2}};
+    {"26.1.2", MC_26_1},     {"26.2", MC_26_2},     {"26.3", MC_26_3}};
 
     static constexpr const size_t MAX_BIOMES = 256;
 
@@ -276,9 +276,11 @@ bool setGameVersion(const char* version) {
   std::lock_guard<xsm::mutex> lock(setting_mtx);
   const auto v = mcVersionMap.find(std::string(version));
   if (v == mcVersionMap.end()) return false;
+  // 本项目 UI 只暴露 26.x；cubiomes 虽已支持 pre-1.18 地形，但本模块的
+  // getSurfaceHeight/queryPoint 依赖 1.18+ 的 BiomeNoise，故仍以 1.18 为下限。
+  if (v->second < MC_1_18) return false;
   memset(&tn.ss, 0, sizeof(tn.ss));
-  // pre-1.18: cubiomes 不支持 TerrainNoise 初始化, 拒绝而非静默在零值 Generator 上出垃圾
-  if (setupTerrainNoise(&tn, v->second, 0) == 0) return false;
+  setupTerrainNoise(&tn, v->second, 0);
   gen_setWorld = false;
   gen_setGameVersion = true;
   return true;
@@ -295,7 +297,13 @@ int32_t xsmGetMCVersion(const char* version) {
 bool setWorld(uint64_t seed, int dim) {
   std::lock_guard<xsm::mutex> lock(setting_mtx);
   if (!gen_setGameVersion) return false;
-  if (initTerrainNoise(&tn, seed, dim) == 0) return false;  // 与 setGameVersion 同理
+  // TerrainNoise 的 Overworld 结构（SplineStack/因子 spline 指针）与末地
+  // SurfaceNoise 在 union 里共用内存：切到末地/下界会覆写 ss，切回主世界若
+  // 不重建 spline 就会用垃圾数据采样（cubiomes #41，实测 SIGSEGV）。
+  // 因此每次 setWorld 都重跑 setupTerrainNoise（Java 侧已去重，开销可忽略）。
+  memset(&tn.ss, 0, sizeof(tn.ss));
+  setupTerrainNoise(&tn, tn.g.mc, 0);
+  initTerrainNoise(&tn, seed, dim);
   initSurfaceNoise(&endSn, DIM_END, seed);
   gen_setWorld = true;
   return true;
@@ -322,14 +330,6 @@ static float getSurfaceHeight(const Generator* g, int32_t worldX, int32_t worldZ
   int64_t np[6];
   sampleBiomeNoise(&g->bn, np, worldX >> 2, 0, worldZ >> 2, NULL, 0);
   return (float)(np[NP_DEPTH] / 76.0);
-}
-
-/// 获取当前版本/维度的世界最低 Y。
-/// 1.18+ Overworld = -64，其余维度/旧版 = 0。
-/// 用于 generateRegion 局部 Y（0-based）到世界 Y 的转换。
-static int getWorldBottomY() {
-    if (tn.g.mc >= MC_1_18 && tn.g.dim == DIM_OVERWORLD) return -64;
-    return 0;
 }
 
 /// heights 数组步长（带 padding 后的宽度）
@@ -571,10 +571,13 @@ uint32_t queryExactChunkHeight(int32_t chunkX, int32_t chunkZ,
   if (!gen_setWorld) return -1;
   if (tn.g.mc < MC_1_18 || tn.g.dim != DIM_OVERWORLD) return -2;
 
-  generateRegion(&tn, chunkX, chunkZ, 1, 1, NULL, heightsOut, 1);
-  int bottom = getWorldBottomY();
+  // 噪声列参数（cubiomes >= 26.4 线）：colYMin/colYMax 是 1:8 垂直单元索引，
+  // 0..48 覆盖 y=-64..319 的完整列（cellHeight=8，worldMinY=-64）。
+  generateRegion(&tn, chunkX, chunkZ, 1, 1, NULL, 0, 48, heightsOut, 1);
+  // 新 ys 语义 = 首个空气方块的世界 Y（旧版为区块内 0-based 且 +1），
+  // 减 1 回到地表方块 Y，保持 Java 侧既有语义。
   for (int i = 0; i < 256; i++) {
-    heightsOut[i] += bottom - 1;
+    heightsOut[i] -= 1;
   }
   return 0;
 }

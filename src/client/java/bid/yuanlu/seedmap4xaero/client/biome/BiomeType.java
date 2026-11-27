@@ -22,7 +22,7 @@ public final class BiomeType {
     public static final Identifier BIOMES_TEXTURE = Identifier.fromNamespaceAndPath(
             "seed-map-for-xaero", "textures/icons/biomes.png");
 
-    public static final int SPRITESHEET_WIDTH = 1520;
+    public static final int SPRITESHEET_WIDTH = 1536;
     public static final int SPRITESHEET_HEIGHT = 16;
 
     public final int id;

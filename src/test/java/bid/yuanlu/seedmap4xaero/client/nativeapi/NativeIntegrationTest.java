@@ -22,7 +22,7 @@ class NativeIntegrationTest extends NativeMcTest {
 
     @Test
     void featureNumMatchesEnum() {
-        assertEquals(26, Xsm.getStructFEATURE_NUM(), "26 structure ids across 26.1/26.2");
+        assertEquals(28, Xsm.getStructFEATURE_NUM(), "28 structure ids across 26.1/26.2/26.3");
     }
 
     @Test
