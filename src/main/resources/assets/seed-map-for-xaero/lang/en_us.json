@@ -74,11 +74,13 @@
   "xsm.structure.geode": "Amethyst Geode",
   "xsm.structure.fortress": "Nether Fortress",
   "xsm.structure.bastion": "Bastion Remnant",
+  "xsm.structure.nether_fossil": "Nether Fossil",
   "xsm.structure.end_city": "End City",
   "xsm.structure.end_gateway": "End Gateway",
   "xsm.structure.end_island": "End Island",
   "xsm.structure.trail_ruins": "Trail Ruins",
   "xsm.structure.trial_chambers": "Trial Chambers",
+  "xsm.structure.abandoned_camp": "Abandoned Camp",
   "xsm.structure.stronghold": "Stronghold",
   "xsm.structure.world_spawn": "World Spawn",
 

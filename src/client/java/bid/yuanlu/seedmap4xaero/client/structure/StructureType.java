@@ -180,8 +180,10 @@ public enum StructureType {
             };
         }
     },
+    /** 下界化石 */
+    NETHER_FOSSIL(20, "nether_fossil", true, Integer.MAX_VALUE),
     /** 末地城 */
-    END_CITY(20, "end_city", true, Integer.MAX_VALUE) {
+    END_CITY(21, "end_city", true, Integer.MAX_VALUE) {
         private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1 });
 
         @OverrideOnly
@@ -198,13 +200,13 @@ public enum StructureType {
         }
     },
     /** 末地折跃门 */
-    END_GATEWAY(21, "end_gateway", false, Integer.MAX_VALUE, 1f / 700 * 0.0883f),
+    END_GATEWAY(22, "end_gateway", false, Integer.MAX_VALUE, 1f / 700 * 0.0883f),
     /** 末地岛屿 */
-    END_ISLAND(22, "end_island", false, Integer.MAX_VALUE, 1f / 14),
+    END_ISLAND(23, "end_island", false, Integer.MAX_VALUE, 1f / 14),
     /** 古迹废墟 */
-    TRAIL_RUINS(23, "trail_ruins", false, Integer.MAX_VALUE),
+    TRAIL_RUINS(24, "trail_ruins", false, Integer.MAX_VALUE),
     /** 试炼密室 */
-    TRIAL_CHAMBERS(24, "trial_chambers", false, Integer.MAX_VALUE) {
+    TRIAL_CHAMBERS(25, "trial_chambers", false, Integer.MAX_VALUE) {
         private static final IntImmutableList VARIANTS = new IntImmutableList(new int[] { 0, 1, 2, 3 });
 
         @OverrideOnly
@@ -213,10 +215,12 @@ public enum StructureType {
         }
         // TODO: 2bit的 variant暂时没搞清楚对应关系
     },
+    /** 废弃营地 (26.3+) */
+    ABANDONED_CAMP(26, "abandoned_camp", true, Integer.MAX_VALUE),
     /** 要塞 */
-    STRONGHOLD(25, "stronghold", true, Integer.MAX_VALUE),
+    STRONGHOLD(27, "stronghold", true, Integer.MAX_VALUE),
     /** 世界出生点 (Java 侧伪类型, 无 cubiomes 结构配置; id 超出 native FEATURE_NUM) */
-    WORLD_SPAWN(26, "world_spawn", true, Integer.MAX_VALUE);
+    WORLD_SPAWN(28, "world_spawn", true, Integer.MAX_VALUE);
 
     private static final class LoggerHolder {
         private static final Logger LOGGER = LoggerFactory.getLogger("seedmap4xaero/StructureType");
@@ -312,7 +316,7 @@ public enum StructureType {
      * <p>
      * null 结果不缓存 (MC 版本切换后可能变为可用), 故结构渲染循环每帧会重查
      * native —— 因此缺失告警只发一次 (见 {@link #configMissingWarned}), 且已知
-     * 天生无配置的类型 (要塞 id25; 地物 id0 在 MC&gt;1.12 无 region config) 不告警。
+     * 天生无配置的类型 (要塞 id27; 地物 id0 在 MC&gt;1.12 无 region config) 不告警。
      */
     public @Nullable Config config() {
         if (this == WORLD_SPAWN)

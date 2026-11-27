@@ -5,7 +5,7 @@
 
 ## Classes
 
-- `StructureType` — 27 项枚举（26 个 native 结构 + `WORLD_SPAWN` Java 伪类型），配置来自 C（稀疏类型自带 prob）。
+- `StructureType` — 结构枚举（native 结构 + `WORLD_SPAWN` Java 伪类型），配置来自 C（稀疏类型自带 prob）。
 - `StructureVisitTracker` — 访问检测：玩家接近结构时自动记录访问（历史最小距离）。
 - `StructureIcons` — 图标枚举：渲染与右键命中共用同一套过滤（disabled flags + 组隐藏）+ 坐标变换。
   `VisibleIconSink` 末参带出标记表中取出的 `StructureMark` 共享引用（零分配），供渲染端做组色解析，免二次 map get。
